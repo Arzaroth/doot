@@ -8,8 +8,9 @@ Multiplateforme :
   - Windows : fond reellement transparent (-transparentcolor) + fenetre
     "click-through" et sans vol de focus (styles etendus Win32).
   - macOS   : fenetre sans bordure, sans icone dans le Dock.
-  - Linux   : type de fenetre "splash" quand le WM le supporte ; le fond est
-    reellement transparent si un compositeur tourne, sinon fond sombre.
+  - Linux   : l'overlay ARGB de x11.py prend la main quand il peut (vraie
+    transparence par pixel) ; sinon tkinter, type de fenetre "splash" et fond
+    sombre, faute d'alpha par pixel sur le visual par defaut.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ import sys
 from fractions import Fraction
 from pathlib import Path
 
-from . import art, screens, sound
+from . import art, png, screens, sound, x11
 
 TRANSPARENT_KEY = "#ff00ff"
 FALLBACK_BG = "#0b0b12"
@@ -151,6 +152,35 @@ def _auto_scale(width: int, height: int, screen_w: int, screen_h: int) -> float:
     return min(limit_h / height, limit_w / width)
 
 
+def _show_argb(wav_path, duration, center, opacity, image_path, scale, screen) -> bool:
+    """Tente l'overlay ARGB de x11.py ; faux si tkinter doit prendre le relais.
+
+    Reserve aux PNG : x11.py compose les pixels lui-meme et png.py ne lit pas
+    les GIF animes.
+    """
+    if image_path is None or image_path.suffix.lower() != ".png":
+        return False
+    if not x11.available():
+        return False
+
+    try:
+        image_width, image_height = png.size(image_path)
+        monitor = screens.pick(screens.monitors(), screen)
+        wanted = scale if scale is not None else _auto_scale(
+            image_width, image_height, monitor.width, monitor.height
+        )
+        frame = png.frame(image_path, wanted)
+        x, y = monitor.place(frame.width, frame.height, center, random)
+    except Exception:
+        return False
+
+    try:
+        x11.play(frame, x, y, duration, opacity, wav_path)
+    except x11.X11Unavailable:
+        return False
+    return True
+
+
 def show(
     wav_path: Path | None = None,
     duration: float = 2.8,
@@ -166,6 +196,9 @@ def show(
     `screen` : None/"random" pour un ecran au hasard, "primary" pour l'ecran
     principal, ou l'index d'un ecran precis.
     """
+    if _show_argb(wav_path, duration, center, opacity, image_path, scale, screen):
+        return
+
     tk, tkfont = _import_tk()
 
     root = tk.Tk()
