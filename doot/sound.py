@@ -1,9 +1,9 @@
 """Jingle de trompette : synthese maison + lecture multiplateforme.
 
-Aucun fichier audio n'est fourni avec le projet : le petit motif deux notes est
-synthetise localement (harmoniques + vibrato + enveloppe ADSR + soft clipping).
-Tu peux deposer tes propres .wav dans <data_dir>/sound/ pour les utiliser a la
-place (voir `doot --paths`).
+Aucun fichier audio n'est distribue avec le projet : le petit motif deux notes
+est synthetise localement (harmoniques + vibrato + enveloppe ADSR + soft
+clipping). Depose tes propres fichiers dans <data_dir>/sound/ pour les utiliser
+a la place (`doot --paths` donne le chemin) : wav, mp3, ogg, flac, m4a, opus.
 """
 
 from __future__ import annotations
@@ -26,17 +26,25 @@ NOTES = (
     {"start": 0.34, "duration": 0.78, "freq": 392.00},
 )
 
-# Lecteurs en ligne de commande testes dans l'ordre, sous Linux/BSD.
+# Formats acceptes pour les sons perso.
+AUDIO_EXTENSIONS = (".wav", ".mp3", ".ogg", ".oga", ".opus", ".flac", ".m4a", ".aac")
+
+# Lecteurs Linux/BSD, dans l'ordre de preference.
+# "any" = gere aussi les formats compresses ; sinon wav (+ ce que lit libsndfile).
 LINUX_PLAYERS = (
-    ("pw-play", ["pw-play"]),          # PipeWire (Arch, Fedora, Ubuntu recents)
-    ("paplay", ["paplay"]),            # PulseAudio
-    ("aplay", ["aplay", "-q"]),        # ALSA (alsa-utils)
-    ("ffplay", ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet"]),
-    ("play", ["play", "-q"]),          # SoX
-    ("mpv", ["mpv", "--really-quiet", "--no-video"]),
-    ("cvlc", ["cvlc", "--play-and-exit", "--intf", "dummy"]),
+    ("mpv", ["mpv", "--really-quiet", "--no-video"], "any"),
+    ("ffplay", ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet"], "any"),
+    ("play", ["play", "-q"], "any"),                  # SoX
+    ("cvlc", ["cvlc", "--play-and-exit", "--intf", "dummy"], "any"),
+    ("pw-play", ["pw-play"], "wav"),                  # PipeWire
+    ("paplay", ["paplay"], "wav"),                    # PulseAudio
+    ("aplay", ["aplay", "-q"], "wav"),                # ALSA
 )
 
+MCI_ALIAS = "dootsound"
+
+
+# ------------------------------------------------------------- synthese ------
 
 def _render_samples(volume: float) -> list[float]:
     count = int(SAMPLE_RATE * TOTAL_SECONDS)
@@ -107,41 +115,82 @@ def ensure_wav(path: Path, volume: float = 0.55, force: bool = False) -> Path:
     return path
 
 
+def custom_sounds(custom_dir: Path) -> list[Path]:
+    """Les fichiers audio deposes par l'utilisateur, tries."""
+    if not custom_dir.is_dir():
+        return []
+    return sorted(
+        p for p in custom_dir.iterdir()
+        if p.is_file() and p.suffix.lower() in AUDIO_EXTENSIONS
+    )
+
+
 def pick_sound(cache_wav: Path, custom_dir: Path, volume: float = 0.55) -> Path:
-    """Un .wav perso dans custom_dir a la priorite sur le jingle genere."""
-    if custom_dir.is_dir():
-        customs = sorted(p for p in custom_dir.glob("*.wav") if p.is_file())
-        if customs:
-            return random.choice(customs)
+    """Un son perso a la priorite sur le jingle genere ; tirage au hasard."""
+    customs = custom_sounds(custom_dir)
+    if customs:
+        return random.choice(customs)
     return ensure_wav(cache_wav, volume)
 
 
-def find_player() -> list[str] | None:
-    """Commande de lecture disponible, ou None (Windows utilise winsound)."""
+# --------------------------------------------------------------- lecture -----
+
+def _mci(command: str) -> tuple[int, str]:
+    """Envoie une commande MCI (Windows). Gere le mp3 et compagnie."""
+    import ctypes
+
+    buffer = ctypes.create_unicode_buffer(512)
+    code = ctypes.windll.winmm.mciSendStringW(command, buffer, 511, 0)
+    return code, buffer.value
+
+
+def find_player(path: Path | None = None) -> list[str] | None:
+    """Commande de lecture adaptee au fichier, ou None.
+
+    Windows n'en a pas besoin (winsound / MCI sont integres).
+    """
     if sys.platform == "win32":
         return None
     if sys.platform == "darwin":
         return ["afplay"] if shutil.which("afplay") else None
-    for binary, command in LINUX_PLAYERS:
+
+    compressed = path is not None and path.suffix.lower() not in (".wav",)
+    for binary, command, formats in LINUX_PLAYERS:
+        if compressed and formats != "any":
+            continue
         if shutil.which(binary):
             return command
     return None
 
 
-def play_async(path: Path) -> subprocess.Popen | None:
+def play_async(path: Path) -> object | None:
     """Lance le son sans bloquer. Silencieux si aucun lecteur n'est dispo."""
+    path = Path(path)
+
     if sys.platform == "win32":
+        if path.suffix.lower() == ".wav":
+            try:
+                import winsound
+
+                winsound.PlaySound(
+                    str(path),
+                    winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT,
+                )
+                return "winsound"
+            except Exception:
+                return None
+        # mp3, m4a, wma... : MCI sait faire, sans dependance externe
         try:
-            import winsound
-
-            winsound.PlaySound(
-                str(path), winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT
-            )
+            _mci(f"close {MCI_ALIAS}")
+            code, _ = _mci(f'open "{path}" alias {MCI_ALIAS}')
+            if code != 0:
+                return None
+            _mci(f"play {MCI_ALIAS}")
+            return "mci"
         except Exception:
-            pass
-        return None
+            return None
 
-    command = find_player()
+    command = find_player(path)
     if not command:
         return None
     try:
@@ -155,7 +204,20 @@ def play_async(path: Path) -> subprocess.Popen | None:
         return None
 
 
-def stop(process: subprocess.Popen | None) -> None:
+def release(handle: object | None) -> None:
+    """Libere les ressources SANS couper le son en cours.
+
+    Le squelette peut disparaitre avant la fin de la note : on laisse le son
+    aller au bout plutot que de le tronquer.
+    """
+    if handle == "mci":
+        # MCI garde le fichier ouvert : on ne ferme qu'a la lecture suivante.
+        return
+    return
+
+
+def stop_all() -> None:
+    """Coupe net tout son en cours (arret du programme)."""
     if sys.platform == "win32":
         try:
             import winsound
@@ -163,9 +225,53 @@ def stop(process: subprocess.Popen | None) -> None:
             winsound.PlaySound(None, winsound.SND_PURGE)
         except Exception:
             pass
-        return
-    if process and process.poll() is None:
         try:
-            process.terminate()
+            _mci(f"close {MCI_ALIAS}")
         except Exception:
             pass
+
+
+# --------------------------------------------------------------- duree -------
+
+def probe_duration(path: Path) -> float | None:
+    """Duree du fichier en secondes, ou None si on ne sait pas la lire."""
+    path = Path(path)
+
+    if path.suffix.lower() == ".wav":
+        try:
+            with wave.open(str(path), "rb") as handle:
+                rate = handle.getframerate()
+                if rate:
+                    return handle.getnframes() / float(rate)
+        except Exception:
+            return None
+        return None
+
+    if sys.platform == "win32":
+        try:
+            alias = MCI_ALIAS + "probe"
+            _mci(f"close {alias}")
+            code, _ = _mci(f'open "{path}" alias {alias}')
+            if code != 0:
+                return None
+            _mci(f"set {alias} time format milliseconds")
+            code, value = _mci(f"status {alias} length")
+            _mci(f"close {alias}")
+            if code == 0 and value.strip().isdigit():
+                return int(value.strip()) / 1000.0
+        except Exception:
+            return None
+        return None
+
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe:
+        try:
+            out = subprocess.run(
+                [ffprobe, "-v", "quiet", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+                capture_output=True, text=True, timeout=5,
+            )
+            return float(out.stdout.strip())
+        except Exception:
+            return None
+    return None

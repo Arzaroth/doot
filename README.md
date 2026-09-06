@@ -25,8 +25,42 @@ tourne mais reste sagement endormi : le squelette range sa trompette.
 - **Zéro dépendance** : uniquement la bibliothèque standard de Python 3.8+
 - **Discret** : overlay sans bordure, qui ne vole jamais le focus et — sous Windows —
   laisse passer les clics de souris. Il ne bloque rien, il fait juste *doot*.
+- **Personnalisable** : dépose ton PNG/GIF et ton mp3, ils remplacent l'ASCII art et le jingle.
 - **Saisonnier** : la fenêtre du 1er septembre au 31 octobre est appliquée par le
   programme lui-même, pas seulement par le planificateur.
+
+---
+
+## 🛑 Au secours, faites-le taire
+
+Pas de panique, rien n'est installé en profondeur et aucun droit administrateur n'a
+été demandé. Trois niveaux, du plus doux au plus définitif :
+
+```bash
+doot --stop        # arrête le programme qui tourne, tout de suite
+```
+
+```bash
+./uninstall.sh     # Linux / macOS : désinstalle tout, y compris le démarrage auto
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\uninstall.ps1   # Windows
+```
+
+Ajoute `--purge` (Linux/macOS) ou `-Purge` (Windows) pour effacer aussi le dossier de
+données. Tu n'as plus le dépôt sous la main ? Tout se retire à la main :
+
+| Système | Ce qu'il faut supprimer |
+| --- | --- |
+| **Linux** | `systemctl --user disable --now doot.service` puis `rm -rf ~/.config/systemd/user/doot.service ~/.config/autostart/doot.desktop ~/.local/bin/doot ~/.local/share/doot` |
+| **macOS** | `launchctl unload ~/Library/LaunchAgents/com.doot.skeleton.plist` puis `rm -rf ~/Library/LaunchAgents/com.doot.skeleton.plist ~/.local/bin/doot ~/Library/Application\ Support/doot` |
+| **Windows** | supprime le raccourci `doot` dans `shell:startup` (Win+R → `shell:startup`), puis les dossiers `%LOCALAPPDATA%\Programs\doot` et `%LOCALAPPDATA%\doot` |
+
+Envie de le garder mais en plus discret ? `doot --min 7200 --max 28800` espace les
+apparitions de 2 à 8 heures, et `--no-sound` le rend muet.
+
+---
 
 ## Installation
 
@@ -49,11 +83,14 @@ Options : `./install.sh --no-autostart`, `--min 300`, `--max 1800`.
 
 | Distribution  | Affichage (tkinter)                | Son (au choix)                                   |
 | ------------- | ---------------------------------- | ------------------------------------------------ |
-| Arch/Manjaro  | `sudo pacman -S python tk`         | `pipewire-audio`, `libpulse` ou `alsa-utils`      |
+| Arch/Manjaro  | `sudo pacman -S python tk`         | `pipewire-audio`, `libpulse`, `alsa-utils`, `mpv` |
 | Debian/Ubuntu | `sudo apt install python3-tk`      | déjà là (`paplay` / `aplay`)                      |
 | Fedora        | `sudo dnf install python3-tkinter` | déjà là                                           |
 | openSUSE      | `sudo zypper install python3-tk`   | déjà là                                           |
 | macOS         | `brew install python-tk`           | `afplay`, intégré                                 |
+
+Pour lire des **mp3** sous Linux il faut un lecteur qui gère le compressé :
+`mpv`, `ffmpeg` (ffplay), `sox` ou `vlc`. Les `.wav` passent partout.
 
 ### Arch Linux, via un paquet
 
@@ -85,37 +122,50 @@ python3 -m doot --once --ignore-season
 ## Utilisation
 
 ```bash
-doot                       # lance le daemon (c'est ce que fait le démarrage auto)
-doot --once                # un doot tout de suite, puis on quitte
+doot                         # lance le daemon (c'est ce que fait le démarrage auto)
+doot --once                  # un doot tout de suite, puis on quitte
 doot --once --ignore-season  # idem, même hors saison : pratique pour tester
-doot --status              # saison, daemon, audio, tkinter
-doot --stop                # arrête le daemon
-doot --art                 # imprime le squelette dans le terminal
+doot --status                # saison, daemon, son et image utilisés
+doot --stop                  # arrête le daemon
+doot --paths                 # où sont les fichiers
+doot --art                   # imprime le squelette dans le terminal
 ```
 
 | Option | Défaut | Description |
 | --- | --- | --- |
 | `--min` / `--max` | `600` / `3600` | bornes du délai aléatoire entre deux doot, en secondes |
-| `--duration` | `2.8` | durée d'affichage, en secondes |
+| `--duration` | durée du son | durée d'affichage, en secondes (au moins 2.8) |
+| `--image` | — | un PNG/GIF précis à afficher |
+| `--no-image` | — | force l'ASCII art même si une image est disponible |
+| `--scale` | auto | échelle de l'image (par défaut ajustée à l'écran) |
 | `--volume` | `0.55` | volume du jingle synthétisé, de `0.0` à `1.0` |
 | `--opacity` | `1.0` | opacité maximale de l'overlay |
-| `--font-size` | `15` | taille du squelette |
+| `--font-size` | `15` | taille du squelette ASCII |
 | `--center` | — | toujours au centre, au lieu d'une position aléatoire |
 | `--no-sound` | — | mode muet |
 | `--regen-sound` | — | régénère le jingle |
 | `--ignore-season` | — | ignore la fenêtre saisonnière (tests) |
 | `--quiet` | — | n'écrit que dans le journal |
 
-## Le son
+## Mettre ton propre squelette et ton propre son
 
-Aucun fichier audio n'est distribué avec le projet. Le petit motif deux notes est
-**synthétisé localement** au premier lancement (harmoniques, vibrato, enveloppe
-ADSR, soft clipping) et mis en cache dans le dossier de données.
+Le dépôt ne distribue **aucun média** : par défaut doot dessine son squelette en ASCII
+et synthétise lui-même son petit motif deux notes (harmoniques, vibrato, enveloppe
+ADSR). Tout se remplace en déposant des fichiers, sans toucher au code :
 
-Tu veux un autre son ? Dépose un ou plusieurs `.wav` dans le dossier `sound/` de
-tes données (`doot --paths` te donne le chemin) : ils sont tirés au hasard et
-remplacent le jingle. À toi de n'y mettre que des fichiers que tu as le droit
-d'utiliser.
+```bash
+doot --paths        # affiche les deux dossiers ci-dessous
+```
+
+- **Image** → dossier `image/` : un `.png` ou un `.gif` (les GIF animés sont joués
+  en boucle). Prends une image détourée, à fond transparent : sous Windows le fond
+  disparaît complètement et le squelette flotte sur le bureau. Plusieurs fichiers ?
+  Un est tiré au hasard à chaque apparition.
+- **Son** → dossier `sound/` : `.wav`, `.mp3`, `.ogg`, `.flac`, `.m4a`, `.opus`.
+  L'affichage s'allonge automatiquement pour couvrir toute la durée du son.
+
+Les fichiers sont relus à chaque apparition : tu peux les changer pendant que le
+daemon tourne. À toi de n'y mettre que des médias que tu as le droit d'utiliser.
 
 ## Où sont les fichiers
 
@@ -127,18 +177,8 @@ d'utiliser.
 | macOS   | `~/Library/Application Support/doot` |
 | Windows | `%LOCALAPPDATA%\doot` |
 
-Il contient `doot.wav` (le jingle en cache), `doot.log` (le journal),
-`doot.pid` et `sound/` (tes sons perso).
-
-## Désinstallation
-
-```bash
-./uninstall.sh            # Linux / macOS   (--purge pour effacer les données)
-```
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\uninstall.ps1   # Windows (-Purge)
-```
+Il contient `image/` et `sound/` (tes médias), `doot.wav` (le jingle en cache),
+`doot.log` (le journal) et `doot.pid`.
 
 ## Dépannage
 
@@ -147,8 +187,12 @@ du tableau ci-dessus. Sous Wayland, l'overlay passe par XWayland ; si ton
 compositeur le refuse, lance la session en X11 ou utilise `--center`.
 
 **Pas de son** → `doot --status` indique le lecteur détecté. Sous Linux il faut
-au moins un de `pw-play`, `paplay`, `aplay`, `ffplay`, `play`, `mpv`, `cvlc`.
-Sans aucun, doot s'affiche en silence plutôt que de planter.
+au moins un de `mpv`, `ffplay`, `play`, `cvlc` (tous formats) ou `pw-play`,
+`paplay`, `aplay` (wav). Sans aucun, doot s'affiche en silence plutôt que de planter.
+
+**Mon image ne s'affiche pas** → tkinter ne lit que le PNG et le GIF. Convertis
+ton jpg/webp, par exemple avec `ffmpeg -i image.webp image.png`. Une image
+illisible fait simplement revenir l'ASCII art.
 
 **Le fond n'est pas transparent** (Linux) → il faut un compositeur actif
 (`picom`, KWin, Mutter…). Sinon le squelette s'affiche sur un fond sombre.
@@ -167,7 +211,8 @@ ou vérifie le raccourci dans `shell:startup` (Windows).
 | --- | --- |
 | `doot/season.py` | la fenêtre 1er septembre → 31 octobre |
 | `doot/art.py` | l'ASCII art et les images de l'animation |
-| `doot/sound.py` | synthèse du jingle et lecture selon l'OS |
+| `doot/image.py` | le choix du PNG/GIF déposé par l'utilisateur |
+| `doot/sound.py` | synthèse du jingle, durée et lecture selon l'OS |
 | `doot/window.py` | l'overlay tkinter, la transparence, le fondu |
 | `doot/cli.py` | la CLI, la boucle aléatoire, l'instance unique |
 
@@ -178,4 +223,4 @@ se contente de revérifier la date toutes les heures.
 ## Licence
 
 MIT. L'ASCII art et le jingle synthétisé sont originaux et fournis sous la même
-licence.
+licence. Les médias que tu ajoutes toi-même restent soumis à leurs propres droits.

@@ -6,10 +6,17 @@ dist/
 .venv/
 venv/
 
-# donnees locales / artefacts
+# donnees locales et medias perso : jamais dans le depot
 cache/
 sound/
+image/
 *.wav
+*.mp3
+*.ogg
+*.opus
+*.flac
+*.m4a
+*.webp
 doot.log
 doot.pid
 

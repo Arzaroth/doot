@@ -11,7 +11,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import __version__, art, season, sound
+from . import __version__, art, image, season, sound
 
 DEFAULT_MIN_SECONDS = 600     # 10 min
 DEFAULT_MAX_SECONDS = 3600    # 1 h
@@ -37,6 +37,7 @@ def paths() -> dict[str, Path]:
     return {
         "data": root,
         "sound": root / "sound",
+        "image": root / "image",
         "wav": root / "doot.wav",
         "log": root / "doot.log",
         "pid": root / "doot.pid",
@@ -107,6 +108,39 @@ def release_pid_file() -> None:
 
 # ------------------------------------------------------------- actions -------
 
+def resolve_media(args) -> tuple:
+    """(son, image, duree) pour le prochain doot.
+
+    Relu a chaque doot : tu peux deposer un son ou une image pendant que le
+    daemon tourne, il les prendra sans redemarrage.
+    """
+    p = paths()
+
+    wav = None
+    if not args.no_sound:
+        try:
+            wav = sound.pick_sound(p["wav"], p["sound"], args.volume)
+        except Exception as exc:
+            log(f"son indisponible : {exc}", quiet=args.quiet)
+
+    picture = None
+    if not args.no_image:
+        try:
+            picture = image.pick_image(p["image"], args.image)
+        except Exception as exc:
+            log(f"image indisponible : {exc}", quiet=args.quiet)
+
+    # Sans --duration explicite, on reste affiche le temps du son.
+    duration = args.duration
+    if duration is None:
+        duration = DEFAULT_DURATION
+        if wav is not None:
+            length = sound.probe_duration(wav)
+            if length:
+                duration = max(DEFAULT_DURATION, length + 0.4)
+    return wav, picture, duration
+
+
 def do_once(args) -> int:
     from . import window
 
@@ -115,20 +149,15 @@ def do_once(args) -> int:
         print(f"Saison : {season.SEASON_LABEL}. (--ignore-season pour forcer un test.)")
         return 3
 
-    p = paths()
-    wav = None
-    if not args.no_sound:
-        try:
-            wav = sound.pick_sound(p["wav"], p["sound"], args.volume)
-        except Exception as exc:
-            log(f"son indisponible : {exc}", quiet=args.quiet)
-
+    wav, picture, duration = resolve_media(args)
     window.show(
         wav_path=wav,
-        duration=args.duration,
+        duration=duration,
         font_size=args.font_size,
         center=args.center,
         opacity=args.opacity,
+        image_path=picture,
+        scale=args.scale,
     )
     return 0
 
@@ -140,19 +169,12 @@ def do_daemon(args) -> int:
         log(f"une instance tourne deja (pid {running_pid()}), sortie.", quiet=args.quiet)
         return 1
 
-    p = paths()
     log(
         f"demarrage (pid {os.getpid()}) - intervalle {args.min}-{args.max}s - "
         f"saison {season.SEASON_LABEL}",
         quiet=args.quiet,
     )
-
-    wav = None
-    if not args.no_sound:
-        try:
-            wav = sound.pick_sound(p["wav"], p["sound"], args.volume)
-        except Exception as exc:
-            log(f"son indisponible : {exc}", quiet=args.quiet)
+    log("pour tout arreter : doot --stop  (desinstaller : voir le README)", quiet=args.quiet)
 
     try:
         while True:
@@ -170,15 +192,15 @@ def do_daemon(args) -> int:
                 continue  # la saison s'est fermee pendant l'attente
 
             try:
-                # un .wav perso peut avoir ete depose entre-temps
-                if not args.no_sound:
-                    wav = sound.pick_sound(p["wav"], p["sound"], args.volume)
+                wav, picture, duration = resolve_media(args)
                 window.show(
                     wav_path=wav,
-                    duration=args.duration,
+                    duration=duration,
                     font_size=args.font_size,
                     center=args.center,
                     opacity=args.opacity,
+                    image_path=picture,
+                    scale=args.scale,
                 )
                 log("doot !", quiet=args.quiet)
             except window.TkinterMissing as exc:
@@ -202,13 +224,27 @@ def do_status(args) -> int:
     print(f"  etat        : {season.describe()}")
     print(f"  daemon      : {'actif (pid ' + str(pid) + ')' if pid else 'arrete'}")
     print(f"  donnees     : {p['data']}")
-    print(f"  sons perso  : {p['sound']}  ({len(list(p['sound'].glob('*.wav'))) if p['sound'].is_dir() else 0} .wav)")
-    print(f"  journal     : {p['log']}")
-    player = sound.find_player()
-    if sys.platform == "win32":
-        print("  lecteur     : winsound (integre)")
+
+    sounds = sound.custom_sounds(p["sound"])
+    if sounds:
+        print(f"  son         : {sounds[0].name}" + (f" (+{len(sounds) - 1} autre(s), tirage au hasard)" if len(sounds) > 1 else ""))
     else:
-        print(f"  lecteur     : {player[0] if player else 'AUCUN (installe pipewire/pulseaudio/alsa-utils)'}")
+        print("  son         : jingle synthetise (depose un fichier dans le dossier ci-dessous)")
+    print(f"  sons perso  : {p['sound']}  ({len(sounds)} fichier(s))")
+
+    pictures = image.custom_images(p["image"])
+    if pictures:
+        print(f"  image       : {pictures[0].name}" + (f" (+{len(pictures) - 1} autre(s), tirage au hasard)" if len(pictures) > 1 else ""))
+    else:
+        print("  image       : ASCII art (depose un PNG/GIF dans le dossier ci-dessous)")
+    print(f"  images      : {p['image']}  ({len(pictures)} fichier(s))")
+
+    print(f"  journal     : {p['log']}")
+    if sys.platform == "win32":
+        print("  lecteur     : winsound + MCI (integres)")
+    else:
+        player = sound.find_player()
+        print(f"  lecteur     : {player[0] if player else 'AUCUN (installe mpv/ffmpeg/pipewire/alsa-utils)'}")
     try:
         from . import window  # noqa: F401
 
@@ -271,8 +307,14 @@ def build_parser() -> argparse.ArgumentParser:
                         help=f"delai minimum entre deux doot, en secondes (defaut {DEFAULT_MIN_SECONDS})")
     parser.add_argument("--max", type=int, default=DEFAULT_MAX_SECONDS,
                         help=f"delai maximum entre deux doot, en secondes (defaut {DEFAULT_MAX_SECONDS})")
-    parser.add_argument("--duration", type=float, default=DEFAULT_DURATION,
-                        help=f"duree d'affichage en secondes (defaut {DEFAULT_DURATION})")
+    parser.add_argument("--duration", type=float, default=None,
+                        help=f"duree d'affichage en secondes (defaut : la duree du son, au moins {DEFAULT_DURATION})")
+    parser.add_argument("--image", default=None, metavar="FICHIER",
+                        help="PNG ou GIF a afficher au lieu de l'ASCII art")
+    parser.add_argument("--no-image", action="store_true",
+                        help="force l'ASCII art meme si une image est disponible")
+    parser.add_argument("--scale", type=float, default=None,
+                        help="echelle de l'image (defaut : ajustee a l'ecran)")
     parser.add_argument("--volume", type=float, default=DEFAULT_VOLUME,
                         help="volume du jingle synthetise, 0.0 a 1.0")
     parser.add_argument("--opacity", type=float, default=1.0, help="opacite maximale, 0.0 a 1.0")
@@ -297,6 +339,7 @@ def main(argv: list[str] | None = None) -> int:
     p = paths()
     p["data"].mkdir(parents=True, exist_ok=True)
     p["sound"].mkdir(parents=True, exist_ok=True)
+    p["image"].mkdir(parents=True, exist_ok=True)
 
     if args.regen_sound:
         sound.ensure_wav(p["wav"], args.volume, force=True)

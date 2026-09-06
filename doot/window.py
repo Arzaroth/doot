@@ -1,5 +1,9 @@
 """Overlay tkinter : le squelette apparait par-dessus tout, puis s'efface.
 
+Deux modes :
+  - image   : un PNG ou un GIF (anime) depose dans <data_dir>/image/
+  - ASCII   : le squelette dessine en caracteres, quand il n'y a pas d'image
+
 Multiplateforme :
   - Windows : fond reellement transparent (-transparentcolor) + fenetre
     "click-through" et sans vol de focus (styles etendus Win32).
@@ -10,7 +14,9 @@ Multiplateforme :
 
 from __future__ import annotations
 
+import random
 import sys
+from fractions import Fraction
 from pathlib import Path
 
 from . import art, sound
@@ -18,6 +24,7 @@ from . import art, sound
 TRANSPARENT_KEY = "#ff00ff"
 FALLBACK_BG = "#0b0b12"
 FOREGROUND = "#f4f4f8"
+GIF_FRAME_MS = 90
 
 FONT_CANDIDATES = {
     "win32": ("Consolas", "Lucida Console", "Courier New"),
@@ -81,7 +88,7 @@ def _make_click_through(window) -> None:
         pass
 
 
-def _setup_transparency(tk_module, window) -> str:
+def _setup_transparency(window) -> str:
     """Rend le fond transparent si possible ; renvoie la couleur de fond a utiliser."""
     if sys.platform == "win32":
         try:
@@ -106,12 +113,52 @@ def _setup_transparency(tk_module, window) -> str:
     return FALLBACK_BG
 
 
+def _rescale(photo, scale: float):
+    """Redimensionne une PhotoImage avec les seuls outils de Tk (zoom/subsample)."""
+    if scale == 1.0 or scale <= 0:
+        return photo
+    ratio = Fraction(scale).limit_denominator(4)
+    if ratio.numerator != 1:
+        photo = photo.zoom(ratio.numerator)
+    if ratio.denominator != 1:
+        photo = photo.subsample(ratio.denominator)
+    return photo
+
+
+def _load_frames(tk, path: Path, scale: float) -> list:
+    """Charge un PNG (1 image) ou un GIF (toutes ses images)."""
+    frames = []
+    if path.suffix.lower() == ".gif":
+        index = 0
+        while True:
+            try:
+                photo = tk.PhotoImage(file=str(path), format=f"gif -index {index}")
+            except Exception:
+                break
+            frames.append(_rescale(photo, scale))
+            index += 1
+    if not frames:
+        frames = [_rescale(tk.PhotoImage(file=str(path)), scale)]
+    return frames
+
+
+def _auto_scale(width: int, height: int, screen_w: int, screen_h: int) -> float:
+    """Reduit l'image si elle mange plus de 40 % de l'ecran."""
+    limit_h = screen_h * 0.40
+    limit_w = screen_w * 0.40
+    if height <= limit_h and width <= limit_w:
+        return 1.0
+    return min(limit_h / height, limit_w / width)
+
+
 def show(
     wav_path: Path | None = None,
     duration: float = 2.8,
     font_size: int = 15,
     center: bool = False,
     opacity: float = 1.0,
+    image_path: Path | None = None,
+    scale: float | None = None,
 ) -> None:
     """Affiche un doot et rend la main quand il a disparu."""
     tk, tkfont = _import_tk()
@@ -128,39 +175,53 @@ def show(
     except Exception:
         pass
 
-    background = _setup_transparency(tk, root)
+    background = _setup_transparency(root)
     root.configure(bg=background)
-
-    columns, lines = art.size()
-    label = tk.Label(
-        root,
-        text=art.widest_frame(),
-        font=_pick_font(tkfont, font_size),
-        fg=FOREGROUND,
-        bg=background,
-        justify="left",
-        anchor="nw",
-        padx=6,
-        pady=6,
-        borderwidth=0,
-        highlightthickness=0,
-    )
-    label.pack()
-
-    # Dimensionne sur l'image la plus large, puis repart de la premiere.
-    root.update_idletasks()
-    width = max(label.winfo_reqwidth(), 1)
-    height = max(label.winfo_reqheight(), 1)
-    label.configure(text=art.frame(0))
 
     screen_w = root.winfo_screenwidth()
     screen_h = root.winfo_screenheight()
+
+    frames: list = []
+    if image_path is not None:
+        try:
+            probe = tk.PhotoImage(file=str(image_path)) if image_path.suffix.lower() != ".gif" \
+                else tk.PhotoImage(file=str(image_path), format="gif -index 0")
+            wanted = scale if scale is not None else _auto_scale(
+                probe.width(), probe.height(), screen_w, screen_h
+            )
+            frames = _load_frames(tk, image_path, wanted)
+        except Exception:
+            frames = []  # image illisible : on retombe sur l'ASCII
+
+    widget_kwargs = dict(bg=background, borderwidth=0, highlightthickness=0)
+    if frames:
+        label = tk.Label(root, image=frames[0], **widget_kwargs)
+        label.image = frames  # garde une reference, sinon Tk libere les images
+    else:
+        label = tk.Label(
+            root,
+            text=art.widest_frame(),
+            font=_pick_font(tkfont, font_size),
+            fg=FOREGROUND,
+            justify="left",
+            anchor="nw",
+            padx=6,
+            pady=6,
+            **widget_kwargs,
+        )
+    label.pack()
+
+    # Dimensionne sur l'etat le plus large, puis repart de la premiere image.
+    root.update_idletasks()
+    width = max(label.winfo_reqwidth(), 1)
+    height = max(label.winfo_reqheight(), 1)
+    if not frames:
+        label.configure(text=art.frame(0))
+
     if center:
         x = (screen_w - width) // 2
         y = (screen_h - height) // 2
     else:
-        import random
-
         x = random.randint(0, max(0, screen_w - width))
         y = random.randint(0, max(0, screen_h - height))
     root.geometry(f"{width}x{height}+{x}+{y}")
@@ -168,13 +229,13 @@ def show(
     root.deiconify()
     _make_click_through(root)
 
-    player = sound.play_async(wav_path) if wav_path else None
+    playback = sound.play_async(wav_path) if wav_path else None
 
     total_ms = max(400, int(duration * 1000))
-    fade_in_ms = 220
-    fade_out_ms = 500
+    fade_in_ms = min(220, total_ms // 4)
+    fade_out_ms = min(500, total_ms // 3)
     tick_ms = 40
-    state = {"elapsed": 0, "frame": 0}
+    state = {"elapsed": 0, "step": 0}
 
     def set_alpha(value: float) -> None:
         try:
@@ -193,10 +254,17 @@ def show(
         else:
             set_alpha(1.0)
 
-        wanted = min(len(art.DOOT_FRAMES) - 1, elapsed // art.FRAME_MS)
-        if wanted != state["frame"]:
-            state["frame"] = wanted
-            label.configure(text=art.frame(wanted))
+        if frames:
+            if len(frames) > 1:
+                wanted = (elapsed // GIF_FRAME_MS) % len(frames)
+                if wanted != state["step"]:
+                    state["step"] = wanted
+                    label.configure(image=frames[wanted])
+        else:
+            wanted = min(len(art.DOOT_FRAMES) - 1, elapsed // art.FRAME_MS)
+            if wanted != state["step"]:
+                state["step"] = wanted
+                label.configure(text=art.frame(wanted))
 
         if elapsed >= total_ms:
             root.quit()
@@ -207,7 +275,7 @@ def show(
     try:
         root.mainloop()
     finally:
-        sound.stop(player)
+        sound.release(playback)
         try:
             root.destroy()
         except Exception:
