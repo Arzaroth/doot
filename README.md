@@ -78,14 +78,10 @@ apparitions de 2 à 8 heures, et `--no-sound` le rend muet.
 
 ### Depuis PyPI, sur les trois systèmes
 
-Les deux commandes qui suivent passent par [uv](https://docs.astral.sh/uv/), un
-binaire autonome qui ne réclame rien d'autre que lui-même, pas même un Python.
-Ta distribution l'a peut-être déjà : `uv` est dans `extra` chez Arch et dans les
-dépôts Fedora. Sinon `brew install uv` sur macOS,
-`winget install --id=astral-sh.uv -e` sur Windows, ou
-`curl -LsSf https://astral.sh/uv/install.sh | sh` sur Linux et macOS.
+Le paquet s'appelle **`spooky-doot`**, parce que `doot` était déjà pris. La
+commande, elle, reste `doot`.
 
-Pour voir le squelette tout de suite, sans installer doot :
+Pour voir le squelette tout de suite, sans rien installer :
 
 ```bash
 uvx --from spooky-doot doot --once --ignore-season
@@ -95,17 +91,23 @@ Un doot, et rien d'installé. Le paquet passe quand même par le cache de uv, qu
 `uv cache clean` vide. `--ignore-season` force l'apparition : sans lui, doot
 répond qu'il est en congé jusqu'au 1er septembre et ne montre rien.
 
-Pour l'installer :
+Pour l'installer pour de bon :
 
 ```bash
 uv tool install spooky-doot
 ```
 
-Le paquet s'appelle `spooky-doot` parce que `doot` était déjà pris ; la commande
-reste `doot`. `pipx install spooky-doot` fait la même chose si tu as déjà pipx ;
-`uv` a l'avantage de ne rien réclamer d'autre que lui-même, là où pipx a besoin
-d'un Python pour tourner. `pip install spooky-doot` marche aussi, mais un
-environnement dédié vaut mieux pour un outil qu'on lance.
+**Il te faut [uv](https://docs.astral.sh/uv/)** pour ces deux commandes : un
+binaire autonome, qui ne réclame rien d'autre que lui-même, pas même un Python.
+Ta distribution l'a peut-être déjà — il est dans `extra` chez Arch et dans les
+dépôts Fedora. Sinon `brew install uv` sur macOS,
+`winget install --id=astral-sh.uv -e` sur Windows, ou
+`curl -LsSf https://astral.sh/uv/install.sh | sh` sur Linux et macOS.
+
+Pas envie d'ajouter uv ? `pipx install spooky-doot` fait la même chose si tu as
+déjà pipx, la différence étant que pipx a besoin d'un Python pour tourner. Et
+`pip install spooky-doot` marche aussi, même si un environnement dédié vaut
+mieux pour un outil qu'on lance.
 
 Ça installe la commande et les médias, mais **pas** le démarrage automatique.
 Pour que le squelette revienne tout seul à chaque session, il faut les scripts
