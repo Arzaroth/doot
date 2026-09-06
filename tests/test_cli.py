@@ -1,0 +1,164 @@
+"""Comportement de la CLI, et surtout le refus hors saison.
+
+C'est la promesse du projet : hors du 1er septembre - 31 octobre, aucun doot ne
+doit s'afficher. Le test remplace `window.show` pour compter les apparitions
+sans jamais ouvrir de fenetre, ce qui le rend valable sur un serveur sans
+affichage.
+"""
+
+from __future__ import annotations
+
+import tempfile
+import unittest
+from datetime import datetime
+from pathlib import Path
+from unittest import mock
+
+from doot import cli, season, window
+
+
+class CliTestCase(unittest.TestCase):
+    """Isole les donnees et neutralise l'affichage."""
+
+    def setUp(self):
+        self._dir = tempfile.TemporaryDirectory()
+        root = Path(self._dir.name)
+        self.paths = {
+            "data": root,
+            "sound": root / "sound",
+            "image": root / "image",
+            "wav": root / "doot.wav",
+            "log": root / "doot.log",
+            "pid": root / "doot.pid",
+        }
+        self.shown = []
+
+        patches = [
+            mock.patch.object(cli, "paths", lambda: self.paths),
+            mock.patch.object(window, "show", lambda **kwargs: self.shown.append(kwargs)),
+        ]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def tearDown(self):
+        self._dir.cleanup()
+
+    def run_cli(self, *args) -> int:
+        return cli.main(list(args))
+
+
+class RefusHorsSaison(CliTestCase):
+    """Le coeur du projet."""
+
+    def hors_saison(self):
+        return mock.patch.object(season, "in_season", lambda now=None: False)
+
+    def en_saison(self):
+        return mock.patch.object(season, "in_season", lambda now=None: True)
+
+    def test_hors_saison_refuse_et_sort_en_3(self):
+        with self.hors_saison():
+            code = self.run_cli("--once", "--no-sound")
+        self.assertEqual(code, 3)
+        self.assertEqual(self.shown, [], "une fenetre a ete ouverte hors saison")
+
+    def test_ignore_season_passe_outre(self):
+        with self.hors_saison():
+            code = self.run_cli("--once", "--ignore-season", "--no-sound")
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.shown), 1)
+
+    def test_en_saison_affiche(self):
+        with self.en_saison():
+            code = self.run_cli("--once", "--no-sound")
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.shown), 1)
+
+    def test_la_vraie_date_decide(self):
+        """Sans patch, le comportement doit suivre le calendrier reel."""
+        code = self.run_cli("--once", "--no-sound")
+        if season.in_season(datetime.now()):
+            self.assertEqual(code, 0)
+            self.assertEqual(len(self.shown), 1)
+        else:
+            self.assertEqual(code, 3)
+            self.assertEqual(self.shown, [])
+
+
+class OptionsDAffichage(CliTestCase):
+    """Ce qui est transmis a la fenetre."""
+
+    def setUp(self):
+        super().setUp()
+        patch = mock.patch.object(season, "in_season", lambda now=None: True)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_no_image_force_l_ascii(self):
+        self.run_cli("--once", "--no-sound", "--no-image")
+        self.assertIsNone(self.shown[0]["image_path"])
+
+    def test_image_fournie_par_defaut(self):
+        from doot import image
+
+        self.run_cli("--once", "--no-sound")
+        if image.bundled_image() is not None:
+            self.assertIsNotNone(self.shown[0]["image_path"])
+
+    def test_no_sound_ne_transmet_aucun_son(self):
+        self.run_cli("--once", "--no-sound")
+        self.assertIsNone(self.shown[0]["wav_path"])
+
+    def test_options_transmises(self):
+        self.run_cli("--once", "--no-sound", "--center", "--screen", "1",
+                     "--duration", "5", "--opacity", "0.4")
+        call = self.shown[0]
+        self.assertTrue(call["center"])
+        self.assertEqual(call["screen"], "1")
+        self.assertEqual(call["duration"], 5.0)
+        self.assertEqual(call["opacity"], 0.4)
+
+    def test_duree_suit_la_duree_du_son(self):
+        """Sans --duration, l'affichage couvre au moins le son."""
+        from doot import sound
+
+        self.paths["sound"].mkdir(parents=True, exist_ok=True)
+        sound.write_wav(self.paths["sound"] / "perso.wav", 0.5)
+
+        self.run_cli("--once")
+        self.assertGreaterEqual(self.shown[0]["duration"], cli.DEFAULT_DURATION)
+
+    def test_min_et_max_incoherents_sont_rattrapes(self):
+        """--max plus petit que --min ne doit pas casser le tirage aleatoire."""
+        parser = cli.build_parser()
+        args = parser.parse_args(["--min", "500", "--max", "10"])
+        self.assertEqual(args.min, 500)
+        # main() rattrape avant la boucle
+        with mock.patch.object(season, "in_season", lambda now=None: False):
+            self.assertEqual(self.run_cli("--min", "500", "--max", "10", "--once"), 3)
+
+
+class CommandesInformatives(CliTestCase):
+    """Elles doivent repondre sans affichage et sans effet de bord."""
+
+    def test_status(self):
+        self.assertEqual(self.run_cli("--status"), 0)
+        self.assertEqual(self.shown, [])
+
+    def test_paths(self):
+        self.assertEqual(self.run_cli("--paths"), 0)
+
+    def test_screens(self):
+        self.assertEqual(self.run_cli("--screens"), 0)
+
+    def test_art(self):
+        self.assertEqual(self.run_cli("--art"), 0)
+        self.assertEqual(self.shown, [])
+
+    def test_stop_sans_daemon(self):
+        self.assertEqual(self.run_cli("--stop"), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

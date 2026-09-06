@@ -52,27 +52,6 @@ jobs:
           python -m doot --screens
           python -m doot --paths
 
-      - name: Hors saison, aucun doot ne doit s'afficher
-        # Le coeur du projet : --once doit refuser et sortir en 3 hors saison.
-        # On simule une date hors fenetre sans toucher a l'horloge du runner.
-        shell: python
-        run: |
-          import sys
-          from doot import cli, season, window
-
-          season.in_season = lambda now=None: False
-          shown = []
-          window.show = lambda **kwargs: shown.append(kwargs)
-
-          code = cli.main(["--once"])
-          assert code == 3, f"attendu 3 hors saison, obtenu {code}"
-          assert not shown, "une fenetre a ete ouverte hors saison"
-
-          code = cli.main(["--once", "--ignore-season", "--no-sound"])
-          assert code == 0, f"attendu 0 avec --ignore-season, obtenu {code}"
-          assert len(shown) == 1, "--ignore-season n'a pas affiche"
-          print("hors saison : refus correct, et --ignore-season passe outre")
-
   scripts:
     name: Scripts shell
     runs-on: ubuntu-latest
