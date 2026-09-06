@@ -16,6 +16,8 @@ from pathlib import Path
 
 SIGNATURE = b"\x89PNG\r\n\x1a\n"
 CHANNELS = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}
+# Profondeurs autorisees par la norme PNG, par type de couleur.
+DEPTHS = {0: (1, 2, 4, 8, 16), 2: (8, 16), 3: (1, 2, 4, 8), 4: (8, 16), 6: (8, 16)}
 
 _CACHE: dict[tuple, "Frame"] = {}
 _CACHE_MAX = 4
@@ -120,35 +122,61 @@ def _unfilter(raw: bytes, height: int, bpp: int, stride: int) -> bytearray:
     return out
 
 
-def _to_bytes_per_sample(lines: bytearray, width: int, height: int,
-                         depth: int, channels: int, stride: int) -> bytearray:
-    """Ramene n'importe quelle profondeur a un octet par echantillon."""
+def _to_bytes_per_sample(lines: bytearray, width: int, height: int, depth: int,
+                         channels: int, stride: int, stretch: bool) -> bytearray:
+    """Ramene n'importe quelle profondeur a un octet par echantillon.
+
+    `stretch` etire les valeurs sur 0-255, ce qu'il faut pour une intensite et
+    jamais pour un index de palette : etirer un index fait lire la mauvaise
+    entree de PLTE.
+    """
     if depth == 8:
         return lines
     samples = width * channels
     out = bytearray(samples * height)
     if depth == 16:
+        # Reduction 16 -> 8 bits standard : on garde l'octet de poids fort.
         for y in range(height):
             row = lines[y * stride:(y + 1) * stride]
             out[y * samples:(y + 1) * samples] = row[0::2]
         return out
-    # 1, 2 ou 4 bits : on deplie, en etirant les niveaux de gris sur 0-255
+
     per_byte = 8 // depth
     mask = (1 << depth) - 1
-    scale = 255 // mask
+    scale = 255 // mask if stretch else 1
     for y in range(height):
         base = y * stride
         target = y * samples
         for i in range(samples):
             byte = lines[base + i // per_byte]
             shift = 8 - depth * (i % per_byte + 1)
-            value = (byte >> shift) & mask
-            out[target + i] = value if channels == 1 and scale == 1 else value * scale
+            out[target + i] = ((byte >> shift) & mask) * scale
     return out
 
 
+def _transparent_key(trns: bytes | None, color: int, depth: int) -> tuple | None:
+    """Couleur declaree transparente par tRNS, ramenee a l'echelle 0-255.
+
+    tRNS stocke toujours ses valeurs sur 16 bits, quelle que soit la
+    profondeur de l'image : il faut donc les ramener comme les echantillons.
+    """
+    if not trns or color not in (0, 2):
+        return None
+    count = len(trns) // 2
+    if not count:
+        return None
+    values = struct.unpack(f">{count}H", trns[:count * 2])
+    if depth == 16:
+        return tuple(value >> 8 for value in values)
+    if depth == 8:
+        return tuple(value & 255 for value in values)
+    mask = (1 << depth) - 1
+    scale = 255 // mask
+    return tuple((value & mask) * scale for value in values)
+
+
 def _premultiplied_bgra(samples: bytearray, width: int, height: int, color: int,
-                        palette: bytes, trns: bytes | None) -> bytearray:
+                        palette: bytes, trns: bytes | None, depth: int) -> bytearray:
     """Passe les echantillons en BGRA premultiplie, dans l'ordre memoire de X."""
     count = width * height
     out = bytearray(count * 4)
@@ -175,11 +203,7 @@ def _premultiplied_bgra(samples: bytearray, width: int, height: int, color: int,
             out[d + 3] = a
         return out
 
-    key = None
-    if trns and color in (0, 2):
-        values = struct.unpack(f">{len(trns) // 2}H", trns[:len(trns) // 2 * 2])
-        key = tuple(v & 255 for v in values)
-
+    key = _transparent_key(trns, color, depth)
     step = CHANNELS[color]
     for i in range(count):
         s = i * step
@@ -280,10 +304,8 @@ def frame(path: Path, scale: float = 1.0) -> Frame:
         raise PngError("compression ou filtrage PNG non standard")
     if color not in CHANNELS:
         raise PngError(f"type de couleur inconnu : {color}")
-    if depth not in (1, 2, 4, 8, 16):
-        raise PngError(f"profondeur inconnue : {depth}")
-    if color != 3 and depth < 8:
-        raise PngError("profondeur inferieure a 8 bits hors palette")
+    if depth not in DEPTHS[color]:
+        raise PngError(f"profondeur {depth} interdite pour le type de couleur {color}")
 
     palette = b""
     trns = None
@@ -304,8 +326,9 @@ def frame(path: Path, scale: float = 1.0) -> Frame:
     bits = channels * depth
     stride = (width * bits + 7) // 8
     lines = _unfilter(zlib.decompress(b"".join(idat)), height, max(1, bits // 8), stride)
-    samples = _to_bytes_per_sample(lines, width, height, depth, channels, stride)
-    pixels = _premultiplied_bgra(samples, width, height, color, palette, trns)
+    samples = _to_bytes_per_sample(lines, width, height, depth, channels, stride,
+                                   stretch=color != 3)
+    pixels = _premultiplied_bgra(samples, width, height, color, palette, trns, depth)
 
     if scale and scale != 1.0:
         new_w = max(1, int(round(width * scale)))
