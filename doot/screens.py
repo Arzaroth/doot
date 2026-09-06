@@ -45,6 +45,29 @@ class Monitor:
             self.y + rng.randint(0, max(0, self.height - height)),
         )
 
+    def entry(self, width: int, height: int, side: str, rng,
+              near=(0.02, 0.30), center=False) -> tuple[int, int, int]:
+        """Trajet d'une entree par le cote : (x de depart, x au repos, y).
+
+        Le depart est hors de l'ecran, decale de toute la largeur de la fenetre,
+        pour que le squelette apparaisse en glissant depuis le bord. Le repos
+        se tient pres de ce meme bord : entrer par la gauche pour s'arreter a
+        l'extreme droite donnerait une traversee, pas une entree.
+        """
+        libre = max(0, self.width - width)
+
+        if center:
+            repos = self.x + libre // 2
+        else:
+            distance = int(rng.uniform(*near) * self.width)
+            repos = self.x + min(distance, libre) if side == "left" \
+                else self.x + libre - min(distance, libre)
+
+        depart = self.x - width if side == "left" else self.x + self.width
+
+        y = self.y + rng.randint(0, max(0, self.height - height))
+        return depart, repos, y
+
     def __repr__(self):
         flag = "*" if self.primary else " "
         return f"<Monitor {flag}{self.name} {self.width}x{self.height}+{self.x}+{self.y}>"
@@ -240,6 +263,16 @@ def pick(found: list[Monitor], preference=None, rng=None) -> Monitor:
     except (TypeError, ValueError):
         return rng.choice(found)
     return found[max(0, min(index, len(found) - 1))]
+
+
+def ease_out(t: float) -> float:
+    """Glissement vif au depart, qui se pose en douceur (cubique).
+
+    Vit ici, et pas dans window.py, parce que l'overlay X11 s'en sert aussi et
+    ne peut pas importer window sans boucler.
+    """
+    t = max(0.0, min(1.0, t))
+    return 1.0 - (1.0 - t) ** 3
 
 
 def virtual_bounds(found: list[Monitor]) -> tuple[int, int]:

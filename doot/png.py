@@ -37,6 +37,23 @@ class Frame:
         self.height = height
         self.data = data
 
+    def mirrored(self) -> "Frame":
+        """La meme image retournee horizontalement.
+
+        Sert quand le squelette entre par la droite : il doit regarder vers
+        l'interieur de l'ecran, donc du cote ou il avance.
+        """
+        largeur, hauteur = self.width, self.height
+        source = self.data
+        out = bytearray(len(source))
+        for y in range(hauteur):
+            debut = y * largeur * 4
+            for x in range(largeur):
+                lu = debut + x * 4
+                ecrit = debut + (largeur - 1 - x) * 4
+                out[ecrit:ecrit + 4] = source[lu:lu + 4]
+        return Frame(largeur, hauteur, bytes(out))
+
     def faded(self, factor: float) -> bytes:
         """Le meme rendu a `factor` d'opacite.
 

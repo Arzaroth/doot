@@ -143,6 +143,25 @@ def _load_frames(tk, path: Path, scale: float) -> list:
     return frames
 
 
+def pick_side(side: str | None, rng=random) -> str:
+    """Cote d'entree : 'left', 'right', ou tire au sort."""
+    if side in ("left", "gauche"):
+        return "left"
+    if side in ("right", "droite"):
+        return "right"
+    return rng.choice(("left", "right"))
+
+
+def _mirror_photo(tk, photo):
+    """Retourne une PhotoImage horizontalement, avec sa transparence.
+
+    Tk n'a pas de fonction de miroir, mais un `copy` a pas negatif le fait.
+    """
+    miroir = tk.PhotoImage(width=photo.width(), height=photo.height())
+    miroir.tk.call(miroir, "copy", photo, "-subsample", -1, 1)
+    return miroir
+
+
 def _auto_scale(width: int, height: int, screen_w: int, screen_h: int) -> float:
     """Reduit l'image si elle mange plus de 40 % de l'ecran."""
     limit_h = screen_h * 0.40
@@ -152,7 +171,8 @@ def _auto_scale(width: int, height: int, screen_w: int, screen_h: int) -> float:
     return min(limit_h / height, limit_w / width)
 
 
-def _show_argb(wav_path, duration, center, opacity, image_path, scale, screen, spatialise) -> bool:
+def _show_argb(wav_path, duration, center, opacity, image_path, scale, screen,
+               spatialise, slide=True, side=None, slide_ms=420) -> bool:
     """Tente l'overlay ARGB de x11.py ; faux si tkinter doit prendre le relais.
 
     Reserve aux PNG : x11.py compose les pixels lui-meme et png.py ne lit pas
@@ -171,13 +191,25 @@ def _show_argb(wav_path, duration, center, opacity, image_path, scale, screen, s
             image_width, image_height, monitor.width, monitor.height
         )
         frame = png.frame(image_path, wanted)
-        x, y = monitor.place(frame.width, frame.height, center, random)
-        pan = screens.pan_for(x + frame.width / 2, found) if spatialise else 0.0
+
+        entree = pick_side(side) if slide else None
+        if entree == "right":
+            frame = frame.mirrored()
+
+        if slide:
+            depart, repos, y = monitor.entry(frame.width, frame.height, entree,
+                                             random, center=center)
+        else:
+            repos, y = monitor.place(frame.width, frame.height, center, random)
+            depart = repos
+
+        pan = screens.pan_for(repos + frame.width / 2, found) if spatialise else 0.0
     except Exception:
         return False
 
     try:
-        x11.play(frame, x, y, duration, opacity, wav_path, pan)
+        x11.play(frame, repos, y, duration, opacity, wav_path, pan,
+                 start_x=depart, slide_ms=slide_ms if slide else 0)
     except x11.X11Unavailable:
         return False
     return True
@@ -193,6 +225,9 @@ def show(
     scale: float | None = None,
     screen: str | int | None = None,
     spatialise: bool = True,
+    slide: bool = True,
+    side: str | None = None,
+    slide_ms: int = 420,
 ) -> None:
     """Affiche un doot et rend la main quand il a disparu.
 
@@ -201,8 +236,12 @@ def show(
 
     `spatialise` : place le son a gauche ou a droite selon l'endroit ou le
     squelette apparait sur le bureau.
+
+    `slide` : le squelette entre en glissant depuis un bord de l'ecran, et
+    regarde vers l'interieur. `side` force le bord, `slide_ms` la duree.
     """
-    if _show_argb(wav_path, duration, center, opacity, image_path, scale, screen, spatialise):
+    if _show_argb(wav_path, duration, center, opacity, image_path, scale, screen,
+                  spatialise, slide, side, slide_ms):
         return
 
     tk, tkfont = _import_tk()
@@ -262,17 +301,33 @@ def show(
     root.update_idletasks()
     width = max(label.winfo_reqwidth(), 1)
     height = max(label.winfo_reqheight(), 1)
-    if not frames:
+    # Le cote d'entree decide du sens de l'image : le squelette regarde vers
+    # l'interieur de l'ecran, c'est-a-dire du cote ou il avance.
+    entree = pick_side(side) if slide else None
+    retourne = entree == "right"
+    if retourne:
+        if frames:
+            frames = [_mirror_photo(tk, image) for image in frames]
+            label.image = frames
+        else:
+            label.configure(text=art.frame(0, mirrored=True))
+
+    if not frames and not retourne:
         label.configure(text=art.frame(0))
 
-    x, y = monitor.place(width, height, center, random)
-    root.geometry(f"{width}x{height}+{x}+{y}")
+    if slide:
+        depart, repos, y = monitor.entry(width, height, entree, random, center=center)
+    else:
+        repos, y = monitor.place(width, height, center, random)
+        depart = repos
+
+    root.geometry(f"{width}x{height}+{depart}+{y}")
 
     root.deiconify()
     _make_click_through(root)
 
-    # Le son sort du cote ou le squelette est apparu.
-    pan = screens.pan_for(x + width / 2, found) if spatialise else 0.0
+    # Le son sort de l'endroit ou le squelette se posera.
+    pan = screens.pan_for(repos + width / 2, found) if spatialise else 0.0
     playback = sound.play_async(wav_path, pan) if wav_path else None
 
     total_ms = max(400, int(duration * 1000))
@@ -291,7 +346,13 @@ def show(
         state["elapsed"] += tick_ms
         elapsed = state["elapsed"]
 
-        if elapsed < fade_in_ms:
+        # Pendant le glissement, pas de fondu d'apparition : le bord de l'ecran
+        # revele deja le squelette, et les deux ensemble font bouillie.
+        if slide and elapsed <= slide_ms:
+            avance = screens.ease_out(elapsed / slide_ms)
+            root.geometry(f"+{int(depart + (repos - depart) * avance)}+{y}")
+            set_alpha(1.0)
+        elif not slide and elapsed < fade_in_ms:
             set_alpha(elapsed / fade_in_ms)
         elif elapsed > total_ms - fade_out_ms:
             set_alpha(max(0, total_ms - elapsed) / fade_out_ms)
@@ -308,7 +369,7 @@ def show(
             wanted = min(len(art.DOOT_FRAMES) - 1, elapsed // art.FRAME_MS)
             if wanted != state["step"]:
                 state["step"] = wanted
-                label.configure(text=art.frame(wanted))
+                label.configure(text=art.frame(wanted, mirrored=retourne))
 
         if elapsed >= total_ms:
             root.quit()

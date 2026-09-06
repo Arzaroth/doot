@@ -160,6 +160,9 @@ def do_once(args) -> int:
         scale=args.scale,
         screen=args.screen,
         spatialise=not args.no_pan,
+        slide=not args.no_slide,
+        side=args.side,
+        slide_ms=args.slide_ms,
     )
     return 0
 
@@ -205,6 +208,9 @@ def do_daemon(args) -> int:
                     scale=args.scale,
                     screen=args.screen,
                     spatialise=not args.no_pan,
+                    slide=not args.no_slide,
+                    side=args.side,
+                    slide_ms=args.slide_ms,
                 )
                 log("doot !", quiet=args.quiet)
             except window.TkinterMissing as exc:
@@ -368,6 +374,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--opacity", type=float, default=1.0, help="opacite maximale, 0.0 a 1.0")
     parser.add_argument("--font-size", type=int, default=15, help="taille de la police (defaut 15)")
     parser.add_argument("--center", action="store_true", help="toujours au centre au lieu du hasard")
+    parser.add_argument("--no-slide", action="store_true",
+                        help="apparait sur place, sans entrer par le cote")
+    parser.add_argument("--side", choices=("left", "right", "random"), default=None,
+                        help="cote par lequel le squelette entre (defaut : au hasard)")
+    parser.add_argument("--slide-ms", type=int, default=420,
+                        help="duree de l'entree en millisecondes (defaut 420)")
     parser.add_argument("--screen", default=None, metavar="CHOIX",
                         help="ecran d'apparition : 'random' (defaut), 'primary', "
                              "ou un index (0, 1, 2...). Voir 'doot --screens'.")

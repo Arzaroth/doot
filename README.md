@@ -30,6 +30,9 @@ tourne mais reste sagement endormi : le squelette range sa trompette.
 - **Multi-écrans** : les moniteurs sont énumérés pour de vrai (Win32, xrandr,
   CoreGraphics), le squelette surgit sur l'un d'eux au hasard, jamais à cheval
   entre deux dalles ni sous la barre des tâches.
+- **Entrée par le côté** : le squelette glisse depuis un bord de l'écran, vif au
+  départ et posé à l'arrivée, et se retourne pour regarder vers l'intérieur —
+  entré par la droite, il fait face à gauche.
 - **Son spatialisé** : le doot sort du côté où le squelette est apparu, calculé
   sur l'ensemble du bureau — collé à droite de l'écran de droite, il sonne
   franchement à droite.
@@ -187,7 +190,10 @@ doot --art                   # imprime le squelette dans le terminal
 | `--volume` | `0.55` | volume du jingle synthétisé, de `0.0` à `1.0` |
 | `--opacity` | `1.0` | opacité maximale de l'overlay |
 | `--font-size` | `15` | taille du squelette ASCII |
-| `--center` | — | toujours au centre, au lieu d'une position aléatoire |
+| `--center` | — | se pose au centre, au lieu d'une position aléatoire |
+| `--side` | au hasard | bord d'entrée : `left`, `right` ou `random` |
+| `--slide-ms` | `420` | durée de l'entrée, en millisecondes |
+| `--no-slide` | — | apparaît sur place, sans entrer par le côté |
 | `--screen` | `random` | écran d'apparition : `random`, `primary`, ou un index (`0`, `1`…) |
 | `--no-sound` | — | mode muet |
 | `--no-pan` | — | son au centre, au lieu de suivre la position du squelette |
@@ -224,6 +230,32 @@ Tes fichiers passent devant ceux fournis, et ils sont relus à chaque apparition
 tu peux les changer pendant que le daemon tourne. Pour revenir au dessin ASCII et
 au jingle synthétisé : `doot --no-image --regen-sound` (ou vide les deux dossiers
 et supprime `doot/assets/`).
+
+## L'entrée par le côté
+
+Le squelette ne se contente pas d'apparaître : il glisse depuis un bord de
+l'écran jusqu'à sa position de repos, tiré au sort à gauche ou à droite. Le
+mouvement est vif au départ et se pose en douceur — une décélération cubique
+sur 420 ms par défaut.
+
+Il se retourne pour regarder vers l'intérieur, c'est-à-dire du côté où il
+avance : entré par la droite, il fait face à gauche. Le miroir s'applique aussi
+bien à l'image qu'au squelette ASCII, où les obliques et les parenthèses
+basculent, et où les lettres du *doot* changent de côté sans cesser d'être
+lisibles.
+
+Il se pose près du bord par lequel il est entré : entrer par la gauche pour
+s'arrêter à l'extrême droite donnerait une traversée, pas une entrée.
+
+```bash
+doot --once --side left      # entre par la gauche
+doot --once --side right     # entre par la droite, retourné
+doot --once --slide-ms 900   # entrée plus lente
+doot --once --no-slide       # apparaît sur place, comme avant
+```
+
+Pendant le glissement il n'y a pas de fondu d'apparition : le bord de l'écran
+révèle déjà le squelette, et les deux ensemble font bouillie.
 
 ## Le son spatialisé
 

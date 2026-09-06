@@ -23,7 +23,7 @@ import time
 from ctypes import POINTER, byref, c_char_p, c_int, c_long, c_uint, c_ulong, c_void_p
 from pathlib import Path
 
-from . import png, sound
+from . import png, screens, sound
 
 TRUE_COLOR = 4
 Z_PIXMAP = 2
@@ -145,6 +145,7 @@ def _library():
     ]
     x.XCreateWindow.restype = c_ulong
     x.XDestroyWindow.argtypes = [c_void_p, c_ulong]
+    x.XMoveWindow.argtypes = [c_void_p, c_ulong, c_int, c_int]
     x.XMapRaised.argtypes = [c_void_p, c_ulong]
     x.XUnmapWindow.argtypes = [c_void_p, c_ulong]
     x.XCreateGC.argtypes = [c_void_p, c_ulong, c_ulong, c_void_p]
@@ -297,6 +298,9 @@ class _Overlay:
         )
         self.x11.XFlush(self.display)
 
+    def move(self, x: int, y: int) -> None:
+        self.x11.XMoveWindow(self.display, self.window, int(x), int(y))
+
     def map(self) -> None:
         self.x11.XMapRaised(self.display, self.window)
         self.x11.XSync(self.display, 0)
@@ -324,22 +328,27 @@ class _Overlay:
 
 
 def play(frame: png.Frame, x: int, y: int, duration: float,
-         opacity: float = 1.0, wav_path: Path | None = None, pan: float = 0.0) -> None:
+         opacity: float = 1.0, wav_path: Path | None = None, pan: float = 0.0,
+         start_x: int | None = None, slide_ms: int = 0) -> None:
     """Fait surgir l'image puis la laisse s'effacer.
 
     `pan` place le son de -1 (gauche) a +1 (droite), selon l'endroit du bureau
-    ou l'image apparait.
+    ou l'image apparait. `start_x` et `slide_ms` font entrer l'image en
+    glissant depuis ce point jusqu'a `x`.
 
     Leve X11Unavailable tant que rien n'est affiche ; une fois la fenetre a
     l'ecran, on ne remonte plus d'erreur, un doot ecourte valant mieux qu'un
     doot en double par le chemin de repli.
     """
     with _errors_muted():
-        _play(frame, x, y, duration, opacity, wav_path, pan)
+        _play(frame, x, y, duration, opacity, wav_path, pan, start_x, slide_ms)
 
 
-def _play(frame, x, y, duration, opacity, wav_path, pan=0.0) -> None:
-    overlay = _Overlay(frame.width, frame.height, x, y)
+def _play(frame, x, y, duration, opacity, wav_path, pan=0.0,
+          start_x=None, slide_ms=0) -> None:
+    glisse = slide_ms > 0 and start_x is not None and start_x != x
+    overlay = _Overlay(frame.width, frame.height,
+                       start_x if glisse else x, y)
     playback = None
     try:
         overlay.map()
@@ -352,11 +361,20 @@ def _play(frame, x, y, duration, opacity, wav_path, pan=0.0) -> None:
         start = time.monotonic()
         shown = None
 
+        glissement = slide_ms / 1000.0
+
         while True:
             elapsed = time.monotonic() - start
             if elapsed >= total:
                 break
-            if elapsed < fade_in:
+
+            # Pendant le glissement, pas de fondu d'apparition : le bord de
+            # l'ecran revele deja le squelette.
+            if glisse and elapsed <= glissement:
+                avance = screens.ease_out(elapsed / glissement)
+                overlay.move(start_x + (x - start_x) * avance, y)
+                factor = 1.0
+            elif not glisse and elapsed < fade_in:
                 factor = elapsed / fade_in
             elif elapsed > total - fade_out:
                 factor = max(0.0, (total - elapsed) / fade_out)
@@ -364,7 +382,10 @@ def _play(frame, x, y, duration, opacity, wav_path, pan=0.0) -> None:
                 factor = 1.0
 
             level = round(factor * ceiling * 255)
-            if level != shown:
+            # Pendant le glissement on redessine a chaque pas : l'opacite ne
+            # bouge pas, donc rien ne le declencherait, et le contenu d'une
+            # fenetre qu'on deplace n'est pas garanti d'etre conserve.
+            if level != shown or (glisse and elapsed <= glissement):
                 overlay.draw(frame.faded(level / 255))
                 shown = level
             time.sleep(TICK)

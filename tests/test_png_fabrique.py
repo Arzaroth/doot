@@ -404,5 +404,61 @@ class PngFabrique(unittest.TestCase):
                 self.assertEqual(pixel, b"\x00\x00\x00\x00", f"pixel {x},{y} teinte")
 
 
+@unittest.skipIf(png is None, "doot/png.py absent (arrive avec l'overlay X11)")
+class MiroirDeFrame(unittest.TestCase):
+    """Le retournement horizontal des pixels, pour l'entree par la droite."""
+
+    def setUp(self):
+        dossier = TemporaryDirectory()
+        self.addCleanup(dossier.cleanup)
+        self.root = Path(dossier.name)
+
+        # Une image franchement asymetrique : bande rouge a gauche, bleue a droite
+        self.pixels = []
+        valeurs = []
+        for y in range(4):
+            for x in range(8):
+                couleur = (200, 0, 0, 255) if x < 4 else (0, 0, 200, 255)
+                valeurs += list(couleur)
+                self.pixels.append(couleur)
+        self.chemin = ecrire_png(self.root / "bandes.png", 8, 4, 8, RVBA, valeurs)
+
+    def test_dimensions_conservees(self):
+        frame = png.frame(self.chemin, 1.0)
+        miroir = frame.mirrored()
+        self.assertEqual((miroir.width, miroir.height), (frame.width, frame.height))
+        self.assertEqual(len(miroir.data), len(frame.data))
+
+    def test_les_colonnes_sont_inversees(self):
+        frame = png.frame(self.chemin, 1.0)
+        miroir = frame.mirrored()
+        largeur = frame.width
+        for y in range(frame.height):
+            for x in range(largeur):
+                origine = ((y * largeur) + x) * 4
+                cible = ((y * largeur) + (largeur - 1 - x)) * 4
+                self.assertEqual(
+                    miroir.data[cible:cible + 4], frame.data[origine:origine + 4],
+                    f"pixel ({x},{y})",
+                )
+
+    def test_les_bandes_changent_de_cote(self):
+        frame = png.frame(self.chemin, 1.0)
+        miroir = frame.mirrored()
+        # BGRA : le rouge est en 3e octet, le bleu en 1er
+        self.assertGreater(frame.data[2], 100, "rouge attendu a gauche a l'origine")
+        self.assertGreater(miroir.data[0], 100, "bleu attendu a gauche apres miroir")
+
+    def test_double_miroir_est_neutre(self):
+        frame = png.frame(self.chemin, 1.0)
+        self.assertEqual(frame.mirrored().mirrored().data, frame.data)
+
+    def test_la_source_n_est_pas_modifiee(self):
+        frame = png.frame(self.chemin, 1.0)
+        avant = bytes(frame.data)
+        frame.mirrored()
+        self.assertEqual(frame.data, avant)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -178,5 +178,88 @@ class Panoramique(unittest.TestCase):
         self.assertEqual(screens.pan_for(500, []), 0.0)
 
 
+class Acceleration(unittest.TestCase):
+    """La courbe du glissement : vive au depart, posee a l'arrivee."""
+
+    def test_bornes(self):
+        self.assertAlmostEqual(screens.ease_out(0.0), 0.0)
+        self.assertAlmostEqual(screens.ease_out(1.0), 1.0)
+
+    def test_hors_bornes_bornee(self):
+        self.assertAlmostEqual(screens.ease_out(-3.0), 0.0)
+        self.assertAlmostEqual(screens.ease_out(7.0), 1.0)
+
+    def test_monotone(self):
+        precedent = -1.0
+        for i in range(0, 101):
+            valeur = screens.ease_out(i / 100)
+            self.assertGreaterEqual(valeur, precedent)
+            precedent = valeur
+
+    def test_vive_au_depart(self):
+        """A mi-parcours dans le temps, plus de la moitie du chemin est fait."""
+        self.assertGreater(screens.ease_out(0.5), 0.5)
+        self.assertGreater(screens.ease_out(0.25), 0.25)
+
+
+class EntreeParLeCote(unittest.TestCase):
+    """Le trajet d'entree : depart hors ecran, repos pres du bord."""
+
+    def setUp(self):
+        self.rng = random.Random(20260906)
+        self.gauche = screens.Monitor(0, 0, 1920, 1040, primary=True, name="gauche")
+        self.droite = screens.Monitor(1920, 0, 1920, 1040, name="droite")
+        self.taille = (353, 385)
+
+    def test_depart_hors_ecran_a_gauche(self):
+        depart, repos, _ = self.gauche.entry(*self.taille, "left", self.rng)
+        largeur = self.taille[0]
+        self.assertLessEqual(depart + largeur, self.gauche.x,
+                             "le squelette doit partir entierement hors de l'ecran")
+        self.assertGreater(repos, depart)
+
+    def test_depart_hors_ecran_a_droite(self):
+        depart, repos, _ = self.gauche.entry(*self.taille, "right", self.rng)
+        self.assertGreaterEqual(depart, self.gauche.x + self.gauche.width)
+        self.assertLess(repos, depart)
+
+    def test_repos_entierement_visible(self):
+        largeur, hauteur = self.taille
+        for ecran in (self.gauche, self.droite):
+            for cote in ("left", "right"):
+                for _ in range(200):
+                    _, repos, y = ecran.entry(largeur, hauteur, cote, self.rng)
+                    self.assertGreaterEqual(repos, ecran.x)
+                    self.assertLessEqual(repos + largeur, ecran.x + ecran.width)
+                    self.assertGreaterEqual(y, ecran.y)
+                    self.assertLessEqual(y + hauteur, ecran.y + ecran.height)
+
+    def test_repos_pres_du_bord_choisi(self):
+        """Entrer par la gauche pour finir a droite serait une traversee."""
+        largeur = self.taille[0]
+        for _ in range(100):
+            _, repos, _ = self.gauche.entry(*self.taille, "left", self.rng)
+            self.assertLess(repos, self.gauche.x + self.gauche.width // 2)
+        for _ in range(100):
+            _, repos, _ = self.gauche.entry(*self.taille, "right", self.rng)
+            self.assertGreater(repos + largeur, self.gauche.x + self.gauche.width // 2)
+
+    def test_ecran_secondaire_garde_son_decalage(self):
+        depart, repos, _ = self.droite.entry(*self.taille, "left", self.rng)
+        self.assertLessEqual(depart + self.taille[0], self.droite.x)
+        self.assertGreaterEqual(repos, self.droite.x)
+
+    def test_centre_ignore_le_hasard(self):
+        largeur = self.taille[0]
+        _, repos, _ = self.gauche.entry(*self.taille, "left", self.rng, center=True)
+        self.assertEqual(repos, self.gauche.x + (self.gauche.width - largeur) // 2)
+
+    def test_fenetre_plus_large_que_l_ecran(self):
+        """Cas degenere : on ne plante pas."""
+        depart, repos, y = self.gauche.entry(4000, 4000, "left", self.rng)
+        self.assertEqual(repos, self.gauche.x)
+        self.assertEqual(y, self.gauche.y)
+
+
 if __name__ == "__main__":
     unittest.main()
