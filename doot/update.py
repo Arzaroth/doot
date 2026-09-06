@@ -51,8 +51,11 @@ def record_path() -> Path:
 
 
 def read_record() -> dict:
+    # utf-8-sig et pas utf-8 : PowerShell 5.1 ecrit l'UTF-8 avec un BOM, et
+    # json.loads refuse ce caractere invisible en tete de fichier. La fiche
+    # deposee par install.ps1 serait illisible, sans le moindre message.
     try:
-        return json.loads(record_path().read_text(encoding="utf-8"))
+        return json.loads(record_path().read_text(encoding="utf-8-sig"))
     except Exception:
         return {}
 

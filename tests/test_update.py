@@ -56,6 +56,18 @@ class Fiche(UpdateTestCase):
         update.record_path().write_text("{ pas du json", encoding="utf-8")
         self.assertEqual(update.read_record(), {})
 
+    def test_fiche_avec_BOM(self):
+        """install.ps1 passe par PowerShell 5.1, qui ecrit l'UTF-8 avec un BOM.
+
+        json.loads refuse ce caractere invisible : lue en utf-8 strict, la
+        fiche revenait vide et --check-update annoncait un commit inconnu sur
+        une installation pourtant parfaitement enregistree.
+        """
+        contenu = json.dumps({"commit": "f" * 40, "min": 600})
+        update.record_path().write_bytes(b"\xef\xbb\xbf" + contenu.encode("utf-8"))
+        self.assertEqual(update.read_record().get("commit"), "f" * 40)
+        self.assertEqual(update.local_sha(), "f" * 40)
+
     def test_commit_lu_dans_la_fiche(self):
         update.write_record({"commit": "0123456789abcdef"})
         self.assertEqual(update.local_sha(), "0123456789abcdef")
