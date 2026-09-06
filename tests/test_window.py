@@ -35,6 +35,47 @@ class ChoixDuBord(unittest.TestCase):
         self.assertEqual(vus, set(window.COTES))
 
 
+class MelangeDesDeuxModes(unittest.TestCase):
+    """Entrer par un bord ou surgir sur place, tire au sort a chaque doot."""
+
+    def part_glissee(self, chance, tirages=4000, side=None, slide=True):
+        rng = random.Random(1234)
+        return sum(
+            1 for _ in range(tirages)
+            if window.decide_slide(slide, side, chance, rng)
+        ) / tirages
+
+    def test_les_deux_modes_coexistent(self):
+        """Ni tout par les bords, ni tout sur place."""
+        part = self.part_glissee(0.5)
+        self.assertGreater(part, 0.4)
+        self.assertLess(part, 0.6)
+
+    def test_la_proportion_est_respectee(self):
+        for chance in (0.2, 0.5, 0.8):
+            self.assertAlmostEqual(self.part_glissee(chance), chance, delta=0.05)
+
+    def test_zero_reste_toujours_sur_place(self):
+        self.assertEqual(self.part_glissee(0.0), 0.0)
+
+    def test_un_entre_toujours_par_un_bord(self):
+        self.assertEqual(self.part_glissee(1.0), 1.0)
+
+    def test_valeurs_aberrantes_bornees(self):
+        self.assertEqual(self.part_glissee(-3.0), 0.0)
+        self.assertEqual(self.part_glissee(12.0), 1.0)
+
+    def test_no_slide_coupe_tout(self):
+        self.assertEqual(self.part_glissee(1.0, slide=False), 0.0)
+
+    def test_un_bord_demande_impose_le_glissement(self):
+        """Sans quoi --side left n'aurait d'effet qu'une fois sur deux."""
+        self.assertEqual(self.part_glissee(0.01, side="left"), 1.0)
+
+    def test_un_bord_demande_ne_force_rien_si_no_slide(self):
+        self.assertEqual(self.part_glissee(1.0, side="left", slide=False), 0.0)
+
+
 class Orientation(unittest.TestCase):
     """La rotation qui pose le bas de l'image contre le bord d'entree."""
 

@@ -154,6 +154,21 @@ TOURS = {"left": 1, "top": 2, "right": 3, "bottom": 0}
 _ALIAS = {"gauche": "left", "droite": "right", "haut": "top", "bas": "bottom"}
 
 
+def decide_slide(slide: bool, side: str | None, chance: float, rng=random) -> bool:
+    """Ce doot entre-t-il par un bord, ou surgit-il sur place ?
+
+    Les deux se cotoient : tout faire entrer par un bord priverait doot du bon
+    vieux squelette qui apparait en plein milieu. Demander un bord precis
+    impose le glissement, sinon la demande n'aurait aucun effet une fois sur
+    deux.
+    """
+    if not slide:
+        return False
+    if side is not None:
+        return True
+    return rng.random() < max(0.0, min(1.0, chance))
+
+
 def pick_side(side: str | None, rng=random) -> str:
     """Bord d'entree : 'left', 'right', 'top', 'bottom', ou tire au sort."""
     voulu = _ALIAS.get(side, side)
@@ -242,6 +257,7 @@ def show(
     slide: bool = True,
     side: str | None = None,
     slide_ms: int = 420,
+    slide_chance: float = 0.5,
 ) -> None:
     """Affiche un doot et rend la main quand il a disparu.
 
@@ -251,9 +267,12 @@ def show(
     `spatialise` : place le son a gauche ou a droite selon l'endroit ou le
     squelette apparait sur le bureau.
 
-    `slide` : le squelette entre en glissant depuis un bord de l'ecran, et
-    regarde vers l'interieur. `side` force le bord, `slide_ms` la duree.
+    `slide` : autorise l'entree en glissant depuis un bord. `slide_chance` dit
+    a quelle frequence elle a lieu : le reste du temps le squelette surgit sur
+    place, au milieu de l'ecran, droit et sans glisser. `side` force le bord et
+    impose le glissement, `slide_ms` en regle la duree.
     """
+    slide = decide_slide(slide, side, slide_chance)
     if _show_argb(wav_path, duration, center, opacity, image_path, scale, screen,
                   spatialise, slide, side, slide_ms):
         return

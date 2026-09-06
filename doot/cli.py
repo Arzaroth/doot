@@ -163,6 +163,7 @@ def do_once(args) -> int:
         slide=not args.no_slide,
         side=args.side,
         slide_ms=args.slide_ms,
+        slide_chance=args.slide_chance,
     )
     return 0
 
@@ -211,6 +212,7 @@ def do_daemon(args) -> int:
                     slide=not args.no_slide,
                     side=args.side,
                     slide_ms=args.slide_ms,
+                    slide_chance=args.slide_chance,
                 )
                 log("doot !", quiet=args.quiet)
             except window.TkinterMissing as exc:
@@ -375,7 +377,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--font-size", type=int, default=15, help="taille de la police (defaut 15)")
     parser.add_argument("--center", action="store_true", help="toujours au centre au lieu du hasard")
     parser.add_argument("--no-slide", action="store_true",
-                        help="apparait sur place, sans entrer par le cote")
+                        help="apparait toujours sur place, sans jamais entrer par un bord")
+    parser.add_argument("--slide-chance", type=float, default=0.5, metavar="PART",
+                        help="proportion de doots qui entrent par un bord ; le reste "
+                             "surgit sur place (defaut 0.5, soit un sur deux)")
     parser.add_argument("--side", default=None,
                         choices=("left", "right", "top", "bottom", "random"),
                         help="bord par lequel le squelette entre (defaut : au hasard). "

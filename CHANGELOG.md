@@ -13,10 +13,14 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 ## [Non publié]
 
 ### Ajouté
-- Le squelette entre en glissant depuis un bord de l'écran, tiré au sort à
-  gauche ou à droite, avec une décélération cubique sur 420 ms par défaut. Il
-  s'arrête contre ce bord, à quelques pixels près, et ne s'enfonce pas dans
-  l'écran : ce serait une traversée, pas une entrée.
+- Deux façons d'arriver, tirées au sort à chaque apparition : surgir au milieu
+  de l'écran comme depuis toujours, ou entrer en glissant depuis un bord. Une
+  fois sur deux par défaut, réglable par `--slide-chance`. Demander un bord
+  précis avec `--side` impose l'entrée, sinon la demande n'aurait d'effet
+  qu'une fois sur deux.
+- L'entrée se fait avec une décélération cubique sur 420 ms par défaut. Le
+  squelette s'arrête contre le bord, à quelques pixels près, et ne s'enfonce
+  pas dans l'écran : ce serait une traversée, pas une entrée.
 - Les quatre bords sont possibles, et l'image **pivote** pour poser son bas
   contre celui par lequel elle entre : un quart de tour horaire pour la gauche,
   un antihoraire pour la droite, un demi-tour pour le haut, rien pour le bas.

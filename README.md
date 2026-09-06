@@ -30,8 +30,8 @@ tourne mais reste sagement endormi : le squelette range sa trompette.
 - **Multi-écrans** : les moniteurs sont énumérés pour de vrai (Win32, xrandr,
   CoreGraphics), le squelette surgit sur l'un d'eux au hasard, jamais à cheval
   entre deux dalles ni sous la barre des tâches.
-- **Entrée par un bord** : le squelette glisse depuis l'un des quatre bords de
-  l'écran, vif au départ et posé à l'arrivée, et pivote pour avoir les pieds sur
+- **Deux façons d'arriver**, tirées au sort : il surgit au milieu de l'écran,
+  ou il glisse depuis l'un des quatre bords en pivotant pour avoir les pieds sur
   le bord d'où il vient — entré par le haut, il arrive tête en bas.
 - **Son spatialisé** : le doot sort du côté où le squelette est apparu, calculé
   sur l'ensemble du bureau — collé à droite de l'écran de droite, il sonne
@@ -191,9 +191,10 @@ doot --art                   # imprime le squelette dans le terminal
 | `--opacity` | `1.0` | opacité maximale de l'overlay |
 | `--font-size` | `15` | taille du squelette ASCII |
 | `--center` | — | se pose au centre, au lieu d'une position aléatoire |
-| `--side` | au hasard | bord d'entrée : `left`, `right` ou `random` |
+| `--slide-chance` | `0.5` | proportion de doots qui entrent par un bord ; le reste surgit au milieu |
+| `--side` | au hasard | bord d'entrée : `left`, `right`, `top`, `bottom` (impose l'entrée) |
 | `--slide-ms` | `420` | durée de l'entrée, en millisecondes |
-| `--no-slide` | — | apparaît sur place, sans entrer par le côté |
+| `--no-slide` | — | jamais d'entrée par un bord, tout surgit sur place |
 | `--screen` | `random` | écran d'apparition : `random`, `primary`, ou un index (`0`, `1`…) |
 | `--no-sound` | — | mode muet |
 | `--no-pan` | — | son au centre, au lieu de suivre la position du squelette |
@@ -231,10 +232,25 @@ tu peux les changer pendant que le daemon tourne. Pour revenir au dessin ASCII e
 au jingle synthétisé : `doot --no-image --regen-sound` (ou vide les deux dossiers
 et supprime `doot/assets/`).
 
-## L'entrée par le côté
+## Les deux façons d'arriver
 
-Le squelette ne se contente pas d'apparaître : il glisse depuis un bord de
-l'écran jusqu'à sa position de repos, tiré au sort à gauche ou à droite. Le
+Il y en a deux, tirées au sort à chaque apparition :
+
+- **au milieu**, comme depuis toujours : il surgit sur place, à un endroit
+  quelconque de l'écran, droit, en fondu ;
+- **par un bord**, en glissant depuis l'extérieur.
+
+Une fois sur deux par défaut. `--slide-chance` règle la proportion — `0` pour
+n'avoir que des apparitions sur place, `1` que des entrées par un bord, `0.8`
+pour surtout des entrées :
+
+```bash
+doot --slide-chance 0.8
+```
+
+### L'entrée par un bord
+
+Le squelette glisse depuis un bord de l'écran jusqu'à sa position de repos. Le
 mouvement est vif au départ et se pose en douceur — une décélération cubique
 sur 420 ms par défaut.
 
