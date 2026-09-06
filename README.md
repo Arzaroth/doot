@@ -1,5 +1,7 @@
 # doot
 
+[![CI](https://github.com/boubou666/doot/actions/workflows/ci.yml/badge.svg)](https://github.com/boubou666/doot/actions/workflows/ci.yml)
+
 Un squelette trompettiste surgit au hasard sur ton écran, joue son petit air, puis disparaît.
 
 **Uniquement du 1er septembre au 31 octobre inclus.** Le reste de l'année, le programme
@@ -227,6 +229,28 @@ te dit la date de réouverture. Pour vérifier que tout marche :
 **Le daemon ne redémarre pas à la session** →
 `systemctl --user status doot` (Linux), `launchctl list | grep doot` (macOS),
 ou vérifie le raccourci dans `shell:startup` (Windows).
+
+## Tests
+
+La suite est en `unittest`, donc elle tourne sans rien installer :
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Elle couvre les bornes de la saison, le placement multi-écrans, la synthèse du
+jingle et le choix du son. Les tests du décodeur PNG comparent sa sortie à celle
+de Pillow, octet pour octet, sur neuf variantes de fichier (RGBA, RGB, gris,
+gris+alpha, palette 1/2/4/8 bits, avec et sans `tRNS`) ; ils se mettent en pause
+si Pillow ou `doot/png.py` est absent :
+
+```bash
+python -m pip install pillow    # pour activer les tests PNG
+```
+
+La CI rejoue tout ça sur Linux, Windows et macOS à chaque push et chaque pull
+request, vérifie qu'aucun doot ne s'affiche hors saison, et contrôle la syntaxe
+des quatre installeurs.
 
 ## Comment ça marche
 

@@ -1,0 +1,106 @@
+name: CI
+
+# Les tests tournent sur les trois systemes cibles. Sur une pull request,
+# GitHub teste la fusion : le decodeur PNG apporte par une branche est donc
+# confronte a Pillow avant qu'on parle de fusionner.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, python: "3.9" }
+          - { os: ubuntu-latest, python: "3.11" }
+          - { os: ubuntu-latest, python: "3.13" }
+          - { os: windows-latest, python: "3.13" }
+          - { os: macos-latest, python: "3.13" }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Installer Pillow
+        # Uniquement pour la CI : c'est la reference a laquelle on compare le
+        # decodeur PNG maison. doot lui-meme n'a aucune dependance.
+        run: python -m pip install --quiet --upgrade pip pillow
+
+      - name: Suite de tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Le paquet s'importe et la CLI repond
+        # Aucune de ces commandes n'ouvre de fenetre : elles doivent passer
+        # sur un runner sans serveur graphique.
+        run: |
+          python -c "import doot, doot.cli, doot.sound, doot.screens, doot.window"
+          python -m doot --version
+          python -m doot --art
+          python -m doot --screens
+          python -m doot --paths
+
+      - name: Hors saison, aucun doot ne doit s'afficher
+        # Le coeur du projet : --once doit refuser et sortir en 3 hors saison.
+        # On simule une date hors fenetre sans toucher a l'horloge du runner.
+        shell: python
+        run: |
+          import sys
+          from doot import cli, season, window
+
+          season.in_season = lambda now=None: False
+          shown = []
+          window.show = lambda **kwargs: shown.append(kwargs)
+
+          code = cli.main(["--once"])
+          assert code == 3, f"attendu 3 hors saison, obtenu {code}"
+          assert not shown, "une fenetre a ete ouverte hors saison"
+
+          code = cli.main(["--once", "--ignore-season", "--no-sound"])
+          assert code == 0, f"attendu 0 avec --ignore-season, obtenu {code}"
+          assert len(shown) == 1, "--ignore-season n'a pas affiche"
+          print("hors saison : refus correct, et --ignore-season passe outre")
+
+  scripts:
+    name: Scripts shell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntaxe des installeurs
+        run: |
+          bash -n install.sh
+          bash -n uninstall.sh
+
+      - name: Les installeurs sont executables
+        # Un clone doit pouvoir lancer ./install.sh directement.
+        run: |
+          test -x install.sh || { echo "install.sh n'est pas executable"; exit 1; }
+          test -x uninstall.sh || { echo "uninstall.sh n'est pas executable"; exit 1; }
+
+      - name: Syntaxe PowerShell
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($file in @('install.ps1', 'uninstall.ps1')) {
+              $errors = $null
+              [System.Management.Automation.Language.Parser]::ParseFile(
+                  (Resolve-Path $file), [ref]$null, [ref]$errors) | Out-Null
+              if ($errors) {
+                  $errors | ForEach-Object { Write-Host "$file : $_" }
+                  exit 1
+              }
+              Write-Host "$file : syntaxe correcte"
+          }
