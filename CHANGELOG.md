@@ -12,6 +12,22 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.1] - 2026-09-06
+
+### Corrigé
+- Les PNG en couleur 3 que la norme interdit lèvent désormais `PngError` au
+  lieu de se décoder en pixels entièrement transparents
+  ([#4](https://github.com/boubou666/doot/pull/4), ferme
+  [#3](https://github.com/boubou666/doot/issues/3)). Quatre cas : bloc `PLTE`
+  absent, index qu'aucune entrée ne couvre, `tRNS` plus long que la palette, et
+  `PLTE` dont la longueur n'est pas un multiple de trois.
+- L'enjeu n'est pas cosmétique : `PngError` est ce qui fait basculer
+  `window.py` sur le chemin tkinter. Une image refusée proprement s'affiche
+  donc quand même par l'autre voie, là où une image acceptée puis rendue vide
+  laissait un doot muet et invisible, sans indice sur la cause.
+- Le contrôle se fait une fois avant la boucle, et lui retire au passage son
+  test par pixel : une image saine n'y perd rien.
+
 ## [1.2.0] - 2026-09-06
 
 Le squelette ne se contente plus d'apparaître : il peut entrer par n'importe
@@ -202,7 +218,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.2.0...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/boubou666/doot/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/boubou666/doot/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/boubou666/doot/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/boubou666/doot/compare/v0.7.0...v1.0.0
