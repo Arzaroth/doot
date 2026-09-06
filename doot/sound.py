@@ -11,12 +11,15 @@ Formats acceptes : wav, mp3, ogg, opus, flac, m4a, aac.
 
 from __future__ import annotations
 
+import array
 import math
+import os
 import random
 import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import wave
 from pathlib import Path
 
@@ -153,6 +156,113 @@ def pick_sound(cache_wav: Path, custom_dir: Path, volume: float = 0.55) -> Path:
     return ensure_wav(cache_wav, volume)
 
 
+# ---------------------------------------------------------- spatialisation ---
+
+def stereo_gains(pan: float) -> tuple[float, float]:
+    """Gains gauche et droit pour un panoramique de -1 a +1.
+
+    Le rapport entre les deux suit un quart de cercle (cos, sin), plus doux a
+    l'oreille qu'une regle de trois. Mais les gains sont ensuite ramenes de
+    sorte que le canal dominant reste a plein volume : seul le canal oppose est
+    attenue.
+
+    C'est volontaire. A puissance constante, le centre vaudrait 0,71 de chaque
+    cote, soit 3 dB de moins qu'un son non panoramise. Le doot serait plus
+    discret qu'avant l'arrivee de cette fonction, et surtout il sauterait de
+    3 dB en franchissant le seuil sous lequel on ne panoramise pas. Ici le
+    centre rend exactement le son d'origine, et la courbe est continue.
+    """
+    pan = max(-1.0, min(1.0, float(pan)))
+    angle = (pan + 1.0) * (math.pi / 4.0)  # -1 -> 0, 0 -> pi/4, +1 -> pi/2
+    gauche, droite = math.cos(angle), math.sin(angle)
+    fort = max(gauche, droite)
+    return gauche / fort, droite / fort
+
+
+def pan_wav(src: Path, dest: Path, pan: float) -> Path | None:
+    """Ecrit une copie stereo panoramisee de `src`. None si le format s'y refuse.
+
+    Fait avec le seul module `wave` : le module audioop, qui aurait fait ca en
+    une ligne, a disparu en Python 3.13.
+    """
+    left_gain, right_gain = stereo_gains(pan)
+    try:
+        with wave.open(str(src), "rb") as handle:
+            channels = handle.getnchannels()
+            width = handle.getsampwidth()
+            rate = handle.getframerate()
+            raw = handle.readframes(handle.getnframes())
+    except Exception:
+        return None
+
+    if channels not in (1, 2) or width not in (1, 2):
+        return None  # 24 ou 32 bits, ou multicanal : on joue sans toucher
+
+    if width == 2:
+        samples = array.array("h")
+        samples.frombytes(raw[:len(raw) - len(raw) % 2])
+        if sys.byteorder == "big":
+            samples.byteswap()
+        limit = 32767
+        centre = 0
+    else:
+        # WAV 8 bits : non signe, silence a 128
+        samples = array.array("h", [b - 128 for b in raw])
+        limit = 127
+        centre = 128
+
+    frames = len(samples) // channels
+    out = array.array("h", bytes(4 * frames))
+    for i in range(frames):
+        if channels == 1:
+            gauche = droite = samples[i]
+        else:
+            gauche, droite = samples[2 * i], samples[2 * i + 1]
+        gauche = int(gauche * left_gain)
+        droite = int(droite * right_gain)
+        out[2 * i] = max(-limit - 1, min(limit, gauche))
+        out[2 * i + 1] = max(-limit - 1, min(limit, droite))
+
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(dest), "wb") as handle:
+            handle.setnchannels(2)
+            handle.setsampwidth(width)
+            handle.setframerate(rate)
+            if width == 2:
+                if sys.byteorder == "big":
+                    out.byteswap()
+                handle.writeframes(out.tobytes())
+            else:
+                handle.writeframes(bytes((v + centre) & 255 for v in out))
+    except Exception:
+        return None
+    return dest
+
+
+def _panned_path() -> Path:
+    """Fichier de travail pour la copie panoramisee, propre a ce processus."""
+    return Path(tempfile.gettempdir()) / f"doot-panned-{os.getpid()}.wav"
+
+
+def _pan_filter(command: list[str], pan: float) -> list[str] | None:
+    """Ajoute un filtre de panoramique a mpv ou ffplay, qui savent le faire."""
+    left_gain, right_gain = stereo_gains(pan)
+    binary = Path(command[0]).name
+    if binary.startswith("mpv"):
+        return command + [f"--af=pan=stereo|c0={left_gain:.4f}*c0|c1={right_gain:.4f}*c0"]
+    if binary.startswith("ffplay"):
+        return command + ["-af", f"pan=stereo|c0={left_gain:.4f}*c0|c1={right_gain:.4f}*c0"]
+    return None
+
+
+def _mci_pan(pan: float) -> None:
+    """Panoramique cote Windows : MCI regle le volume de chaque canal."""
+    left_gain, right_gain = stereo_gains(pan)
+    _mci(f"setaudio {MCI_ALIAS} left volume to {int(left_gain * 1000)}")
+    _mci(f"setaudio {MCI_ALIAS} right volume to {int(right_gain * 1000)}")
+
+
 # --------------------------------------------------------------- lecture -----
 
 def _mci(command: str) -> tuple[int, str]:
@@ -183,9 +293,25 @@ def find_player(path: Path | None = None) -> list[str] | None:
     return None
 
 
-def play_async(path: Path) -> object | None:
-    """Lance le son sans bloquer. Silencieux si aucun lecteur n'est dispo."""
+SEUIL_PAN = 0.02  # en deca, le panoramique ne s'entend pas : autant ne rien faire
+
+
+def play_async(path: Path, pan: float = 0.0) -> object | None:
+    """Lance le son sans bloquer, place a `pan` (-1 gauche, 0 centre, +1 droite).
+
+    Silencieux si aucun lecteur n'est disponible, et non panoramise plutot que
+    muet si la plateforme ne sait pas placer ce format.
+    """
     path = Path(path)
+    spatialise = abs(pan) > SEUIL_PAN
+
+    # Un WAV, on le panoramise nous-memes : ca marche partout, quel que soit
+    # le lecteur, et sans rien installer.
+    if spatialise and path.suffix.lower() == ".wav":
+        panned = pan_wav(path, _panned_path(), pan)
+        if panned is not None:
+            path = panned
+            spatialise = False  # le panoramique est deja dans les echantillons
 
     if sys.platform == "win32":
         if path.suffix.lower() == ".wav":
@@ -199,12 +325,15 @@ def play_async(path: Path) -> object | None:
                 return "winsound"
             except Exception:
                 return None
-        # mp3, m4a, wma... : MCI sait faire, sans dependance externe
+        # mp3, m4a, wma... : MCI sait faire, sans dependance externe, et sait
+        # regler le volume de chaque canal separement.
         try:
             _mci(f"close {MCI_ALIAS}")
             code, _ = _mci(f'open "{path}" alias {MCI_ALIAS}')
             if code != 0:
                 return None
+            if spatialise:
+                _mci_pan(pan)
             _mci(f"play {MCI_ALIAS}")
             return "mci"
         except Exception:
@@ -213,6 +342,10 @@ def play_async(path: Path) -> object | None:
     command = find_player(path)
     if not command:
         return None
+    if spatialise:
+        filtre = _pan_filter(command, pan)
+        if filtre is not None:
+            command = filtre
     try:
         return subprocess.Popen(
             command + [str(path)],

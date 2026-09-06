@@ -155,5 +155,152 @@ class Duree(unittest.TestCase):
             self.assertLess(length, 60)
 
 
+class Spatialisation(unittest.TestCase):
+    """Gains stereo et fabrication de la copie panoramisee."""
+
+    def setUp(self):
+        self._dir = tempfile.TemporaryDirectory()
+        self.root = Path(self._dir.name)
+        self.source = sound.write_wav(self.root / "mono.wav", volume=0.8)
+
+    def tearDown(self):
+        self._dir.cleanup()
+
+    # ------------------------------------------------------------ gains ------
+
+    def test_centre_equilibre_et_a_plein_volume(self):
+        """Au centre, le son doit etre celui d'origine, pas 3 dB en dessous."""
+        gauche, droite = sound.stereo_gains(0.0)
+        self.assertAlmostEqual(gauche, droite)
+        self.assertAlmostEqual(gauche, 1.0)
+
+    def test_extremes(self):
+        gauche, droite = sound.stereo_gains(-1.0)
+        self.assertAlmostEqual(gauche, 1.0)
+        self.assertAlmostEqual(droite, 0.0)
+
+        gauche, droite = sound.stereo_gains(1.0)
+        self.assertAlmostEqual(gauche, 0.0)
+        self.assertAlmostEqual(droite, 1.0)
+
+    def test_le_canal_dominant_reste_a_plein_volume(self):
+        """Sans quoi le doot serait plus faible qu'avant la spatialisation."""
+        for pan in (-1.0, -0.5, -0.2, 0.0, 0.3, 0.75, 1.0):
+            gauche, droite = sound.stereo_gains(pan)
+            self.assertAlmostEqual(max(gauche, droite), 1.0, places=6, msg=f"pan={pan}")
+
+    def test_pas_de_saut_audible_au_seuil(self):
+        """Franchir le seuil ne doit pas s'entendre.
+
+        C'est le defaut que la mesure avait revele : a puissance constante, le
+        centre valait 0,71 et le moindre depassement du seuil faisait chuter le
+        son de 3 dB d'un coup. On borne l'ecart a 1 dB, en dessous duquel une
+        variation de niveau ne se remarque pas.
+        """
+        import math
+
+        sous_le_seuil = sound.stereo_gains(0.0)
+        juste_au_dessus = sound.stereo_gains(sound.SEUIL_PAN * 1.5)
+        for avant, apres in zip(sous_le_seuil, juste_au_dessus):
+            ecart_db = abs(20 * math.log10(max(apres, 1e-9) / max(avant, 1e-9)))
+            self.assertLess(ecart_db, 1.0, f"saut de {ecart_db:.2f} dB au seuil")
+
+    def test_rapport_des_gains_en_quart_de_cercle(self):
+        """La forme de la courbe reste celle du cos/sin, seule l'echelle change."""
+        import math
+
+        for pan in (-0.8, -0.3, 0.0, 0.45, 0.9):
+            gauche, droite = sound.stereo_gains(pan)
+            angle = (pan + 1.0) * (math.pi / 4.0)
+            attendu = math.cos(angle), math.sin(angle)
+            self.assertAlmostEqual(droite / gauche, attendu[1] / attendu[0], places=6)
+
+    def test_symetrie(self):
+        for pan in (0.25, 0.5, 0.9):
+            gauche, droite = sound.stereo_gains(pan)
+            droite_miroir, gauche_miroir = sound.stereo_gains(-pan)
+            self.assertAlmostEqual(gauche, gauche_miroir)
+            self.assertAlmostEqual(droite, droite_miroir)
+
+    def test_valeurs_hors_bornes_bornees(self):
+        self.assertEqual(sound.stereo_gains(-5.0), sound.stereo_gains(-1.0))
+        self.assertEqual(sound.stereo_gains(5.0), sound.stereo_gains(1.0))
+
+    # -------------------------------------------------------- copie wav ------
+
+    def pics(self, path):
+        """Amplitude maximale de chaque canal d'un WAV stereo 16 bits."""
+        import struct
+
+        with wave.open(str(path), "rb") as handle:
+            self.assertEqual(handle.getnchannels(), 2)
+            data = handle.readframes(handle.getnframes())
+        valeurs = struct.unpack(f"<{len(data) // 2}h", data)
+        return max(abs(v) for v in valeurs[0::2]), max(abs(v) for v in valeurs[1::2])
+
+    def test_mono_devient_stereo(self):
+        sortie = sound.pan_wav(self.source, self.root / "p.wav", 0.0)
+        self.assertIsNotNone(sortie)
+        with wave.open(str(sortie), "rb") as handle:
+            self.assertEqual(handle.getnchannels(), 2)
+
+    def test_duree_et_frequence_inchangees(self):
+        sortie = sound.pan_wav(self.source, self.root / "p.wav", 0.6)
+        with wave.open(str(self.source), "rb") as avant, wave.open(str(sortie), "rb") as apres:
+            self.assertEqual(avant.getframerate(), apres.getframerate())
+            self.assertEqual(avant.getnframes(), apres.getnframes())
+
+    def test_a_gauche_le_canal_droit_se_tait(self):
+        sortie = sound.pan_wav(self.source, self.root / "g.wav", -1.0)
+        gauche, droite = self.pics(sortie)
+        self.assertGreater(gauche, 0)
+        self.assertLessEqual(droite, 1, "le canal droit devrait etre muet")
+
+    def test_a_droite_le_canal_gauche_se_tait(self):
+        sortie = sound.pan_wav(self.source, self.root / "d.wav", 1.0)
+        gauche, droite = self.pics(sortie)
+        self.assertGreater(droite, 0)
+        self.assertLessEqual(gauche, 1, "le canal gauche devrait etre muet")
+
+    def test_au_centre_les_deux_canaux_sont_egaux(self):
+        sortie = sound.pan_wav(self.source, self.root / "c.wav", 0.0)
+        gauche, droite = self.pics(sortie)
+        self.assertEqual(gauche, droite)
+
+    def test_panoramique_intermediaire(self):
+        """A mi-chemin a droite, la droite domine sans que la gauche disparaisse."""
+        sortie = sound.pan_wav(self.source, self.root / "m.wav", 0.5)
+        gauche, droite = self.pics(sortie)
+        self.assertGreater(droite, gauche)
+        self.assertGreater(gauche, 0, "un panoramique partiel ne coupe pas un canal")
+
+    def test_les_gains_se_retrouvent_dans_les_echantillons(self):
+        """Le rapport des pics doit suivre le rapport des gains theoriques."""
+        pan = 0.4
+        attendu_g, attendu_d = sound.stereo_gains(pan)
+        sortie = sound.pan_wav(self.source, self.root / "r.wav", pan)
+        gauche, droite = self.pics(sortie)
+        self.assertAlmostEqual(droite / gauche, attendu_d / attendu_g, places=2)
+
+    def test_source_stereo_acceptee(self):
+        """Une source deja stereo doit ressortir stereo, panoramisee."""
+        etape = sound.pan_wav(self.source, self.root / "st.wav", 0.0)
+        sortie = sound.pan_wav(etape, self.root / "st2.wav", -1.0)
+        self.assertIsNotNone(sortie)
+        gauche, droite = self.pics(sortie)
+        self.assertGreater(gauche, 0)
+        self.assertLessEqual(droite, 1)
+
+    def test_fichier_illisible_renvoie_none(self):
+        casse = self.root / "casse.wav"
+        casse.write_bytes(b"pas un wav")
+        self.assertIsNone(sound.pan_wav(casse, self.root / "x.wav", 0.5))
+
+    def test_la_source_n_est_pas_modifiee(self):
+        avant = self.source.read_bytes()
+        sound.pan_wav(self.source, self.root / "p.wav", 1.0)
+        self.assertEqual(self.source.read_bytes(), avant)
+
+
 if __name__ == "__main__":
     unittest.main()

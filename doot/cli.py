@@ -159,6 +159,7 @@ def do_once(args) -> int:
         image_path=picture,
         scale=args.scale,
         screen=args.screen,
+        spatialise=not args.no_pan,
     )
     return 0
 
@@ -203,6 +204,7 @@ def do_daemon(args) -> int:
                     image_path=picture,
                     scale=args.scale,
                     screen=args.screen,
+                    spatialise=not args.no_pan,
                 )
                 log("doot !", quiet=args.quiet)
             except window.TkinterMissing as exc:
@@ -353,6 +355,8 @@ def build_parser() -> argparse.ArgumentParser:
                              "ou un index (0, 1, 2...). Voir 'doot --screens'.")
     parser.add_argument("--screens", action="store_true", help="liste les ecrans detectes")
     parser.add_argument("--no-sound", action="store_true", help="mode muet")
+    parser.add_argument("--no-pan", action="store_true",
+                        help="son au centre, au lieu de suivre la position du squelette")
     parser.add_argument("--regen-sound", action="store_true", help="regenere le jingle synthetise")
     parser.add_argument("--ignore-season", action="store_true",
                         help="ignore la fenetre 1er sept - 31 oct (tests uniquement)")

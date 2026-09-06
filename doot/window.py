@@ -152,7 +152,7 @@ def _auto_scale(width: int, height: int, screen_w: int, screen_h: int) -> float:
     return min(limit_h / height, limit_w / width)
 
 
-def _show_argb(wav_path, duration, center, opacity, image_path, scale, screen) -> bool:
+def _show_argb(wav_path, duration, center, opacity, image_path, scale, screen, spatialise) -> bool:
     """Tente l'overlay ARGB de x11.py ; faux si tkinter doit prendre le relais.
 
     Reserve aux PNG : x11.py compose les pixels lui-meme et png.py ne lit pas
@@ -165,17 +165,19 @@ def _show_argb(wav_path, duration, center, opacity, image_path, scale, screen) -
 
     try:
         image_width, image_height = png.size(image_path)
-        monitor = screens.pick(screens.monitors(), screen)
+        found = screens.monitors()
+        monitor = screens.pick(found, screen)
         wanted = scale if scale is not None else _auto_scale(
             image_width, image_height, monitor.width, monitor.height
         )
         frame = png.frame(image_path, wanted)
         x, y = monitor.place(frame.width, frame.height, center, random)
+        pan = screens.pan_for(x + frame.width / 2, found) if spatialise else 0.0
     except Exception:
         return False
 
     try:
-        x11.play(frame, x, y, duration, opacity, wav_path)
+        x11.play(frame, x, y, duration, opacity, wav_path, pan)
     except x11.X11Unavailable:
         return False
     return True
@@ -190,13 +192,17 @@ def show(
     image_path: Path | None = None,
     scale: float | None = None,
     screen: str | int | None = None,
+    spatialise: bool = True,
 ) -> None:
     """Affiche un doot et rend la main quand il a disparu.
 
     `screen` : None/"random" pour un ecran au hasard, "primary" pour l'ecran
     principal, ou l'index d'un ecran precis.
+
+    `spatialise` : place le son a gauche ou a droite selon l'endroit ou le
+    squelette apparait sur le bureau.
     """
-    if _show_argb(wav_path, duration, center, opacity, image_path, scale, screen):
+    if _show_argb(wav_path, duration, center, opacity, image_path, scale, screen, spatialise):
         return
 
     tk, tkfont = _import_tk()
@@ -218,10 +224,8 @@ def show(
 
     # Ecran d'accueil : tkinter ne sait pas decrire un montage multi-ecrans,
     # on demande au systeme (voir screens.py).
-    monitor = screens.pick(
-        screens.monitors(root.winfo_screenwidth(), root.winfo_screenheight()),
-        screen,
-    )
+    found = screens.monitors(root.winfo_screenwidth(), root.winfo_screenheight())
+    monitor = screens.pick(found, screen)
     screen_w, screen_h = monitor.width, monitor.height
 
     frames: list = []
@@ -267,7 +271,9 @@ def show(
     root.deiconify()
     _make_click_through(root)
 
-    playback = sound.play_async(wav_path) if wav_path else None
+    # Le son sort du cote ou le squelette est apparu.
+    pan = screens.pan_for(x + width / 2, found) if spatialise else 0.0
+    playback = sound.play_async(wav_path, pan) if wav_path else None
 
     total_ms = max(400, int(duration * 1000))
     fade_in_ms = min(220, total_ms // 4)

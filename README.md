@@ -30,6 +30,9 @@ tourne mais reste sagement endormi : le squelette range sa trompette.
 - **Multi-écrans** : les moniteurs sont énumérés pour de vrai (Win32, xrandr,
   CoreGraphics), le squelette surgit sur l'un d'eux au hasard, jamais à cheval
   entre deux dalles ni sous la barre des tâches.
+- **Son spatialisé** : le doot sort du côté où le squelette est apparu, calculé
+  sur l'ensemble du bureau — collé à droite de l'écran de droite, il sonne
+  franchement à droite.
 - **Prêt à l'emploi** : le squelette et son *doot* sont livrés avec ; dépose ton
   propre PNG/GIF ou mp3 pour les remplacer, sans toucher au code.
 - **Saisonnier** : la fenêtre du 1er septembre au 31 octobre est appliquée par le
@@ -151,6 +154,7 @@ doot --art                   # imprime le squelette dans le terminal
 | `--center` | — | toujours au centre, au lieu d'une position aléatoire |
 | `--screen` | `random` | écran d'apparition : `random`, `primary`, ou un index (`0`, `1`…) |
 | `--no-sound` | — | mode muet |
+| `--no-pan` | — | son au centre, au lieu de suivre la position du squelette |
 | `--regen-sound` | — | régénère le jingle |
 | `--ignore-season` | — | ignore la fenêtre saisonnière (tests) |
 | `--quiet` | — | n'écrit que dans le journal |
@@ -184,6 +188,31 @@ Tes fichiers passent devant ceux fournis, et ils sont relus à chaque apparition
 tu peux les changer pendant que le daemon tourne. Pour revenir au dessin ASCII et
 au jingle synthétisé : `doot --no-image --regen-sound` (ou vide les deux dossiers
 et supprime `doot/assets/`).
+
+## Le son spatialisé
+
+Le doot sort du côté où le squelette est apparu. La position est calculée sur
+**tout le bureau virtuel**, pas sur un écran isolé : avec deux dalles côte à
+côte, un squelette collé au bord droit de celle de droite sonne franchement à
+droite, et pas au centre comme s'il était seul au monde.
+
+Le canal dominant reste à plein volume, seul le canal opposé est atténué. Un
+doot centré rend donc exactement le son d'origine, sans les 3 dB qu'un
+panoramique à puissance constante lui aurait coûtés.
+
+Comment c'est appliqué, selon ce que la plateforme sait faire :
+
+| Format | Windows | macOS | Linux |
+| --- | --- | --- | --- |
+| `.wav` | panoramisé dans les échantillons | idem | idem |
+| `.mp3` et compressés | volume par canal via MCI | non spatialisé | `mpv` ou `ffplay` si présent, sinon non spatialisé |
+
+Les WAV sont traités par doot lui-même, ce qui marche partout et avec n'importe
+quel lecteur. Pour les formats compressés il faut un intermédiaire capable de
+le faire : MCI sous Windows, un filtre `pan` sous Linux. Quand rien ne sait,
+le son est joué au centre plutôt que pas du tout.
+
+`--no-pan` désactive tout ça.
 
 ## Où sont les fichiers
 

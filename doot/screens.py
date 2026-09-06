@@ -242,6 +242,32 @@ def pick(found: list[Monitor], preference=None, rng=None) -> Monitor:
     return found[max(0, min(index, len(found) - 1))]
 
 
+def virtual_bounds(found: list[Monitor]) -> tuple[int, int]:
+    """Bornes horizontales du bureau entier, tous ecrans confondus."""
+    if not found:
+        return 0, 0
+    return (
+        min(m.x for m in found),
+        max(m.x + m.width for m in found),
+    )
+
+
+def pan_for(center_x: float, found: list[Monitor] | None = None) -> float:
+    """Panoramique pour une fenetre centree sur `center_x`, de -1 (gauche) a +1.
+
+    Le calcul porte sur tout le bureau virtuel, pas sur un ecran isole : avec
+    deux dalles cote a cote, un doot colle au bord droit de celle de droite
+    doit sonner franchement a droite, pas au centre comme s'il etait seul.
+    """
+    found = found if found is not None else monitors()
+    left, right = virtual_bounds(found)
+    span = right - left
+    if span <= 0:
+        return 0.0
+    ratio = (center_x - left) / span
+    return max(-1.0, min(1.0, ratio * 2.0 - 1.0))
+
+
 def describe(found: list[Monitor]) -> str:
     if len(found) == 1:
         monitor = found[0]

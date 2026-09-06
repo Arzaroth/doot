@@ -324,23 +324,26 @@ class _Overlay:
 
 
 def play(frame: png.Frame, x: int, y: int, duration: float,
-         opacity: float = 1.0, wav_path: Path | None = None) -> None:
+         opacity: float = 1.0, wav_path: Path | None = None, pan: float = 0.0) -> None:
     """Fait surgir l'image puis la laisse s'effacer.
+
+    `pan` place le son de -1 (gauche) a +1 (droite), selon l'endroit du bureau
+    ou l'image apparait.
 
     Leve X11Unavailable tant que rien n'est affiche ; une fois la fenetre a
     l'ecran, on ne remonte plus d'erreur, un doot ecourte valant mieux qu'un
     doot en double par le chemin de repli.
     """
     with _errors_muted():
-        _play(frame, x, y, duration, opacity, wav_path)
+        _play(frame, x, y, duration, opacity, wav_path, pan)
 
 
-def _play(frame, x, y, duration, opacity, wav_path) -> None:
+def _play(frame, x, y, duration, opacity, wav_path, pan=0.0) -> None:
     overlay = _Overlay(frame.width, frame.height, x, y)
     playback = None
     try:
         overlay.map()
-        playback = sound.play_async(wav_path) if wav_path else None
+        playback = sound.play_async(wav_path, pan) if wav_path else None
 
         total = max(0.4, float(duration))
         fade_in = min(0.22, total / 4)
