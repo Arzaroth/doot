@@ -15,8 +15,10 @@ Multiplateforme :
 
 from __future__ import annotations
 
+import os
 import random
 import sys
+import tempfile
 from fractions import Fraction
 from pathlib import Path
 
@@ -143,23 +145,33 @@ def _load_frames(tk, path: Path, scale: float) -> list:
     return frames
 
 
+COTES = ("left", "right", "top", "bottom")
+
+# Quarts de tour horaires a appliquer pour que le BAS de l'image se retrouve
+# contre le bord par lequel le squelette entre.
+TOURS = {"left": 1, "top": 2, "right": 3, "bottom": 0}
+
+_ALIAS = {"gauche": "left", "droite": "right", "haut": "top", "bas": "bottom"}
+
+
 def pick_side(side: str | None, rng=random) -> str:
-    """Cote d'entree : 'left', 'right', ou tire au sort."""
-    if side in ("left", "gauche"):
-        return "left"
-    if side in ("right", "droite"):
-        return "right"
-    return rng.choice(("left", "right"))
+    """Bord d'entree : 'left', 'right', 'top', 'bottom', ou tire au sort."""
+    voulu = _ALIAS.get(side, side)
+    if voulu in COTES:
+        return voulu
+    return rng.choice(COTES)
 
 
-def _mirror_photo(tk, photo):
-    """Retourne une PhotoImage horizontalement, avec sa transparence.
+def _rotated_photo(tk, image_path: Path, scale: float, tours: int):
+    """Charge un PNG pivote de `tours` quarts de tour, transparence comprise.
 
-    Tk n'a pas de fonction de miroir, mais un `copy` a pas negatif le fait.
+    Tk sait miroiter mais pas pivoter, et n'accepte des pixels avec leur alpha
+    que par un fichier : on decode, on pivote, on reecrit un PNG a cote.
     """
-    miroir = tk.PhotoImage(width=photo.width(), height=photo.height())
-    miroir.tk.call(miroir, "copy", photo, "-subsample", -1, 1)
-    return miroir
+    frame = png.frame(image_path, scale).rotated(tours)
+    tampon = Path(tempfile.gettempdir()) / f"doot-pivote-{os.getpid()}.png"
+    png.write_png(tampon, frame)
+    return tk.PhotoImage(file=str(tampon))
 
 
 def _auto_scale(width: int, height: int, screen_w: int, screen_h: int) -> float:
@@ -193,23 +205,25 @@ def _show_argb(wav_path, duration, center, opacity, image_path, scale, screen,
         frame = png.frame(image_path, wanted)
 
         entree = pick_side(side) if slide else None
-        if entree == "right":
-            frame = frame.mirrored()
+        if entree:
+            # Le bas de l'image se pose contre le bord d'entree.
+            frame = frame.rotated(TOURS[entree])
 
         if slide:
-            depart, repos, y = monitor.entry(frame.width, frame.height, entree,
-                                             random, center=center)
+            depart_x, depart_y, repos_x, repos_y = monitor.entry(
+                frame.width, frame.height, entree, random, center=center
+            )
         else:
-            repos, y = monitor.place(frame.width, frame.height, center, random)
-            depart = repos
+            repos_x, repos_y = monitor.place(frame.width, frame.height, center, random)
+            depart_x, depart_y = repos_x, repos_y
 
-        pan = screens.pan_for(repos + frame.width / 2, found) if spatialise else 0.0
+        pan = screens.pan_for(repos_x + frame.width / 2, found) if spatialise else 0.0
     except Exception:
         return False
 
     try:
-        x11.play(frame, repos, y, duration, opacity, wav_path, pan,
-                 start_x=depart, slide_ms=slide_ms if slide else 0)
+        x11.play(frame, repos_x, repos_y, duration, opacity, wav_path, pan,
+                 start=(depart_x, depart_y), slide_ms=slide_ms if slide else 0)
     except x11.X11Unavailable:
         return False
     return True
@@ -267,15 +281,27 @@ def show(
     monitor = screens.pick(found, screen)
     screen_w, screen_h = monitor.width, monitor.height
 
+    # Le bord d'entree decide de l'orientation : le bas de l'image doit se
+    # poser contre lui. Il se choisit donc avant de charger quoi que ce soit.
+    entree = pick_side(side) if slide else None
+    tours = TOURS[entree] if entree else 0
+
     frames: list = []
     if image_path is not None:
         try:
             probe = tk.PhotoImage(file=str(image_path)) if image_path.suffix.lower() != ".gif" \
                 else tk.PhotoImage(file=str(image_path), format="gif -index 0")
+            large, haut = probe.width(), probe.height()
+            if tours % 2:
+                large, haut = haut, large  # un quart de tour echange les cotes
             wanted = scale if scale is not None else _auto_scale(
-                probe.width(), probe.height(), screen_w, screen_h
+                large, haut, screen_w, screen_h
             )
-            frames = _load_frames(tk, image_path, wanted)
+            if tours and image_path.suffix.lower() == ".png":
+                frames = [_rotated_photo(tk, image_path, wanted, tours)]
+            else:
+                # Les GIF animes restent droits : png.py ne les decode pas.
+                frames = _load_frames(tk, image_path, wanted)
         except Exception:
             frames = []  # image illisible : on retombe sur l'ASCII
 
@@ -301,33 +327,28 @@ def show(
     root.update_idletasks()
     width = max(label.winfo_reqwidth(), 1)
     height = max(label.winfo_reqheight(), 1)
-    # Le cote d'entree decide du sens de l'image : le squelette regarde vers
-    # l'interieur de l'ecran, c'est-a-dire du cote ou il avance.
-    entree = pick_side(side) if slide else None
-    retourne = entree == "right"
-    if retourne:
-        if frames:
-            frames = [_mirror_photo(tk, image) for image in frames]
-            label.image = frames
-        else:
-            label.configure(text=art.frame(0, mirrored=True))
-
-    if not frames and not retourne:
-        label.configure(text=art.frame(0))
+    # Le squelette ASCII ne se pivote pas : des glyphes a chasse fixe tournes
+    # d'un quart de tour ne veulent plus rien dire. On se contente de le
+    # retourner quand il entre par la droite.
+    retourne = not frames and entree == "right"
+    if not frames:
+        label.configure(text=art.frame(0, mirrored=retourne))
 
     if slide:
-        depart, repos, y = monitor.entry(width, height, entree, random, center=center)
+        depart_x, depart_y, repos_x, repos_y = monitor.entry(
+            width, height, entree, random, center=center
+        )
     else:
-        repos, y = monitor.place(width, height, center, random)
-        depart = repos
+        repos_x, repos_y = monitor.place(width, height, center, random)
+        depart_x, depart_y = repos_x, repos_y
 
-    root.geometry(f"{width}x{height}+{depart}+{y}")
+    root.geometry(f"{width}x{height}+{depart_x}+{depart_y}")
 
     root.deiconify()
     _make_click_through(root)
 
     # Le son sort de l'endroit ou le squelette se posera.
-    pan = screens.pan_for(repos + width / 2, found) if spatialise else 0.0
+    pan = screens.pan_for(repos_x + width / 2, found) if spatialise else 0.0
     playback = sound.play_async(wav_path, pan) if wav_path else None
 
     total_ms = max(400, int(duration * 1000))
@@ -350,7 +371,10 @@ def show(
         # revele deja le squelette, et les deux ensemble font bouillie.
         if slide and elapsed <= slide_ms:
             avance = screens.ease_out(elapsed / slide_ms)
-            root.geometry(f"+{int(depart + (repos - depart) * avance)}+{y}")
+            root.geometry(
+                f"+{int(depart_x + (repos_x - depart_x) * avance)}"
+                f"+{int(depart_y + (repos_y - depart_y) * avance)}"
+            )
             set_alpha(1.0)
         elif not slide and elapsed < fade_in_ms:
             set_alpha(elapsed / fade_in_ms)

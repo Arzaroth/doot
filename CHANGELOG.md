@@ -15,14 +15,22 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 ### Ajouté
 - Le squelette entre en glissant depuis un bord de l'écran, tiré au sort à
   gauche ou à droite, avec une décélération cubique sur 420 ms par défaut. Il
-  se pose près du bord par lequel il est entré : entrer par la gauche pour
-  s'arrêter à l'extrême droite serait une traversée, pas une entrée.
-- Il se retourne pour regarder vers l'intérieur de l'écran, du côté où il
-  avance. Le miroir s'applique à l'image comme au squelette ASCII, où les
-  obliques et les parenthèses basculent, et où les lettres du *doot* changent
-  de côté sans cesser d'être lisibles — les renverser telles quelles aurait
-  donné « ! t o o d ».
-- Options `--side`, `--slide-ms` et `--no-slide`.
+  s'arrête contre ce bord, à quelques pixels près, et ne s'enfonce pas dans
+  l'écran : ce serait une traversée, pas une entrée.
+- Les quatre bords sont possibles, et l'image **pivote** pour poser son bas
+  contre celui par lequel elle entre : un quart de tour horaire pour la gauche,
+  un antihoraire pour la droite, un demi-tour pour le haut, rien pour le bas.
+  Le squelette a donc toujours les pieds sur le bord d'où il vient.
+- Le squelette ASCII, lui, ne pivote pas — des glyphes à chasse fixe tournés
+  d'un quart de tour ne veulent plus rien dire. Il est retourné quand il entre
+  par la droite : les obliques et les parenthèses basculent, et les lettres du
+  *doot* changent de côté sans cesser d'être lisibles, les renverser telles
+  quelles aurait donné « ! t o o d ».
+- `png.write_png()`, un encodeur PNG minimal. tkinter ne sait pas pivoter et
+  n'accepte des pixels avec leur transparence que par un fichier : l'image est
+  donc décodée, pivotée, puis réécrite à côté.
+- Options `--side` (`left`, `right`, `top`, `bottom`), `--slide-ms` et
+  `--no-slide`.
 
 ### Modifié
 - Plus de fondu d'apparition pendant le glissement : le bord de l'écran révèle

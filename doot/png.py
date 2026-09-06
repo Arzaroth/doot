@@ -54,6 +54,38 @@ class Frame:
                 out[ecrit:ecrit + 4] = source[lu:lu + 4]
         return Frame(largeur, hauteur, bytes(out))
 
+    def rotated(self, quarts: int) -> "Frame":
+        """Pivote de `quarts` quarts de tour dans le sens horaire.
+
+        Sert a poser le bas de l'image contre le bord par lequel le squelette
+        entre : un quart horaire et le bas regarde a gauche, trois quarts et il
+        regarde a droite, deux et il regarde en haut.
+        """
+        quarts %= 4
+        if quarts == 0:
+            return Frame(self.width, self.height, self.data)
+
+        largeur, hauteur = self.width, self.height
+        source = self.data
+        if quarts == 2:
+            cible_l, cible_h = largeur, hauteur
+        else:
+            cible_l, cible_h = hauteur, largeur
+
+        out = bytearray(len(source))
+        for y in range(hauteur):
+            for x in range(largeur):
+                if quarts == 1:      # horaire : (x, y) -> (H-1-y, x)
+                    nx, ny = hauteur - 1 - y, x
+                elif quarts == 2:    # demi-tour
+                    nx, ny = largeur - 1 - x, hauteur - 1 - y
+                else:                # antihoraire : (x, y) -> (y, L-1-x)
+                    nx, ny = y, largeur - 1 - x
+                lu = (y * largeur + x) * 4
+                ecrit = (ny * cible_l + nx) * 4
+                out[ecrit:ecrit + 4] = source[lu:lu + 4]
+        return Frame(cible_l, cible_h, bytes(out))
+
     def faded(self, factor: float) -> bytes:
         """Le meme rendu a `factor` d'opacite.
 
@@ -287,6 +319,48 @@ def _resample(src: bytearray, width: int, height: int,
             d = row + dx * 4
             out[d:d + 4] = src[p:p + 4]
     return out
+
+
+# ------------------------------------------------------------- ecriture ------
+
+def _bloc(genre: bytes, contenu: bytes) -> bytes:
+    return (struct.pack(">I", len(contenu)) + genre + contenu
+            + struct.pack(">I", zlib.crc32(genre + contenu)))
+
+
+def write_png(path, frame: "Frame") -> None:
+    """Ecrit un Frame en PNG RVBA.
+
+    Sert a rendre une image pivotee a tkinter, qui ne sait ni pivoter ni
+    recevoir des pixels avec leur transparence autrement que par un fichier.
+    L'alpha est demultiplie au passage, le PNG le voulant non premultiplie.
+    """
+    largeur, hauteur = frame.width, frame.height
+    source = frame.data
+    brut = bytearray()
+
+    for y in range(hauteur):
+        brut.append(0)  # filtre "aucun" : l'image est relue tout de suite
+        debut = y * largeur * 4
+        for x in range(largeur):
+            p = debut + x * 4
+            b, v, r, a = source[p], source[p + 1], source[p + 2], source[p + 3]
+            if a == 0:
+                brut += b"\x00\x00\x00\x00"
+                continue
+            if a != 255:
+                r = min(255, (r * 255 + a // 2) // a)
+                v = min(255, (v * 255 + a // 2) // a)
+                b = min(255, (b * 255 + a // 2) // a)
+            brut += bytes((r, v, b, a))
+
+    entete = struct.pack(">IIBBBBB", largeur, hauteur, 8, 6, 0, 0, 0)
+    Path(path).write_bytes(
+        SIGNATURE
+        + _bloc(b"IHDR", entete)
+        + _bloc(b"IDAT", zlib.compress(bytes(brut), 6))
+        + _bloc(b"IEND", b"")
+    )
 
 
 # ------------------------------------------------------------------ API ------

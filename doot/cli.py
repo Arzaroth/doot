@@ -376,8 +376,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--center", action="store_true", help="toujours au centre au lieu du hasard")
     parser.add_argument("--no-slide", action="store_true",
                         help="apparait sur place, sans entrer par le cote")
-    parser.add_argument("--side", choices=("left", "right", "random"), default=None,
-                        help="cote par lequel le squelette entre (defaut : au hasard)")
+    parser.add_argument("--side", default=None,
+                        choices=("left", "right", "top", "bottom", "random"),
+                        help="bord par lequel le squelette entre (defaut : au hasard). "
+                             "Le bas de l'image se pose contre ce bord.")
     parser.add_argument("--slide-ms", type=int, default=420,
                         help="duree de l'entree en millisecondes (defaut 420)")
     parser.add_argument("--screen", default=None, metavar="CHOIX",

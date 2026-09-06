@@ -329,26 +329,26 @@ class _Overlay:
 
 def play(frame: png.Frame, x: int, y: int, duration: float,
          opacity: float = 1.0, wav_path: Path | None = None, pan: float = 0.0,
-         start_x: int | None = None, slide_ms: int = 0) -> None:
+         start: tuple[int, int] | None = None, slide_ms: int = 0) -> None:
     """Fait surgir l'image puis la laisse s'effacer.
 
     `pan` place le son de -1 (gauche) a +1 (droite), selon l'endroit du bureau
-    ou l'image apparait. `start_x` et `slide_ms` font entrer l'image en
-    glissant depuis ce point jusqu'a `x`.
+    ou l'image apparait. `start` et `slide_ms` font entrer l'image en glissant
+    depuis ce point jusqu'a (`x`, `y`), sur l'un ou l'autre axe.
 
     Leve X11Unavailable tant que rien n'est affiche ; une fois la fenetre a
     l'ecran, on ne remonte plus d'erreur, un doot ecourte valant mieux qu'un
     doot en double par le chemin de repli.
     """
     with _errors_muted():
-        _play(frame, x, y, duration, opacity, wav_path, pan, start_x, slide_ms)
+        _play(frame, x, y, duration, opacity, wav_path, pan, start, slide_ms)
 
 
 def _play(frame, x, y, duration, opacity, wav_path, pan=0.0,
-          start_x=None, slide_ms=0) -> None:
-    glisse = slide_ms > 0 and start_x is not None and start_x != x
-    overlay = _Overlay(frame.width, frame.height,
-                       start_x if glisse else x, y)
+          start=None, slide_ms=0) -> None:
+    glisse = slide_ms > 0 and start is not None and tuple(start) != (x, y)
+    depart_x, depart_y = start if glisse else (x, y)
+    overlay = _Overlay(frame.width, frame.height, depart_x, depart_y)
     playback = None
     try:
         overlay.map()
@@ -372,7 +372,8 @@ def _play(frame, x, y, duration, opacity, wav_path, pan=0.0,
             # l'ecran revele deja le squelette.
             if glisse and elapsed <= glissement:
                 avance = screens.ease_out(elapsed / glissement)
-                overlay.move(start_x + (x - start_x) * avance, y)
+                overlay.move(depart_x + (x - depart_x) * avance,
+                             depart_y + (y - depart_y) * avance)
                 factor = 1.0
             elif not glisse and elapsed < fade_in:
                 factor = elapsed / fade_in

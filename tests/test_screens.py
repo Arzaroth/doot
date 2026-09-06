@@ -211,54 +211,88 @@ class EntreeParLeCote(unittest.TestCase):
         self.droite = screens.Monitor(1920, 0, 1920, 1040, name="droite")
         self.taille = (353, 385)
 
-    def test_depart_hors_ecran_a_gauche(self):
-        depart, repos, _ = self.gauche.entry(*self.taille, "left", self.rng)
-        largeur = self.taille[0]
-        self.assertLessEqual(depart + largeur, self.gauche.x,
-                             "le squelette doit partir entierement hors de l'ecran")
-        self.assertGreater(repos, depart)
-
-    def test_depart_hors_ecran_a_droite(self):
-        depart, repos, _ = self.gauche.entry(*self.taille, "right", self.rng)
-        self.assertGreaterEqual(depart, self.gauche.x + self.gauche.width)
-        self.assertLess(repos, depart)
+    def test_depart_entierement_hors_ecran(self):
+        largeur, hauteur = self.taille
+        ecran = self.gauche
+        cas = {
+            "left": lambda dx, dy: dx + largeur <= ecran.x,
+            "right": lambda dx, dy: dx >= ecran.x + ecran.width,
+            "top": lambda dx, dy: dy + hauteur <= ecran.y,
+            "bottom": lambda dx, dy: dy >= ecran.y + ecran.height,
+        }
+        for cote, dehors in cas.items():
+            dx, dy, _, _ = ecran.entry(largeur, hauteur, cote, self.rng)
+            self.assertTrue(dehors(dx, dy), f"depart visible pour {cote} : +{dx}+{dy}")
 
     def test_repos_entierement_visible(self):
         largeur, hauteur = self.taille
         for ecran in (self.gauche, self.droite):
-            for cote in ("left", "right"):
-                for _ in range(200):
-                    _, repos, y = ecran.entry(largeur, hauteur, cote, self.rng)
-                    self.assertGreaterEqual(repos, ecran.x)
-                    self.assertLessEqual(repos + largeur, ecran.x + ecran.width)
-                    self.assertGreaterEqual(y, ecran.y)
-                    self.assertLessEqual(y + hauteur, ecran.y + ecran.height)
+            for cote in ("left", "right", "top", "bottom"):
+                for _ in range(120):
+                    _, _, rx, ry = ecran.entry(largeur, hauteur, cote, self.rng)
+                    self.assertGreaterEqual(rx, ecran.x, cote)
+                    self.assertLessEqual(rx + largeur, ecran.x + ecran.width, cote)
+                    self.assertGreaterEqual(ry, ecran.y, cote)
+                    self.assertLessEqual(ry + hauteur, ecran.y + ecran.height, cote)
 
-    def test_repos_pres_du_bord_choisi(self):
-        """Entrer par la gauche pour finir a droite serait une traversee."""
-        largeur = self.taille[0]
-        for _ in range(100):
-            _, repos, _ = self.gauche.entry(*self.taille, "left", self.rng)
-            self.assertLess(repos, self.gauche.x + self.gauche.width // 2)
-        for _ in range(100):
-            _, repos, _ = self.gauche.entry(*self.taille, "right", self.rng)
-            self.assertGreater(repos + largeur, self.gauche.x + self.gauche.width // 2)
+    def test_s_arrete_contre_le_bord(self):
+        """Il se pose au bord, sans s'enfoncer : ce serait une traversee.
+
+        Une marge de 5 % laisse la place au leger hasard qui evite un placement
+        toujours identique.
+        """
+        largeur, hauteur = self.taille
+        ecran = self.gauche
+        marge_x, marge_y = ecran.width * 0.05, ecran.height * 0.05
+        ecarts = {
+            "left": lambda rx, ry: rx - ecran.x,
+            "right": lambda rx, ry: (ecran.x + ecran.width) - (rx + largeur),
+            "top": lambda rx, ry: ry - ecran.y,
+            "bottom": lambda rx, ry: (ecran.y + ecran.height) - (ry + hauteur),
+        }
+        for cote, ecart in ecarts.items():
+            marge = marge_x if cote in ("left", "right") else marge_y
+            for _ in range(200):
+                _, _, rx, ry = ecran.entry(largeur, hauteur, cote, self.rng)
+                self.assertLessEqual(ecart(rx, ry), marge,
+                                     f"entre par {cote}, il s'enfonce trop")
+
+    def test_le_bord_est_atteint(self):
+        """Le tirage doit pouvoir coller le squelette exactement au bord."""
+        colles = sum(
+            1 for _ in range(300)
+            if self.gauche.entry(*self.taille, "left", self.rng)[2] == self.gauche.x
+        )
+        self.assertGreater(colles, 0, "jamais colle au bord")
+
+    def test_glissement_sur_le_bon_axe(self):
+        """Entrer par le cote ne bouge pas en y, et par le haut ne bouge pas en x."""
+        largeur, hauteur = self.taille
+        for cote in ("left", "right"):
+            dx, dy, rx, ry = self.gauche.entry(largeur, hauteur, cote, self.rng)
+            self.assertEqual(dy, ry, f"{cote} ne devrait pas glisser verticalement")
+            self.assertNotEqual(dx, rx)
+        for cote in ("top", "bottom"):
+            dx, dy, rx, ry = self.gauche.entry(largeur, hauteur, cote, self.rng)
+            self.assertEqual(dx, rx, f"{cote} ne devrait pas glisser horizontalement")
+            self.assertNotEqual(dy, ry)
 
     def test_ecran_secondaire_garde_son_decalage(self):
-        depart, repos, _ = self.droite.entry(*self.taille, "left", self.rng)
-        self.assertLessEqual(depart + self.taille[0], self.droite.x)
-        self.assertGreaterEqual(repos, self.droite.x)
+        dx, _, rx, _ = self.droite.entry(*self.taille, "left", self.rng)
+        self.assertLessEqual(dx + self.taille[0], self.droite.x)
+        self.assertGreaterEqual(rx, self.droite.x)
 
-    def test_centre_ignore_le_hasard(self):
-        largeur = self.taille[0]
-        _, repos, _ = self.gauche.entry(*self.taille, "left", self.rng, center=True)
-        self.assertEqual(repos, self.gauche.x + (self.gauche.width - largeur) // 2)
+    def test_centre_ne_centre_que_l_axe_perpendiculaire(self):
+        largeur, hauteur = self.taille
+        _, _, rx, ry = self.gauche.entry(largeur, hauteur, "left", self.rng, center=True)
+        self.assertEqual(ry, self.gauche.y + (self.gauche.height - hauteur) // 2)
+        self.assertLessEqual(rx - self.gauche.x, self.gauche.width * 0.05,
+                             "le bord d'entree n'est pas negociable")
 
-    def test_fenetre_plus_large_que_l_ecran(self):
+    def test_fenetre_plus_grande_que_l_ecran(self):
         """Cas degenere : on ne plante pas."""
-        depart, repos, y = self.gauche.entry(4000, 4000, "left", self.rng)
-        self.assertEqual(repos, self.gauche.x)
-        self.assertEqual(y, self.gauche.y)
+        _, _, rx, ry = self.gauche.entry(4000, 4000, "left", self.rng)
+        self.assertEqual((rx, ry), (self.gauche.x, self.gauche.y))
 
 
 if __name__ == "__main__":

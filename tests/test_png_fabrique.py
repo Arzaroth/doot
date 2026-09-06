@@ -460,5 +460,92 @@ class MiroirDeFrame(unittest.TestCase):
         self.assertEqual(frame.data, avant)
 
 
+@unittest.skipIf(png is None, "doot/png.py absent (arrive avec l'overlay X11)")
+class RotationDeFrame(unittest.TestCase):
+    """La rotation par quarts de tour, pour poser le bas contre un bord."""
+
+    def setUp(self):
+        dossier = TemporaryDirectory()
+        self.addCleanup(dossier.cleanup)
+        self.root = Path(dossier.name)
+
+        # 6 x 4, avec une derniere ligne franchement reperable : c'est « le bas »
+        valeurs = []
+        for y in range(4):
+            for x in range(6):
+                couleur = (0, 255, 0, 255) if y == 3 else (40, 40, 40, 255)
+                valeurs += list(couleur)
+        self.chemin = ecrire_png(self.root / "bas.png", 6, 4, 8, RVBA, valeurs)
+        self.frame = png.frame(self.chemin, 1.0)
+
+    def alpha_vert(self, frame, ou):
+        """Compte les pixels verts d'un bord donne (le « bas » d'origine)."""
+        l, h = frame.width, frame.height
+        total = 0
+        for y in range(h):
+            for x in range(l):
+                p = (y * l + x) * 4
+                vert = frame.data[p + 1] > 200 and frame.data[p + 2] < 100
+                if not vert:
+                    continue
+                if (ou == "bas" and y == h - 1) or (ou == "haut" and y == 0) \
+                        or (ou == "gauche" and x == 0) or (ou == "droite" and x == l - 1):
+                    total += 1
+        return total
+
+    def test_dimensions(self):
+        self.assertEqual((self.frame.rotated(0).width, self.frame.rotated(0).height), (6, 4))
+        self.assertEqual((self.frame.rotated(1).width, self.frame.rotated(1).height), (4, 6))
+        self.assertEqual((self.frame.rotated(2).width, self.frame.rotated(2).height), (6, 4))
+        self.assertEqual((self.frame.rotated(3).width, self.frame.rotated(3).height), (4, 6))
+
+    def test_le_bas_va_contre_le_bord_voulu(self):
+        """C'est toute la raison d'etre de la rotation."""
+        self.assertEqual(self.alpha_vert(self.frame, "bas"), 6, "temoin mal pose")
+        self.assertEqual(self.alpha_vert(self.frame.rotated(1), "gauche"), 6,
+                         "un quart horaire doit mettre le bas a gauche")
+        self.assertEqual(self.alpha_vert(self.frame.rotated(3), "droite"), 6,
+                         "trois quarts doivent mettre le bas a droite")
+        self.assertEqual(self.alpha_vert(self.frame.rotated(2), "haut"), 6,
+                         "un demi-tour doit mettre le bas en haut")
+        self.assertEqual(self.alpha_vert(self.frame.rotated(0), "bas"), 6,
+                         "sans rotation, le bas reste en bas")
+
+    def test_quatre_quarts_reviennent_au_depart(self):
+        tourne = self.frame
+        for _ in range(4):
+            tourne = tourne.rotated(1)
+        self.assertEqual(tourne.data, self.frame.data)
+        self.assertEqual((tourne.width, tourne.height), (self.frame.width, self.frame.height))
+
+    def test_quarts_equivalents(self):
+        self.assertEqual(self.frame.rotated(5).data, self.frame.rotated(1).data)
+        self.assertEqual(self.frame.rotated(-1).data, self.frame.rotated(3).data)
+
+    def test_aller_retour_par_le_fichier(self):
+        """L'image pivotee doit pouvoir etre relue a l'identique.
+
+        C'est ainsi qu'elle parvient a tkinter, qui ne sait pas pivoter et
+        n'accepte l'alpha que par un fichier.
+        """
+        pivote = self.frame.rotated(1)
+        chemin = self.root / "pivote.png"
+        png.write_png(chemin, pivote)
+        relu = png.frame(chemin, 1.0)
+        self.assertEqual((relu.width, relu.height), (pivote.width, pivote.height))
+        self.assertEqual(relu.data, pivote.data)
+
+    def test_l_ecriture_conserve_la_transparence(self):
+        valeurs = []
+        for y in range(4):
+            for x in range(6):
+                valeurs += [10, 20, 30, 0 if x < 3 else 255]
+        source = png.frame(ecrire_png(self.root / "t.png", 6, 4, 8, RVBA, valeurs), 1.0)
+        png.write_png(self.root / "t2.png", source)
+        relu = png.frame(self.root / "t2.png", 1.0)
+        transparents = sum(1 for i in range(0, len(relu.data), 4) if relu.data[i + 3] == 0)
+        self.assertEqual(transparents, 12)
+
+
 if __name__ == "__main__":
     unittest.main()

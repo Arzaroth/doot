@@ -46,27 +46,39 @@ class Monitor:
         )
 
     def entry(self, width: int, height: int, side: str, rng,
-              near=(0.02, 0.30), center=False) -> tuple[int, int, int]:
-        """Trajet d'une entree par le cote : (x de depart, x au repos, y).
+              near=(0.0, 0.03), center=False) -> tuple[int, int, int, int]:
+        """Trajet d'une entree par un bord : (depart x, depart y, repos x, repos y).
 
-        Le depart est hors de l'ecran, decale de toute la largeur de la fenetre,
-        pour que le squelette apparaisse en glissant depuis le bord. Le repos
-        se tient pres de ce meme bord : entrer par la gauche pour s'arreter a
-        l'extreme droite donnerait une traversee, pas une entree.
+        Le depart est entierement hors de l'ecran, decale de toute la taille de
+        la fenetre, pour que le squelette apparaisse en glissant depuis le bord.
+        Il s'arrete contre ce meme bord, a un cheveu pres : s'enfoncer dans
+        l'ecran donnerait une traversee, pas une entree.
+
+        `center` ne centre que l'axe perpendiculaire a l'entree — le bord
+        d'arrivee, lui, n'est pas negociable.
         """
-        libre = max(0, self.width - width)
+        libre_x = max(0, self.width - width)
+        libre_y = max(0, self.height - height)
 
-        if center:
-            repos = self.x + libre // 2
+        def le_long(libre: int) -> int:
+            return libre // 2 if center else rng.randint(0, libre)
+
+        if side in ("left", "right"):
+            jeu = min(int(rng.uniform(*near) * self.width), libre_x)
+            if side == "left":
+                repos_x, depart_x = self.x + jeu, self.x - width
+            else:
+                repos_x, depart_x = self.x + libre_x - jeu, self.x + self.width
+            repos_y = depart_y = self.y + le_long(libre_y)
         else:
-            distance = int(rng.uniform(*near) * self.width)
-            repos = self.x + min(distance, libre) if side == "left" \
-                else self.x + libre - min(distance, libre)
+            jeu = min(int(rng.uniform(*near) * self.height), libre_y)
+            if side == "top":
+                repos_y, depart_y = self.y + jeu, self.y - height
+            else:
+                repos_y, depart_y = self.y + libre_y - jeu, self.y + self.height
+            repos_x = depart_x = self.x + le_long(libre_x)
 
-        depart = self.x - width if side == "left" else self.x + self.width
-
-        y = self.y + rng.randint(0, max(0, self.height - height))
-        return depart, repos, y
+        return depart_x, depart_y, repos_x, repos_y
 
     def __repr__(self):
         flag = "*" if self.primary else " "

@@ -30,9 +30,9 @@ tourne mais reste sagement endormi : le squelette range sa trompette.
 - **Multi-écrans** : les moniteurs sont énumérés pour de vrai (Win32, xrandr,
   CoreGraphics), le squelette surgit sur l'un d'eux au hasard, jamais à cheval
   entre deux dalles ni sous la barre des tâches.
-- **Entrée par le côté** : le squelette glisse depuis un bord de l'écran, vif au
-  départ et posé à l'arrivée, et se retourne pour regarder vers l'intérieur —
-  entré par la droite, il fait face à gauche.
+- **Entrée par un bord** : le squelette glisse depuis l'un des quatre bords de
+  l'écran, vif au départ et posé à l'arrivée, et pivote pour avoir les pieds sur
+  le bord d'où il vient — entré par le haut, il arrive tête en bas.
 - **Son spatialisé** : le doot sort du côté où le squelette est apparu, calculé
   sur l'ensemble du bureau — collé à droite de l'écran de droite, il sonne
   franchement à droite.
@@ -238,21 +238,30 @@ l'écran jusqu'à sa position de repos, tiré au sort à gauche ou à droite. Le
 mouvement est vif au départ et se pose en douceur — une décélération cubique
 sur 420 ms par défaut.
 
-Il se retourne pour regarder vers l'intérieur, c'est-à-dire du côté où il
-avance : entré par la droite, il fait face à gauche. Le miroir s'applique aussi
-bien à l'image qu'au squelette ASCII, où les obliques et les parenthèses
-basculent, et où les lettres du *doot* changent de côté sans cesser d'être
-lisibles.
+L'image **pivote** pour que son bas se pose contre le bord par lequel elle
+entre : le squelette a toujours les pieds sur le bord d'où il vient.
 
-Il se pose près du bord par lequel il est entré : entrer par la gauche pour
-s'arrêter à l'extrême droite donnerait une traversée, pas une entrée.
+| Bord d'entrée | Rotation | Résultat |
+| --- | --- | --- |
+| gauche | un quart horaire | pieds à gauche, tête vers la droite |
+| droite | un quart antihoraire | pieds à droite, tête vers la gauche |
+| haut | demi-tour | pieds en haut, tête vers le bas |
+| bas | aucune | image droite |
+
+Il s'arrête **contre ce bord**, à quelques pixels près. Il ne s'enfonce pas
+dans l'écran : ce serait une traversée, pas une entrée.
 
 ```bash
 doot --once --side left      # entre par la gauche
-doot --once --side right     # entre par la droite, retourné
+doot --once --side top       # tombe du haut, tête en bas
 doot --once --slide-ms 900   # entrée plus lente
 doot --once --no-slide       # apparaît sur place, comme avant
 ```
+
+Le squelette ASCII, lui, ne pivote pas : des glyphes à chasse fixe tournés d'un
+quart de tour ne veulent plus rien dire. Il est simplement retourné quand il
+entre par la droite — les obliques et les parenthèses basculent, et les lettres
+du *doot* changent de côté sans cesser d'être lisibles.
 
 Pendant le glissement il n'y a pas de fondu d'apparition : le bord de l'écran
 révèle déjà le squelette, et les deux ensemble font bouillie.
