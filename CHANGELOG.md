@@ -12,6 +12,12 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.0] - 2026-09-06
+
+Le squelette ne se contente plus d'apparaître : il peut entrer par n'importe
+lequel des quatre bords de l'écran, en glissant, et pivote pour avoir les pieds
+sur celui d'où il vient. Les deux façons d'arriver se côtoient, tirées au sort.
+
 ### Ajouté
 - Deux façons d'arriver, tirées au sort à chaque apparition : surgir au milieu
   de l'écran comme depuis toujours, ou entrer en glissant depuis un bord. Une
@@ -33,8 +39,8 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 - `png.write_png()`, un encodeur PNG minimal. tkinter ne sait pas pivoter et
   n'accepte des pixels avec leur transparence que par un fichier : l'image est
   donc décodée, pivotée, puis réécrite à côté.
-- Options `--side` (`left`, `right`, `top`, `bottom`), `--slide-ms` et
-  `--no-slide`.
+- Options `--slide-chance`, `--side` (`left`, `right`, `top`, `bottom`),
+  `--slide-ms` et `--no-slide`.
 
 ### Modifié
 - Plus de fondu d'apparition pendant le glissement : le bord de l'écran révèle
@@ -196,7 +202,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.1.0...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/boubou666/doot/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/boubou666/doot/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/boubou666/doot/compare/v0.7.0...v1.0.0
 [0.7.0]: https://github.com/boubou666/doot/compare/v0.6.0...v0.7.0
