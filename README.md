@@ -78,14 +78,22 @@ apparitions de 2 à 8 heures, et `--no-sound` le rend muet.
 
 ### Depuis PyPI, sur les trois systèmes
 
-Pour voir le squelette tout de suite, sans rien installer :
+Les deux commandes qui suivent passent par [uv](https://docs.astral.sh/uv/), un
+binaire autonome qui ne réclame rien d'autre que lui-même, pas même un Python.
+Ta distribution l'a peut-être déjà : `uv` est dans `extra` chez Arch et dans les
+dépôts Fedora. Sinon `brew install uv` sur macOS,
+`winget install --id=astral-sh.uv -e` sur Windows, ou
+`curl -LsSf https://astral.sh/uv/install.sh | sh` sur Linux et macOS.
+
+Pour voir le squelette tout de suite, sans installer doot :
 
 ```bash
 uvx --from spooky-doot doot --once --ignore-season
 ```
 
-Un doot, et rien qui reste. `--ignore-season` force l'apparition : sans lui,
-doot répond qu'il est en congé jusqu'au 1er septembre et ne montre rien.
+Un doot, et rien d'installé. Le paquet passe quand même par le cache de uv, que
+`uv cache clean` vide. `--ignore-season` force l'apparition : sans lui, doot
+répond qu'il est en congé jusqu'au 1er septembre et ne montre rien.
 
 Pour l'installer :
 
