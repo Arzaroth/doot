@@ -12,6 +12,11 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.3.0] - 2026-09-06
+
+doot s'installe désormais en une commande, sur les trois systèmes, sans cloner
+quoi que ce soit.
+
 ### Ajouté
 - Publication sur PyPI : `pipx install spooky-doot`. Le nom `doot` était déjà
   pris par un lanceur de tâches, seul le nom de distribution change — le module
@@ -235,7 +240,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.2.1...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/boubou666/doot/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/boubou666/doot/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/boubou666/doot/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/boubou666/doot/compare/v1.0.0...v1.1.0
