@@ -15,6 +15,7 @@ False et l'appelant garde le chemin tkinter.
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import os
 import sys
@@ -175,9 +176,26 @@ def _library():
         ]
 
     _state["handler"] = _ERROR_HANDLER(_swallow_error)
-    x.XSetErrorHandler(_state["handler"])
     _state["lib"] = (x, ext)
     return _state["lib"]
+
+
+@contextlib.contextmanager
+def _errors_muted():
+    """Coupe les erreurs X, et rend la main au gestionnaire precedent apres.
+
+    XSetErrorHandler est global au processus, et tkinter est un client Xlib du
+    meme processus : le poser une fois pour toutes ne tient pas, un seul repli
+    vers tkinter installerait le gestionnaire de Tk par-dessus pour de bon. On
+    l'installe donc autour de chaque overlay, et on repose l'ancien en sortant
+    pour ne pas avaler les erreurs de Tk, qui n'a rien demande.
+    """
+    x, _ = _library()
+    previous = x.XSetErrorHandler(_state["handler"])
+    try:
+        yield
+    finally:
+        x.XSetErrorHandler(previous)
 
 
 def available() -> bool:
@@ -241,6 +259,13 @@ class _Overlay:
         if not self.gc or not self.image:
             self.close()
             raise X11Unavailable("contexte graphique indisponible")
+
+        # Xlib calcule le pas de ligne lui-meme ; s'il ne tombait pas sur nos
+        # quatre octets par pixel, XPutImage lirait hors du tampon.
+        stride = self.image.contents.bytes_per_line
+        if stride != width * 4 or self.image.contents.bits_per_pixel != 32:
+            self.close()
+            raise X11Unavailable(f"format inattendu : {stride} octets par ligne")
 
         self._declare_notification()
         self._let_clicks_through()
@@ -306,6 +331,11 @@ def play(frame: png.Frame, x: int, y: int, duration: float,
     l'ecran, on ne remonte plus d'erreur, un doot ecourte valant mieux qu'un
     doot en double par le chemin de repli.
     """
+    with _errors_muted():
+        _play(frame, x, y, duration, opacity, wav_path)
+
+
+def _play(frame, x, y, duration, opacity, wav_path) -> None:
     overlay = _Overlay(frame.width, frame.height, x, y)
     playback = None
     try:
