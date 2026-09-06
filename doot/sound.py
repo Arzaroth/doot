@@ -1,9 +1,12 @@
-"""Jingle de trompette : synthese maison + lecture multiplateforme.
+"""Le son du doot : lecture multiplateforme, avec repli synthetise.
 
-Aucun fichier audio n'est distribue avec le projet : le petit motif deux notes
-est synthetise localement (harmoniques + vibrato + enveloppe ADSR + soft
-clipping). Depose tes propres fichiers dans <data_dir>/sound/ pour les utiliser
-a la place (`doot --paths` donne le chemin) : wav, mp3, ogg, flac, m4a, opus.
+Ordre de priorite :
+  1. un fichier depose dans <data_dir>/sound/  (`doot --paths` donne le chemin)
+  2. le son fourni avec doot (doot/assets/doot.mp3)
+  3. un petit motif deux notes synthetise ici meme (harmoniques + vibrato +
+     enveloppe ADSR + soft clipping), utilise quand rien ne sait lire le mp3
+
+Formats acceptes : wav, mp3, ogg, opus, flac, m4a, aac.
 """
 
 from __future__ import annotations
@@ -28,6 +31,9 @@ NOTES = (
 
 # Formats acceptes pour les sons perso.
 AUDIO_EXTENSIONS = (".wav", ".mp3", ".ogg", ".oga", ".opus", ".flac", ".m4a", ".aac")
+
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+BUNDLED_SOUND = ASSETS_DIR / "doot.mp3"
 
 # Lecteurs Linux/BSD, dans l'ordre de preference.
 # "any" = gere aussi les formats compresses ; sinon wav (+ ce que lit libsndfile).
@@ -125,11 +131,25 @@ def custom_sounds(custom_dir: Path) -> list[Path]:
     )
 
 
+def bundled_sound() -> Path | None:
+    """Le son livre avec doot, ou None si le paquet n'en contient pas."""
+    return BUNDLED_SOUND if BUNDLED_SOUND.is_file() else None
+
+
 def pick_sound(cache_wav: Path, custom_dir: Path, volume: float = 0.55) -> Path:
-    """Un son perso a la priorite sur le jingle genere ; tirage au hasard."""
+    """Son a jouer : perso d'abord, puis celui fourni, puis le jingle synthetise.
+
+    Le son fourni est un mp3 : sur les systemes sans lecteur capable de le lire
+    (Linux minimal sans mpv/ffmpeg/sox/vlc), on retombe sur le jingle wav.
+    """
     customs = custom_sounds(custom_dir)
     if customs:
         return random.choice(customs)
+
+    default = bundled_sound()
+    if default is not None and (sys.platform == "win32" or find_player(default)):
+        return default
+
     return ensure_wav(cache_wav, volume)
 
 

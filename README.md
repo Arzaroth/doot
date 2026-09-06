@@ -25,7 +25,11 @@ tourne mais reste sagement endormi : le squelette range sa trompette.
 - **Zéro dépendance** : uniquement la bibliothèque standard de Python 3.8+
 - **Discret** : overlay sans bordure, qui ne vole jamais le focus et — sous Windows —
   laisse passer les clics de souris. Il ne bloque rien, il fait juste *doot*.
-- **Personnalisable** : dépose ton PNG/GIF et ton mp3, ils remplacent l'ASCII art et le jingle.
+- **Multi-écrans** : les moniteurs sont énumérés pour de vrai (Win32, xrandr,
+  CoreGraphics), le squelette surgit sur l'un d'eux au hasard, jamais à cheval
+  entre deux dalles ni sous la barre des tâches.
+- **Prêt à l'emploi** : le squelette et son *doot* sont livrés avec ; dépose ton
+  propre PNG/GIF ou mp3 pour les remplacer, sans toucher au code.
 - **Saisonnier** : la fenêtre du 1er septembre au 31 octobre est appliquée par le
   programme lui-même, pas seulement par le planificateur.
 
@@ -128,6 +132,7 @@ doot --once --ignore-season  # idem, même hors saison : pratique pour tester
 doot --status                # saison, daemon, son et image utilisés
 doot --stop                  # arrête le daemon
 doot --paths                 # où sont les fichiers
+doot --screens               # liste les écrans détectés
 doot --art                   # imprime le squelette dans le terminal
 ```
 
@@ -142,16 +147,25 @@ doot --art                   # imprime le squelette dans le terminal
 | `--opacity` | `1.0` | opacité maximale de l'overlay |
 | `--font-size` | `15` | taille du squelette ASCII |
 | `--center` | — | toujours au centre, au lieu d'une position aléatoire |
+| `--screen` | `random` | écran d'apparition : `random`, `primary`, ou un index (`0`, `1`…) |
 | `--no-sound` | — | mode muet |
 | `--regen-sound` | — | régénère le jingle |
 | `--ignore-season` | — | ignore la fenêtre saisonnière (tests) |
 | `--quiet` | — | n'écrit que dans le journal |
 
-## Mettre ton propre squelette et ton propre son
+## Les médias
 
-Le dépôt ne distribue **aucun média** : par défaut doot dessine son squelette en ASCII
-et synthétise lui-même son petit motif deux notes (harmoniques, vibrato, enveloppe
-ADSR). Tout se remplace en déposant des fichiers, sans toucher au code :
+doot est livré avec le squelette et le son qu'on attend : `doot/assets/doot.png`
+et `doot/assets/doot.mp3`, installés d'office. C'est le mème *skull trumpet*
+(« doot doot »), qui circule un peu partout depuis 2010 ; il est inclus pour que
+ça marche du premier coup. Si tu es l'ayant droit et que ça te dérange, ouvre une
+issue et je les retire.
+
+Trois niveaux de repli, dans cet ordre : tes fichiers → les fichiers fournis →
+l'ASCII art et le jingle synthétisé maison (harmoniques, vibrato, enveloppe ADSR),
+utilisés notamment sur un Linux sans lecteur mp3.
+
+### Mettre les tiens
 
 ```bash
 doot --paths        # affiche les deux dossiers ci-dessous
@@ -164,8 +178,10 @@ doot --paths        # affiche les deux dossiers ci-dessous
 - **Son** → dossier `sound/` : `.wav`, `.mp3`, `.ogg`, `.flac`, `.m4a`, `.opus`.
   L'affichage s'allonge automatiquement pour couvrir toute la durée du son.
 
-Les fichiers sont relus à chaque apparition : tu peux les changer pendant que le
-daemon tourne. À toi de n'y mettre que des médias que tu as le droit d'utiliser.
+Tes fichiers passent devant ceux fournis, et ils sont relus à chaque apparition :
+tu peux les changer pendant que le daemon tourne. Pour revenir au dessin ASCII et
+au jingle synthétisé : `doot --no-image --regen-sound` (ou vide les deux dossiers
+et supprime `doot/assets/`).
 
 ## Où sont les fichiers
 
@@ -194,6 +210,13 @@ au moins un de `mpv`, `ffplay`, `play`, `cvlc` (tous formats) ou `pw-play`,
 ton jpg/webp, par exemple avec `ffmpeg -i image.webp image.png`. Une image
 illisible fait simplement revenir l'ASCII art.
 
+**Il n'apparaît que sur un seul écran** → `doot --screens` liste ce que doot
+détecte. Sous Linux la détection passe par `xrandr` : sans lui (ou sous Wayland
+pur), tout le bureau est vu comme un seul écran. Installe `xorg-xrandr`, ou fixe
+la cible avec `doot --screen 0`. Avec des écrans à facteurs d'échelle différents
+sous Windows, la position peut se décaler un peu : `--screen primary` évite le
+problème.
+
 **Le fond n'est pas transparent** (Linux) → il faut un compositeur actif
 (`picom`, KWin, Mutter…). Sinon le squelette s'affiche sur un fond sombre.
 
@@ -212,6 +235,7 @@ ou vérifie le raccourci dans `shell:startup` (Windows).
 | `doot/season.py` | la fenêtre 1er septembre → 31 octobre |
 | `doot/art.py` | l'ASCII art et les images de l'animation |
 | `doot/image.py` | le choix du PNG/GIF déposé par l'utilisateur |
+| `doot/screens.py` | l'énumération des écrans (Win32 / xrandr / CoreGraphics) |
 | `doot/sound.py` | synthèse du jingle, durée et lecture selon l'OS |
 | `doot/window.py` | l'overlay tkinter, la transparence, le fondu |
 | `doot/cli.py` | la CLI, la boucle aléatoire, l'instance unique |
@@ -222,5 +246,10 @@ se contente de revérifier la date toutes les heures.
 
 ## Licence
 
-MIT. L'ASCII art et le jingle synthétisé sont originaux et fournis sous la même
-licence. Les médias que tu ajoutes toi-même restent soumis à leurs propres droits.
+Le **code** est sous licence MIT, ainsi que l'ASCII art et le jingle synthétisé,
+qui sont originaux.
+
+Les fichiers de `doot/assets/` sont l'exception : le mème *skull trumpet* n'est
+pas de moi et n'est pas couvert par la licence MIT du projet. Il est inclus par
+commodité ; retire-le si ton usage l'exige, et les médias que tu ajoutes toi-même
+restent soumis à leurs propres droits.

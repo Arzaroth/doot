@@ -30,3 +30,6 @@ Issues = "https://github.com/boubou666/doot/issues"
 
 [tool.setuptools]
 packages = ["doot"]
+
+[tool.setuptools.package-data]
+doot = ["assets/*"]

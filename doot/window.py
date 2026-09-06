@@ -19,7 +19,7 @@ import sys
 from fractions import Fraction
 from pathlib import Path
 
-from . import art, sound
+from . import art, screens, sound
 
 TRANSPARENT_KEY = "#ff00ff"
 FALLBACK_BG = "#0b0b12"
@@ -159,8 +159,13 @@ def show(
     opacity: float = 1.0,
     image_path: Path | None = None,
     scale: float | None = None,
+    screen: str | int | None = None,
 ) -> None:
-    """Affiche un doot et rend la main quand il a disparu."""
+    """Affiche un doot et rend la main quand il a disparu.
+
+    `screen` : None/"random" pour un ecran au hasard, "primary" pour l'ecran
+    principal, ou l'index d'un ecran precis.
+    """
     tk, tkfont = _import_tk()
 
     root = tk.Tk()
@@ -178,8 +183,13 @@ def show(
     background = _setup_transparency(root)
     root.configure(bg=background)
 
-    screen_w = root.winfo_screenwidth()
-    screen_h = root.winfo_screenheight()
+    # Ecran d'accueil : tkinter ne sait pas decrire un montage multi-ecrans,
+    # on demande au systeme (voir screens.py).
+    monitor = screens.pick(
+        screens.monitors(root.winfo_screenwidth(), root.winfo_screenheight()),
+        screen,
+    )
+    screen_w, screen_h = monitor.width, monitor.height
 
     frames: list = []
     if image_path is not None:
@@ -218,12 +228,7 @@ def show(
     if not frames:
         label.configure(text=art.frame(0))
 
-    if center:
-        x = (screen_w - width) // 2
-        y = (screen_h - height) // 2
-    else:
-        x = random.randint(0, max(0, screen_w - width))
-        y = random.randint(0, max(0, screen_h - height))
+    x, y = monitor.place(width, height, center, random)
     root.geometry(f"{width}x{height}+{x}+{y}")
 
     root.deiconify()

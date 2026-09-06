@@ -158,6 +158,7 @@ def do_once(args) -> int:
         opacity=args.opacity,
         image_path=picture,
         scale=args.scale,
+        screen=args.screen,
     )
     return 0
 
@@ -201,6 +202,7 @@ def do_daemon(args) -> int:
                     opacity=args.opacity,
                     image_path=picture,
                     scale=args.scale,
+                    screen=args.screen,
                 )
                 log("doot !", quiet=args.quiet)
             except window.TkinterMissing as exc:
@@ -227,17 +229,29 @@ def do_status(args) -> int:
 
     sounds = sound.custom_sounds(p["sound"])
     if sounds:
-        print(f"  son         : {sounds[0].name}" + (f" (+{len(sounds) - 1} autre(s), tirage au hasard)" if len(sounds) > 1 else ""))
+        extra = f" (+{len(sounds) - 1} autre(s), tirage au hasard)" if len(sounds) > 1 else ""
+        print(f"  son         : {sounds[0].name}{extra}")
     else:
-        print("  son         : jingle synthetise (depose un fichier dans le dossier ci-dessous)")
+        chosen = sound.pick_sound(p["wav"], p["sound"])
+        origin = "fourni" if chosen == sound.BUNDLED_SOUND else "jingle synthetise"
+        print(f"  son         : {chosen.name} ({origin})")
     print(f"  sons perso  : {p['sound']}  ({len(sounds)} fichier(s))")
 
     pictures = image.custom_images(p["image"])
     if pictures:
-        print(f"  image       : {pictures[0].name}" + (f" (+{len(pictures) - 1} autre(s), tirage au hasard)" if len(pictures) > 1 else ""))
+        extra = f" (+{len(pictures) - 1} autre(s), tirage au hasard)" if len(pictures) > 1 else ""
+        print(f"  image       : {pictures[0].name}{extra}")
+    elif image.bundled_image():
+        print(f"  image       : {image.BUNDLED_IMAGE.name} (fournie)")
     else:
         print("  image       : ASCII art (depose un PNG/GIF dans le dossier ci-dessous)")
     print(f"  images      : {p['image']}  ({len(pictures)} fichier(s))")
+
+    from . import screens
+
+    found = screens.monitors()
+    target = "au hasard" if args.screen in (None, "", "random") else f"--screen {args.screen}"
+    print(f"  ecrans      : {screens.describe(found)} -> apparition {target}")
 
     print(f"  journal     : {p['log']}")
     if sys.platform == "win32":
@@ -253,6 +267,20 @@ def do_status(args) -> int:
         print("  affichage   : tkinter OK")
     except Exception:
         print("  affichage   : tkinter MANQUANT (voir README)")
+    return 0
+
+
+def do_screens(args) -> int:
+    from . import screens
+
+    found = screens.monitors()
+    print(f"doot : {len(found)} ecran(s) detecte(s)")
+    for index, monitor in enumerate(found):
+        tag = "  (principal)" if monitor.primary else ""
+        print(f"  {index}  {monitor.name:<16} {monitor.width}x{monitor.height} "
+              f"a +{monitor.x}+{monitor.y}{tag}")
+    print("\nPar defaut le squelette surgit sur un ecran au hasard.")
+    print("Le fixer :  doot --screen 0   |   doot --screen primary")
     return 0
 
 
@@ -320,6 +348,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--opacity", type=float, default=1.0, help="opacite maximale, 0.0 a 1.0")
     parser.add_argument("--font-size", type=int, default=15, help="taille de la police (defaut 15)")
     parser.add_argument("--center", action="store_true", help="toujours au centre au lieu du hasard")
+    parser.add_argument("--screen", default=None, metavar="CHOIX",
+                        help="ecran d'apparition : 'random' (defaut), 'primary', "
+                             "ou un index (0, 1, 2...). Voir 'doot --screens'.")
+    parser.add_argument("--screens", action="store_true", help="liste les ecrans detectes")
     parser.add_argument("--no-sound", action="store_true", help="mode muet")
     parser.add_argument("--regen-sound", action="store_true", help="regenere le jingle synthetise")
     parser.add_argument("--ignore-season", action="store_true",
@@ -345,6 +377,8 @@ def main(argv: list[str] | None = None) -> int:
         sound.ensure_wav(p["wav"], args.volume, force=True)
         print(f"doot : jingle regenere -> {p['wav']}")
 
+    if args.screens:
+        return do_screens(args)
     if args.status:
         return do_status(args)
     if args.paths:

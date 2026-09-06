@@ -6,8 +6,12 @@ dist/
 .venv/
 venv/
 
-# donnees locales et medias perso : jamais dans le depot
+# donnees locales
 cache/
+doot.log
+doot.pid
+
+# medias : ceux fournis avec doot sont versionnes, pas les tiens
 sound/
 image/
 *.wav
@@ -17,8 +21,8 @@ image/
 *.flac
 *.m4a
 *.webp
-doot.log
-doot.pid
+!doot/assets/
+!doot/assets/**
 
 # packaging
 packaging/pkg/

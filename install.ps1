@@ -29,23 +29,37 @@ $BinDir     = Join-Path $InstallDir 'bin'
 # ------------------------------------------------------------- python --------
 
 function Find-Python {
+    # Sans guillemets internes : PowerShell les mange en passant a un exe natif.
+    $probeScript = 'import sys; print(sys.executable); print(sys.version_info[0]); print(sys.version_info[1])'
     $candidates = @(
         @{ File = 'py';      Args = @('-3') },
         @{ File = 'python3'; Args = @() },
         @{ File = 'python';  Args = @() }
     )
-    foreach ($c in $candidates) {
-        $cmd = Get-Command $c.File -ErrorAction SilentlyContinue
-        if (-not $cmd) { continue }
-        try {
-            # @(...) : le stub "Python" du Microsoft Store renvoie du texte libre,
-            # on ne veut surtout pas indexer une chaine caractere par caractere.
-            $probe = @(& $c.File @($c.Args + @('-c', 'import sys; print(sys.executable); print("%d.%d" % sys.version_info[:2])')) 2>$null)
-            if ($probe.Count -lt 2) { continue }
+
+    # Le stub "Python" du Microsoft Store repond du texte libre et un code
+    # d'erreur : on verifie le code de sortie et on parse defensivement.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        foreach ($c in $candidates) {
+            if (-not (Get-Command $c.File -ErrorAction SilentlyContinue)) { continue }
+
+            # @callArgs : splatting. Un @(...) litteral serait passe comme UN seul argument.
+            $callArgs = @($c.Args) + @('-c', $probeScript)
+            try {
+                $probe = @(& $c.File @callArgs)
+            } catch { continue }
+
+            if ($LASTEXITCODE -ne 0 -or $probe.Count -lt 3) { continue }
             $exe = "$($probe[0])".Trim()
-            $ver = [version]("$($probe[1])".Trim())
+            try {
+                $ver = [version]::new([int]"$($probe[1])".Trim(), [int]"$($probe[2])".Trim())
+            } catch { continue }
             if ($exe -and (Test-Path $exe) -and $ver -ge [version]'3.8') { return $exe }
-        } catch { continue }
+        }
+    } finally {
+        $ErrorActionPreference = $previous
     }
     return $null
 }
