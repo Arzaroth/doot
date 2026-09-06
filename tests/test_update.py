@@ -100,9 +100,44 @@ class Comparaison(UpdateTestCase):
         with mock.patch.object(update, "remote_sha", lambda: None):
             self.assertEqual(update.check(verbose=lambda *a: None), 2)
 
-    def test_commit_inconnu(self):
-        with mock.patch.object(update, "remote_sha", lambda: "b" * 40):
+    def test_commit_inconnu_compare_les_versions(self):
+        """Installe depuis une release : pas de commit, mais un numero.
+
+        Sans ce recours, --check-update ne repondait jamais rien d'utile a qui
+        avait installe depuis une release, faute de depot git.
+        """
+        from doot import __version__
+
+        with mock.patch.object(update, "latest_release", lambda: __version__):
+            self.assertEqual(update.check(verbose=lambda *a: None), 0)
+
+    def test_version_en_retard(self):
+        with mock.patch.object(update, "latest_release", lambda: "99.0.0"):
             self.assertEqual(update.check(verbose=lambda *a: None), 1)
+
+    def test_aucune_release_publiee(self):
+        with mock.patch.object(update, "latest_release", lambda: None):
+            self.assertEqual(update.check(verbose=lambda *a: None), 2)
+
+    def test_le_commit_prime_sur_la_version(self):
+        """Avec un commit connu, on compare les commits, c'est plus precis."""
+        update.write_record({"commit": "a" * 40})
+        appels = []
+        with mock.patch.object(update, "remote_sha", lambda: "a" * 40), \
+             mock.patch.object(update, "latest_release",
+                               lambda: appels.append(1) or "0.0.1"):
+            self.assertEqual(update.check(verbose=lambda *a: None), 0)
+        self.assertEqual(appels, [], "la version ne devrait pas etre interrogee")
+
+    def test_etiquette_sans_v(self):
+        """tag_name vaut vX.Y.Z, la comparaison porte sur X.Y.Z."""
+        donnees = {"tag_name": "v1.2.3"}
+        with mock.patch.object(update, "_api", lambda url: donnees):
+            self.assertEqual(update.latest_release(), "1.2.3")
+
+    def test_release_injoignable(self):
+        with mock.patch.object(update, "_api", lambda url: None):
+            self.assertIsNone(update.latest_release())
 
 
 class ChoixDeLaVoie(UpdateTestCase):

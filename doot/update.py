@@ -34,6 +34,7 @@ DEPOT = "boubou666/doot"
 BRANCHE = "main"
 ARCHIVE = f"https://codeload.github.com/{DEPOT}/zip/refs/heads/{BRANCHE}"
 API_HEAD = f"https://api.github.com/repos/{DEPOT}/commits/{BRANCHE}"
+API_LATEST = f"https://api.github.com/repos/{DEPOT}/releases/latest"
 DELAI = 30
 
 
@@ -106,17 +107,36 @@ def managed_elsewhere() -> str | None:
     return None
 
 
-def remote_sha() -> str | None:
-    """Dernier commit publie, ou None si le reseau ne repond pas."""
+def _api(url: str) -> dict | None:
     requete = urllib.request.Request(
-        API_HEAD,
+        url,
         headers={"Accept": "application/vnd.github+json", "User-Agent": "doot-update"},
     )
     try:
         with urllib.request.urlopen(requete, timeout=DELAI) as reponse:
-            return json.loads(reponse.read().decode("utf-8")).get("sha")
+            return json.loads(reponse.read().decode("utf-8"))
     except Exception:
         return None
+
+
+def remote_sha() -> str | None:
+    """Dernier commit publie, ou None si le reseau ne repond pas."""
+    donnees = _api(API_HEAD)
+    return donnees.get("sha") if donnees else None
+
+
+def latest_release() -> str | None:
+    """Version de la derniere release, sans le v initial.
+
+    Sert aux installations faites depuis une release : elles n'ont pas de
+    depot git, donc pas de commit a comparer, mais elles ont un numero de
+    version.
+    """
+    donnees = _api(API_LATEST)
+    if not donnees:
+        return None
+    etiquette = donnees.get("tag_name") or ""
+    return etiquette.lstrip("v") or None
 
 
 def download_source(destination: Path) -> Path:
@@ -262,24 +282,45 @@ def start_daemon(fiche: dict) -> bool:
 # ----------------------------------------------------------------- API -------
 
 def check(verbose=print) -> int:
-    """Compare le commit installe a celui publie."""
+    """Dit si une version plus recente existe.
+
+    Deux facons de comparer, selon ce qu'on sait de l'installation. Avec un
+    depot git derriere, on compare les commits, c'est le plus precis. Installe
+    depuis une release il n'y a pas de commit, mais il y a un numero de
+    version : on le compare alors a celui de la derniere release. Sans ce
+    second recours, `--check-update` ne repondait jamais rien d'utile a qui
+    avait installe depuis une release.
+    """
+    from . import __version__
+
     installe = local_sha()
-    publie = remote_sha()
 
-    verbose(f"  installe    : {installe[:8] if installe else 'inconnu'}")
-    if publie is None:
-        verbose("  publie      : injoignable (pas de reseau ?)")
-        return 2
-    verbose(f"  publie      : {publie[:8]}")
-
-    if installe and installe == publie:
-        verbose("\ndoot est a jour.")
-        return 0
     if installe:
+        publie = remote_sha()
+        verbose(f"  installe    : {installe[:8]} (commit)")
+        if publie is None:
+            verbose("  publie      : injoignable (pas de reseau ?)")
+            return 2
+        verbose(f"  publie      : {publie[:8]}")
+        if installe == publie:
+            verbose("\ndoot est a jour.")
+            return 0
         verbose("\nUne version plus recente existe : doot --update")
-    else:
-        verbose("\nCommit installe inconnu (installation manuelle ?) : "
-                "doot --update reinstallera depuis GitHub.")
+        return 1
+
+    publiee = latest_release()
+    verbose(f"  installe    : {__version__} (version, pas de depot git)")
+    if publiee is None:
+        verbose("  publie      : injoignable (pas de reseau, ou aucune release)")
+        return 2
+    verbose(f"  publie      : {publiee}")
+
+    if __version__ == publiee:
+        verbose("\ndoot est a jour.")
+        verbose("(compare de version a version : `doot --update` ira quand meme "
+                "chercher les derniers changements de la branche principale.)")
+        return 0
+    verbose("\nUne version plus recente existe : doot --update")
     return 1
 
 
@@ -307,6 +348,19 @@ def update(verbose=print) -> int:
         source, voie = refresh_source(fiche, Path(travail), verbose)
         run_installer(source, fiche, verbose)
         apres = git_sha(source) or remote_sha()
+        source_durable = source if git_sha(source) else None
+
+    # L'installeur vient de reecrire la fiche. Par une archive il n'a pas de
+    # commit a y mettre, et il y laisse le dossier temporaire qu'on efface a
+    # l'instant : on rectifie, sans quoi la fiche pointerait un chemin mort et
+    # --check-update resterait muet jusqu'a la fin des temps.
+    fraiche = read_record()
+    if fraiche:
+        if apres and not fraiche.get("commit"):
+            fraiche["commit"] = apres
+        if not source_durable:
+            fraiche["source"] = ""
+        write_record(fraiche)
 
     if tournait:
         verbose("  daemon      : redemarrage")
