@@ -20,6 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - { os: ubuntu-latest, python: "3.8" }
           - { os: ubuntu-latest, python: "3.9" }
           - { os: ubuntu-latest, python: "3.11" }
           - { os: ubuntu-latest, python: "3.13" }
@@ -29,28 +30,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Installer Python ${{ matrix.python }}
-        uses: actions/setup-python@v5
+      - name: Installer uv et Python ${{ matrix.python }}
+        # uv telecharge l'interpreteur au lieu de dependre de ce que le runner
+        # embarque, ce qui rend 3.8 eprouvable a nouveau : les images GitHub ne
+        # le fournissent plus.
+        uses: astral-sh/setup-uv@v10
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Installer Pillow
-        # Uniquement pour la CI : c'est la reference a laquelle on compare le
-        # decodeur PNG maison. doot lui-meme n'a aucune dependance.
-        run: python -m pip install --quiet --upgrade pip pillow
-
       - name: Suite de tests
-        run: python -m unittest discover -s tests -v
+        # --no-project : on eprouve l'arbre des sources tel quel, sans installer
+        # le paquet, exactement comme avant. --with pillow fournit la reference
+        # a laquelle le decodeur PNG maison est confronte, et disparait avec
+        # l'environnement ephemere : doot lui-meme n'a aucune dependance.
+        run: uv run --no-project --with pillow python -m unittest discover -s tests -v
 
       - name: Le paquet s'importe et la CLI repond
         # Aucune de ces commandes n'ouvre de fenetre : elles doivent passer
         # sur un runner sans serveur graphique.
         run: |
-          python -c "import doot, doot.cli, doot.sound, doot.screens, doot.window"
-          python -m doot --version
-          python -m doot --art
-          python -m doot --screens
-          python -m doot --paths
+          uv run --no-project python -c "import doot, doot.cli, doot.sound, doot.screens, doot.window"
+          uv run --no-project python -m doot --version
+          uv run --no-project python -m doot --art
+          uv run --no-project python -m doot --screens
+          uv run --no-project python -m doot --paths
 
   scripts:
     name: Scripts shell
