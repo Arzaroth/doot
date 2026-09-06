@@ -325,7 +325,11 @@ def frame(path: Path, scale: float = 1.0) -> Frame:
     channels = CHANNELS[color]
     bits = channels * depth
     stride = (width * bits + 7) // 8
-    lines = _unfilter(zlib.decompress(b"".join(idat)), height, max(1, bits // 8), stride)
+    try:
+        brut = zlib.decompress(b"".join(idat))
+    except zlib.error as erreur:
+        raise PngError(f"donnees compressees illisibles : {erreur}") from erreur
+    lines = _unfilter(brut, height, max(1, bits // 8), stride)
     samples = _to_bytes_per_sample(lines, width, height, depth, channels, stride,
                                    stretch=color != 3)
     pixels = _premultiplied_bgra(samples, width, height, color, palette, trns, depth)

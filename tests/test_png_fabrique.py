@@ -361,14 +361,13 @@ class PngFabrique(unittest.TestCase):
     def test_size_ne_decode_pas(self):
         """size() lit l'entete : elle repond meme si les pixels sont illisibles.
 
-        Le decodage, lui, laisse remonter le zlib.error tel quel plutot que de
-        l'habiller en PngError. Sans consequence, window.py rattrape Exception
-        avant de reprendre tkinter, mais le test fige la chose telle qu'elle
-        est plutot que de faire semblant.
+        Le decodage, lui, doit refuser en PngError comme n'importe quelle image
+        illisible, sans laisser filtrer l'exception de zlib : le contrat du
+        module ne demande a l'appelant de connaitre que PngError.
         """
         path = ecrire_png(self.root / "entete.png", 7, 3, 8, GRIS, [0] * 21, idat_casse=True)
         self.assertEqual(png.size(path), (7, 3))
-        with self.assertRaises(zlib.error):
+        with self.assertRaises(png.PngError):
             png.frame(path, 1.0)
 
     def test_cache_suit_la_date_du_fichier(self):
