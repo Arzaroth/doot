@@ -34,7 +34,7 @@ jobs:
         # uv telecharge l'interpreteur au lieu de dependre de ce que le runner
         # embarque, ce qui rend 3.8 eprouvable a nouveau : les images GitHub ne
         # le fournissent plus.
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: ${{ matrix.python }}
 
