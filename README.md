@@ -76,6 +76,20 @@ apparitions de 2 à 8 heures, et `--no-sound` le rend muet.
 
 ## Installation
 
+### Depuis PyPI, sur les trois systèmes
+
+```bash
+pipx install spooky-doot
+```
+
+Le paquet s'appelle `spooky-doot` parce que `doot` était déjà pris ; la commande
+reste `doot`. `pip install spooky-doot` marche aussi, mais `pipx` l'isole dans
+son propre environnement, ce qui vaut mieux pour un outil qu'on lance.
+
+Ça installe la commande et les médias, mais **pas** le démarrage automatique.
+Pour que le squelette revienne tout seul à chaque session, il faut les scripts
+ci-dessous — ou lancer `doot` toi-même.
+
 ### Linux (dont Arch) et macOS
 
 ```bash

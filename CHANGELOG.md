@@ -12,6 +12,23 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ajouté
+- Publication sur PyPI : `pipx install spooky-doot`. Le nom `doot` était déjà
+  pris par un lanceur de tâches, seul le nom de distribution change — le module
+  et la commande restent `doot`.
+- Le workflow de release envoie les paquets à PyPI après avoir publié la
+  release GitHub, dans un job séparé pour qu'un refus de PyPI n'emporte pas une
+  release déjà faite. L'authentification passe par le jeton OIDC de GitHub :
+  aucun secret n'est stocké dans le dépôt.
+- `twine check` valide les métadonnées avant publication.
+- Métadonnées enrichies pour PyPI : classifiers par version de Python et par
+  système, liens vers le changelog et le dépôt.
+
+### Modifié
+- `requires-python` passe de `>=3.8` à `>=3.9`, ce que la CI éprouve
+  réellement. Annoncer 3.8 laissait `pip` installer le paquet sur une version
+  que personne ne teste.
+
 ## [1.2.1] - 2026-09-06
 
 ### Corrigé
