@@ -65,6 +65,10 @@ jobs:
         run: |
           bash -n install.sh
           bash -n uninstall.sh
+          # Le PKGBUILD est du bash, et il porte desormais un check() et un
+          # garde-fou. Personne ne le construit en CI, mais une faute de frappe
+          # ne doit pas attendre qu'un utilisateur d'Arch la decouvre.
+          bash -n packaging/PKGBUILD
 
       - name: Les installeurs sont executables
         # Un clone doit pouvoir lancer ./install.sh directement.
