@@ -169,10 +169,15 @@ class Spatialisation(unittest.TestCase):
     # ------------------------------------------------------------ gains ------
 
     def test_centre_equilibre_et_a_plein_volume(self):
-        """Au centre, le son doit etre celui d'origine, pas 3 dB en dessous."""
+        """Au centre, le son doit etre celui d'origine, pas 3 dB en dessous.
+
+        L'egalite est exigee stricte : cos(pi/4) et sin(pi/4) ne tombent pas
+        sur le meme dernier bit d'une libm a l'autre, et cet ecart infime
+        suffisait a desequilibrer les canaux d'une unite sur Linux.
+        """
         gauche, droite = sound.stereo_gains(0.0)
-        self.assertAlmostEqual(gauche, droite)
-        self.assertAlmostEqual(gauche, 1.0)
+        self.assertEqual(gauche, droite, "canaux desequilibres au centre exact")
+        self.assertEqual(gauche, 1.0)
 
     def test_extremes(self):
         gauche, droite = sound.stereo_gains(-1.0)

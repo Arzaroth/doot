@@ -174,7 +174,12 @@ def stereo_gains(pan: float) -> tuple[float, float]:
     """
     pan = max(-1.0, min(1.0, float(pan)))
     angle = (pan + 1.0) * (math.pi / 4.0)  # -1 -> 0, 0 -> pi/4, +1 -> pi/2
-    gauche, droite = math.cos(angle), math.sin(angle)
+
+    # Arrondi avant de comparer : cos(pi/4) et sin(pi/4) ne tombent pas sur le
+    # meme dernier bit d'une libm a l'autre, et au centre exact cet ecart
+    # infime suffirait a desequilibrer les deux canaux d'une unite.
+    gauche = round(math.cos(angle), 12)
+    droite = round(math.sin(angle), 12)
     fort = max(gauche, droite)
     return gauche / fort, droite / fort
 
@@ -218,8 +223,10 @@ def pan_wav(src: Path, dest: Path, pan: float) -> Path | None:
             gauche = droite = samples[i]
         else:
             gauche, droite = samples[2 * i], samples[2 * i + 1]
-        gauche = int(gauche * left_gain)
-        droite = int(droite * right_gain)
+        # arrondi, pas troncature : `int()` tire tout vers zero et ajoute un
+        # biais a chaque echantillon
+        gauche = int(round(gauche * left_gain))
+        droite = int(round(droite * right_gain))
         out[2 * i] = max(-limit - 1, min(limit, gauche))
         out[2 * i + 1] = max(-limit - 1, min(limit, droite))
 
