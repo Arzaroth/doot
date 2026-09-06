@@ -128,6 +128,13 @@ Démarrage. Aucun droit administrateur, aucun composant système modifié.
 python3 -m doot --once --ignore-season
 ```
 
+## Versions
+
+Les évolutions sont consignées dans le [CHANGELOG](CHANGELOG.md), au format
+[Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Chaque étiquette `vX.Y.Z`
+publie une [release](https://github.com/boubou666/doot/releases) automatiquement,
+avec les notes tirées du changelog et les paquets Python construits.
+
 ## Mettre à jour
 
 Une fois installé, doot se met à jour tout seul, sur les trois systèmes :

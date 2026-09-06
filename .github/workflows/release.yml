@@ -1,0 +1,102 @@
+name: Release
+
+# Une etiquette vXX pousse sur le depot publie une release. Les tests tournent
+# avant : on ne veut pas d'une release qu'on aurait su cassee.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publier ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Installer les outils
+        run: python -m pip install --quiet --upgrade pip pillow build
+
+      - name: L'etiquette doit correspondre a la version du code
+        shell: python
+        run: |
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          etiquette = os.environ["GITHUB_REF_NAME"]
+          annoncee = etiquette.lstrip("v").split("-")[0]
+
+          source = Path("doot/__init__.py").read_text(encoding="utf-8")
+          trouvee = re.search(r'__version__\s*=\s*"([^"]+)"', source).group(1)
+
+          if annoncee != trouvee:
+              sys.exit(
+                  f"L'etiquette {etiquette} annonce la version {annoncee}, mais "
+                  f"doot/__init__.py declare {trouvee}.\n"
+                  "Mets a jour __version__ et pyproject.toml avant d'etiqueter."
+              )
+          print(f"{etiquette} correspond bien a __version__ = {trouvee}")
+
+      - name: Suite de tests
+        run: python -m unittest discover -s tests
+
+      - name: Construire les paquets
+        run: python -m build
+
+      - name: Extraire la section du changelog
+        shell: python
+        run: |
+          import os
+          import re
+          from pathlib import Path
+
+          etiquette = os.environ["GITHUB_REF_NAME"]
+          version = etiquette.lstrip("v")
+          texte = Path("CHANGELOG.md").read_text(encoding="utf-8")
+
+          # La section va de son titre au titre suivant. Elle s'arrete aussi
+          # devant les definitions de liens de bas de page, sans quoi la
+          # derniere version de la liste avalerait toute la table des
+          # comparaisons.
+          motif = re.compile(
+              rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## \[|^\[[^\]]+\]:|\Z)",
+              re.MULTILINE | re.DOTALL,
+          )
+          trouve = motif.search(texte)
+          corps = trouve.group(1).strip() if trouve else (
+              f"Pas de section `[{version}]` dans le CHANGELOG."
+          )
+
+          notes = Path("notes-de-release.md")
+          notes.write_text(corps + "\n", encoding="utf-8")
+          print(corps[:400])
+
+      - name: Publier la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Une etiquette du genre v1.1.0-rc1 est publiee comme pre-version.
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            prerelease="--prerelease"
+          else
+            prerelease=""
+          fi
+
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "doot ${GITHUB_REF_NAME}" \
+            --notes-file notes-de-release.md \
+            $prerelease \
+            dist/*
