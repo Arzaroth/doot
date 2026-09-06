@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LaunchAgent macOS (modele).
+  install.sh en genere automatiquement une version avec les bons chemins dans
+  ~/Library/LaunchAgents/com.doot.skeleton.plist. Pour le faire a la main :
+
+      cp packaging/com.doot.skeleton.plist ~/Library/LaunchAgents/
+      # remplace USERNAME par ton nom d'utilisateur
+      launchctl load ~/Library/LaunchAgents/com.doot.skeleton.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.doot.skeleton</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/USERNAME/.local/bin/doot</string>
+        <string>--min</string><string>600</string>
+        <string>--max</string><string>3600</string>
+        <string>--quiet</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>

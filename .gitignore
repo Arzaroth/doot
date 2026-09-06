@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# donnees locales / artefacts
+cache/
+sound/
+*.wav
+doot.log
+doot.pid
+
+# packaging
+packaging/pkg/
+packaging/src/
+packaging/*.tar.gz
+packaging/*.pkg.tar.zst

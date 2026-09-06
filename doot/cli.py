@@ -1,0 +1,328 @@
+"""Ligne de commande et boucle de fond de doot."""
+
+from __future__ import annotations
+
+import argparse
+import ctypes
+import os
+import random
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+from . import __version__, art, season, sound
+
+DEFAULT_MIN_SECONDS = 600     # 10 min
+DEFAULT_MAX_SECONDS = 3600    # 1 h
+DEFAULT_DURATION = 2.8
+DEFAULT_VOLUME = 0.55
+OUT_OF_SEASON_POLL = 3600     # on reverifie la date toutes les heures
+
+
+# --------------------------------------------------------------- chemins -----
+
+def data_dir() -> Path:
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local")
+        return Path(base) / "doot"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "doot"
+    base = os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")
+    return Path(base) / "doot"
+
+
+def paths() -> dict[str, Path]:
+    root = data_dir()
+    return {
+        "data": root,
+        "sound": root / "sound",
+        "wav": root / "doot.wav",
+        "log": root / "doot.log",
+        "pid": root / "doot.pid",
+    }
+
+
+def log(message: str, quiet: bool = False) -> None:
+    line = f"{datetime.now():%Y-%m-%d %H:%M:%S}  {message}"
+    try:
+        path = paths()["log"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+    except Exception:
+        pass
+    if not quiet:
+        print(line, flush=True)
+
+
+# ------------------------------------------------------- instance unique -----
+
+def _process_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        SYNCHRONIZE = 0x00100000
+        handle = ctypes.windll.kernel32.OpenProcess(SYNCHRONIZE, False, pid)
+        if not handle:
+            return False
+        ctypes.windll.kernel32.CloseHandle(handle)
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def running_pid() -> int | None:
+    pid_file = paths()["pid"]
+    try:
+        pid = int(pid_file.read_text().strip())
+    except Exception:
+        return None
+    if _process_alive(pid):
+        return pid
+    return None
+
+
+def claim_pid_file() -> bool:
+    existing = running_pid()
+    if existing and existing != os.getpid():
+        return False
+    pid_file = paths()["pid"]
+    pid_file.parent.mkdir(parents=True, exist_ok=True)
+    pid_file.write_text(str(os.getpid()))
+    return True
+
+
+def release_pid_file() -> None:
+    try:
+        paths()["pid"].unlink()
+    except Exception:
+        pass
+
+
+# ------------------------------------------------------------- actions -------
+
+def do_once(args) -> int:
+    from . import window
+
+    if not args.ignore_season and not season.in_season():
+        print(f"doot : {season.describe()}")
+        print(f"Saison : {season.SEASON_LABEL}. (--ignore-season pour forcer un test.)")
+        return 3
+
+    p = paths()
+    wav = None
+    if not args.no_sound:
+        try:
+            wav = sound.pick_sound(p["wav"], p["sound"], args.volume)
+        except Exception as exc:
+            log(f"son indisponible : {exc}", quiet=args.quiet)
+
+    window.show(
+        wav_path=wav,
+        duration=args.duration,
+        font_size=args.font_size,
+        center=args.center,
+        opacity=args.opacity,
+    )
+    return 0
+
+
+def do_daemon(args) -> int:
+    from . import window
+
+    if not claim_pid_file():
+        log(f"une instance tourne deja (pid {running_pid()}), sortie.", quiet=args.quiet)
+        return 1
+
+    p = paths()
+    log(
+        f"demarrage (pid {os.getpid()}) - intervalle {args.min}-{args.max}s - "
+        f"saison {season.SEASON_LABEL}",
+        quiet=args.quiet,
+    )
+
+    wav = None
+    if not args.no_sound:
+        try:
+            wav = sound.pick_sound(p["wav"], p["sound"], args.volume)
+        except Exception as exc:
+            log(f"son indisponible : {exc}", quiet=args.quiet)
+
+    try:
+        while True:
+            if not args.ignore_season and not season.in_season():
+                wait = min(OUT_OF_SEASON_POLL, max(60.0, season.seconds_until_next_season()))
+                log(season.describe(), quiet=args.quiet)
+                time.sleep(wait)
+                continue
+
+            delay = random.randint(args.min, args.max)
+            log(f"prochain doot dans {delay}s", quiet=args.quiet)
+            time.sleep(delay)
+
+            if not args.ignore_season and not season.in_season():
+                continue  # la saison s'est fermee pendant l'attente
+
+            try:
+                # un .wav perso peut avoir ete depose entre-temps
+                if not args.no_sound:
+                    wav = sound.pick_sound(p["wav"], p["sound"], args.volume)
+                window.show(
+                    wav_path=wav,
+                    duration=args.duration,
+                    font_size=args.font_size,
+                    center=args.center,
+                    opacity=args.opacity,
+                )
+                log("doot !", quiet=args.quiet)
+            except window.TkinterMissing as exc:
+                log(str(exc), quiet=args.quiet)
+                return 4
+            except Exception as exc:
+                log(f"echec de l'affichage : {exc}", quiet=args.quiet)
+    except KeyboardInterrupt:
+        log("arret demande.", quiet=args.quiet)
+    finally:
+        release_pid_file()
+        log("arret.", quiet=args.quiet)
+    return 0
+
+
+def do_status(args) -> int:
+    p = paths()
+    pid = running_pid()
+    print(f"doot {__version__}")
+    print(f"  saison      : {season.SEASON_LABEL}")
+    print(f"  etat        : {season.describe()}")
+    print(f"  daemon      : {'actif (pid ' + str(pid) + ')' if pid else 'arrete'}")
+    print(f"  donnees     : {p['data']}")
+    print(f"  sons perso  : {p['sound']}  ({len(list(p['sound'].glob('*.wav'))) if p['sound'].is_dir() else 0} .wav)")
+    print(f"  journal     : {p['log']}")
+    player = sound.find_player()
+    if sys.platform == "win32":
+        print("  lecteur     : winsound (integre)")
+    else:
+        print(f"  lecteur     : {player[0] if player else 'AUCUN (installe pipewire/pulseaudio/alsa-utils)'}")
+    try:
+        from . import window  # noqa: F401
+
+        import tkinter  # noqa: F401
+
+        print("  affichage   : tkinter OK")
+    except Exception:
+        print("  affichage   : tkinter MANQUANT (voir README)")
+    return 0
+
+
+def do_paths(args) -> int:
+    for key, value in paths().items():
+        print(f"{key:6} {value}")
+    return 0
+
+
+def do_stop(args) -> int:
+    pid = running_pid()
+    if not pid:
+        print("doot : aucun daemon en cours.")
+        return 1
+    try:
+        if sys.platform == "win32":
+            os.system(f"taskkill /PID {pid} /F >NUL 2>&1")
+        else:
+            import signal
+
+            os.kill(pid, signal.SIGTERM)
+        print(f"doot : daemon {pid} arrete.")
+        release_pid_file()
+        return 0
+    except Exception as exc:
+        print(f"doot : impossible d'arreter {pid} : {exc}")
+        return 1
+
+
+def do_art(args) -> int:
+    print(art.frame(len(art.DOOT_FRAMES) - 1))
+    return 0
+
+
+# ---------------------------------------------------------------- parse ------
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="doot",
+        description="Un squelette trompettiste surgit au hasard sur ton ecran, "
+        f"uniquement du {season.SEASON_LABEL}.",
+    )
+    parser.add_argument("--version", action="version", version=f"doot {__version__}")
+
+    parser.add_argument("--once", action="store_true", help="affiche un doot tout de suite puis quitte")
+    parser.add_argument("--status", action="store_true", help="affiche l'etat (saison, daemon, audio)")
+    parser.add_argument("--stop", action="store_true", help="arrete le daemon en cours")
+    parser.add_argument("--paths", action="store_true", help="affiche les chemins utilises")
+    parser.add_argument("--art", action="store_true", help="imprime le squelette dans le terminal")
+
+    parser.add_argument("--min", type=int, default=DEFAULT_MIN_SECONDS,
+                        help=f"delai minimum entre deux doot, en secondes (defaut {DEFAULT_MIN_SECONDS})")
+    parser.add_argument("--max", type=int, default=DEFAULT_MAX_SECONDS,
+                        help=f"delai maximum entre deux doot, en secondes (defaut {DEFAULT_MAX_SECONDS})")
+    parser.add_argument("--duration", type=float, default=DEFAULT_DURATION,
+                        help=f"duree d'affichage en secondes (defaut {DEFAULT_DURATION})")
+    parser.add_argument("--volume", type=float, default=DEFAULT_VOLUME,
+                        help="volume du jingle synthetise, 0.0 a 1.0")
+    parser.add_argument("--opacity", type=float, default=1.0, help="opacite maximale, 0.0 a 1.0")
+    parser.add_argument("--font-size", type=int, default=15, help="taille de la police (defaut 15)")
+    parser.add_argument("--center", action="store_true", help="toujours au centre au lieu du hasard")
+    parser.add_argument("--no-sound", action="store_true", help="mode muet")
+    parser.add_argument("--regen-sound", action="store_true", help="regenere le jingle synthetise")
+    parser.add_argument("--ignore-season", action="store_true",
+                        help="ignore la fenetre 1er sept - 31 oct (tests uniquement)")
+    parser.add_argument("--quiet", action="store_true", help="n'ecrit que dans le journal")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+
+    if args.min < 1:
+        args.min = 1
+    if args.max < args.min:
+        args.max = args.min
+
+    p = paths()
+    p["data"].mkdir(parents=True, exist_ok=True)
+    p["sound"].mkdir(parents=True, exist_ok=True)
+
+    if args.regen_sound:
+        sound.ensure_wav(p["wav"], args.volume, force=True)
+        print(f"doot : jingle regenere -> {p['wav']}")
+
+    if args.status:
+        return do_status(args)
+    if args.paths:
+        return do_paths(args)
+    if args.stop:
+        return do_stop(args)
+    if args.art:
+        return do_art(args)
+
+    try:
+        if args.once:
+            return do_once(args)
+        return do_daemon(args)
+    except Exception as exc:
+        from .window import TkinterMissing
+
+        if isinstance(exc, TkinterMissing):
+            print(str(exc), file=sys.stderr)
+            return 4
+        raise
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

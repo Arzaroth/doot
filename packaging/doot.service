@@ -1,0 +1,23 @@
+# Unite systemd utilisateur (modele).
+# install.sh en genere automatiquement une version avec les bons chemins dans
+# ~/.config/systemd/user/doot.service. Ce fichier sert de reference si tu
+# preferes l'ecrire a la main :
+#
+#   cp packaging/doot.service ~/.config/systemd/user/doot.service
+#   $EDITOR ~/.config/systemd/user/doot.service   # ajuste ExecStart
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now doot.service
+
+[Unit]
+Description=doot - squelette trompettiste saisonnier
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/doot --min 600 --max 3600 --quiet
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=default.target

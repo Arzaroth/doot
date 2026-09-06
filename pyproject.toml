@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "doot"
+version = "1.0.0"
+description = "Un squelette trompettiste qui surgit au hasard sur ton ecran, du 1er septembre au 31 octobre."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+keywords = ["doot", "skeleton", "halloween", "spooky", "prank", "desktop"]
+classifiers = [
+    "Environment :: X11 Applications",
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: MacOS X",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Games/Entertainment",
+]
+dependencies = []
+
+[project.scripts]
+doot = "doot.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/boubou666/doot"
+Issues = "https://github.com/boubou666/doot/issues"
+
+[tool.setuptools]
+packages = ["doot"]

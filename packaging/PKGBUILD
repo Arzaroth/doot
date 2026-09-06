@@ -1,0 +1,40 @@
+# Maintainer: boubou666
+# PKGBUILD Arch Linux. Depuis la racine du depot :
+#
+#   cd packaging && makepkg -si
+#
+# Puis, une fois par utilisateur, pour le demarrage automatique :
+#   systemctl --user enable --now doot.service
+
+pkgname=doot
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Un squelette trompettiste qui surgit au hasard sur ton ecran, du 1er septembre au 31 octobre"
+arch=('any')
+url="https://github.com/boubou666/doot"
+license=('MIT')
+depends=('python' 'tk')
+optdepends=(
+    'pipewire-audio: lecture du son via pw-play'
+    'libpulse: lecture du son via paplay'
+    'alsa-utils: lecture du son via aplay'
+)
+makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cd "$srcdir/$pkgname-$pkgver"
+    python -m build --wheel --no-isolation
+}
+
+package() {
+    cd "$srcdir/$pkgname-$pkgver"
+    python -m installer --destdir="$pkgdir" dist/*.whl
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+
+    # unite systemd utilisateur, activable par chacun
+    install -Dm644 packaging/doot.service "$pkgdir/usr/lib/systemd/user/doot.service"
+    sed -i 's|%h/.local/bin/doot|/usr/bin/doot|' "$pkgdir/usr/lib/systemd/user/doot.service"
+}
