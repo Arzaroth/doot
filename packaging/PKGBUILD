@@ -5,6 +5,10 @@
 #
 # Puis, une fois par utilisateur, pour le demarrage automatique :
 #   systemctl --user enable --now doot.service
+#
+# A chaque version : mettre pkgver a jour, puis `updpkgsums` pour regenerer la
+# somme de controle. Si on l'oublie, makepkg refuse l'archive au lieu de la
+# prendre les yeux fermes, ce qui est le comportement voulu.
 
 pkgname=doot
 pkgver=1.4.0
@@ -18,14 +22,34 @@ optdepends=(
     'pipewire-audio: lecture du son via pw-play'
     'libpulse: lecture du son via paplay'
     'alsa-utils: lecture du son via aplay'
+    'mpv: lecture des sons compresses et son spatialise'
+    'ffmpeg: idem, via ffplay'
+    'xorg-xrandr: detection des ecrans multiples'
 )
 makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
+checkdepends=('python-pillow')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('28dbd1e1ffc5d0087f347a902a56a5f93f21dccc22164bf1619f7b0403fd0f50')
 
 build() {
     cd "$srcdir/$pkgname-$pkgver"
+
+    # Le reste du projet est passe a uv, pas ce fichier, et c'est delibere.
+    # `uv build` isole la construction et telecharge ses dependances, ce qu'un
+    # makepkg ne doit pas faire ; l'en empecher demande --no-build-isolation,
+    # qui exige alors setuptools deja present. On ajouterait donc uv aux
+    # makedepends pour obtenir exactement le meme resultat que python-build,
+    # qui est par ailleurs la convention Arch. uv ne gagne rien ici.
     python -m build --wheel --no-isolation
+}
+
+check() {
+    cd "$srcdir/$pkgname-$pkgver"
+
+    # La suite n'ouvre aucune fenetre et ne touche pas au reseau : elle passe
+    # dans un chroot sans serveur graphique. Sans python-pillow, les tests de
+    # conformite PNG se contentent de sauter.
+    python -m unittest discover -s tests
 }
 
 package() {
@@ -33,8 +57,19 @@ package() {
     python -m installer --destdir="$pkgdir" dist/*.whl
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
     install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -Dm644 CHANGELOG.md "$pkgdir/usr/share/doc/$pkgname/CHANGELOG.md"
 
-    # unite systemd utilisateur, activable par chacun
-    install -Dm644 packaging/doot.service "$pkgdir/usr/lib/systemd/user/doot.service"
-    sed -i 's|%h/.local/bin/doot|/usr/bin/doot|' "$pkgdir/usr/lib/systemd/user/doot.service"
+    # Unite systemd utilisateur, activable par chacun. Le modele pointe vers
+    # ~/.local/bin, ou l'installeur manuel depose la commande ; le paquet, lui,
+    # la met dans /usr/bin.
+    local unite="$pkgdir/usr/lib/systemd/user/doot.service"
+    install -Dm644 packaging/doot.service "$unite"
+    sed -i 's|%h/.local/bin/doot|/usr/bin/doot|' "$unite"
+
+    # Un sed qui ne trouve pas son motif ne dit rien et laisse une unite qui
+    # pointe dans le vide. On verifie plutot que de le supposer.
+    grep -q 'ExecStart=/usr/bin/doot' "$unite" || {
+        echo "le chemin de l'unite systemd n'a pas ete reecrit" >&2
+        return 1
+    }
 }

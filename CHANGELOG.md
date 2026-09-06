@@ -12,6 +12,19 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ajouté
+- Le `PKGBUILD` joue la suite de tests pendant la construction du paquet Arch,
+  avec `python-pillow` en `checkdepends` pour que les tests de conformité PNG
+  ne se contentent pas de sauter.
+- `optdepends` mentionne `mpv` et `ffmpeg` pour les sons compressés et la
+  spatialisation, et `xorg-xrandr` pour la détection des écrans multiples.
+
+### Corrigé
+- Le `PKGBUILD` vérifie l'intégrité de l'archive téléchargée au lieu de
+  `sha256sums=('SKIP')`.
+- La réécriture du chemin dans l'unité systemd est contrôlée : un `sed` qui ne
+  trouvait plus son motif laissait sans un mot une unité pointant dans le vide.
+
 ## [1.4.0] - 2026-09-06
 
 L'outillage passe à uv, et Python 3.8 redevient une promesse tenue plutôt
