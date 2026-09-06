@@ -106,6 +106,35 @@ case ":$PATH:" in
        say "  -> ajoute  export PATH=\"\$HOME/.local/bin:\$PATH\"  a ton ~/.bashrc / ~/.zshrc" ;;
 esac
 
+# Fiche d'installation, relue par `doot --update`. Elle va dans le dossier de
+# donnees de doot, qui n'est pas celui du code : sur macOS c'est Application
+# Support, ailleurs le repertoire XDG.
+if [ "$(uname -s)" = "Darwin" ]; then
+    RECORD_DIR="$HOME/Library/Application Support/$APP_NAME"
+else
+    RECORD_DIR="$DATA_HOME/$APP_NAME"
+fi
+COMMIT=""
+if [ -d "$SRC_DIR/.git" ] && command -v git >/dev/null 2>&1; then
+    COMMIT="$(git -C "$SRC_DIR" rev-parse HEAD 2>/dev/null || true)"
+fi
+mkdir -p "$RECORD_DIR"
+cat > "$RECORD_DIR/install.json" <<EOF
+{
+  "source": "$SRC_DIR",
+  "commit": "$COMMIT",
+  "min": $MIN_SECONDS,
+  "max": $MAX_SECONDS,
+  "autostart": $([ "$AUTOSTART" -eq 1 ] && echo true || echo false),
+  "app_dir": "$APP_DIR",
+  "bin_dir": "$BIN_DIR",
+  "python": "$PYTHON",
+  "platform": "$(uname -s)",
+  "installed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+say "fiche       : $RECORD_DIR/install.json"
+
 # --------------------------------------------------------- demarrage ---------
 if [ "$AUTOSTART" -eq 1 ]; then
     head_ "Demarrage automatique"

@@ -143,6 +143,29 @@ if (-not $NoAutostart) {
     Write-Item 'demarrage automatique ignore (-NoAutostart)'
 }
 
+# Fiche d'installation, relue par `doot --update`.
+$RecordDir = Join-Path $env:LOCALAPPDATA 'doot'
+New-Item -ItemType Directory -Path $RecordDir -Force | Out-Null
+$commit = ''
+if ((Test-Path (Join-Path $Src '.git')) -and (Get-Command git -ErrorAction SilentlyContinue)) {
+    $commit = (& git -C $Src rev-parse HEAD 2>$null)
+    if ($LASTEXITCODE -ne 0) { $commit = '' }
+}
+[ordered]@{
+    source       = $Src
+    commit       = "$commit".Trim()
+    min          = $MinSeconds
+    max          = $MaxSeconds
+    autostart    = (-not $NoAutostart.IsPresent)
+    app_dir      = $AppDir
+    bin_dir      = $BinDir
+    python       = $python
+    pythonw      = $pythonw
+    platform     = 'Windows'
+    installed_at = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+} | ConvertTo-Json | Set-Content -Path (Join-Path $RecordDir 'install.json') -Encoding utf8
+Write-Item "fiche       : $RecordDir\install.json"
+
 Write-Head 'Termine'
 Write-Item 'Teste tout de suite : doot --once --ignore-season'
 Write-Item 'Etat                : doot --status'

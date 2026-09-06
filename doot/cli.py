@@ -272,6 +272,20 @@ def do_status(args) -> int:
     return 0
 
 
+def do_update(args) -> int:
+    from . import update
+
+    print(f"doot {__version__} - mise a jour")
+    return update.update()
+
+
+def do_check_update(args) -> int:
+    from . import update
+
+    print(f"doot {__version__}")
+    return update.check()
+
+
 def do_screens(args) -> int:
     from . import screens
 
@@ -332,6 +346,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stop", action="store_true", help="arrete le daemon en cours")
     parser.add_argument("--paths", action="store_true", help="affiche les chemins utilises")
     parser.add_argument("--art", action="store_true", help="imprime le squelette dans le terminal")
+    parser.add_argument("--update", action="store_true",
+                        help="met a jour doot depuis GitHub et rejoue l'installeur")
+    parser.add_argument("--check-update", action="store_true",
+                        help="dit si une version plus recente existe, sans rien installer")
 
     parser.add_argument("--min", type=int, default=DEFAULT_MIN_SECONDS,
                         help=f"delai minimum entre deux doot, en secondes (defaut {DEFAULT_MIN_SECONDS})")
@@ -381,6 +399,10 @@ def main(argv: list[str] | None = None) -> int:
         sound.ensure_wav(p["wav"], args.volume, force=True)
         print(f"doot : jingle regenere -> {p['wav']}")
 
+    if args.check_update:
+        return do_check_update(args)
+    if args.update:
+        return do_update(args)
     if args.screens:
         return do_screens(args)
     if args.status:

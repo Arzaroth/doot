@@ -128,6 +128,33 @@ Démarrage. Aucun droit administrateur, aucun composant système modifié.
 python3 -m doot --once --ignore-season
 ```
 
+## Mettre à jour
+
+Une fois installé, doot se met à jour tout seul, sur les trois systèmes :
+
+```bash
+doot --check-update    # dit si une version plus récente existe
+doot --update          # récupère, réinstalle, relance le daemon
+```
+
+`--update` relit la fiche déposée par l'installeur (`install.json`, dans le
+dossier de données) pour retrouver d'où le code vient et avec quelles options
+il avait été installé, puis rejoue l'installeur avec les mêmes réglages. Le
+daemon est arrêté le temps de l'opération et redémarré derrière.
+
+Deux façons de récupérer le code, dans cet ordre : si le dépôt cloné est
+toujours là, un `git pull --ff-only` ; sinon l'archive de la branche
+principale est téléchargée depuis GitHub. La seconde voie ne demande ni git ni
+le clone d'origine, donc une installation dont tu as effacé le dossier depuis
+se met à jour quand même.
+
+Tes sons, tes images et ton journal ne sont pas touchés : ils vivent dans le
+dossier de données, l'installeur ne remplace que le code.
+
+Si doot a été installé par un gestionnaire de paquets (le `PKGBUILD` d'Arch,
+par exemple), `--update` refuse et te renvoie vers `pacman -Syu` plutôt que
+d'écraser des fichiers qui ne lui appartiennent pas.
+
 ## Utilisation
 
 ```bash
@@ -138,6 +165,8 @@ doot --status                # saison, daemon, son et image utilisés
 doot --stop                  # arrête le daemon
 doot --paths                 # où sont les fichiers
 doot --screens               # liste les écrans détectés
+doot --check-update          # une version plus récente existe-t-elle ?
+doot --update                # met à jour et réinstalle
 doot --art                   # imprime le squelette dans le terminal
 ```
 
