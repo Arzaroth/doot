@@ -18,6 +18,12 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
   reste indiqué pour qui l'a déjà. La ligne `uvx` porte `--ignore-season`, sans
   quoi une première visite hors saison lit un message et ne voit aucun
   squelette.
+- `requires-python` remonte de `>=3.9` à `>=3.8`, avec le classifier
+  correspondant. Cette borne avait été descendue faute de pouvoir éprouver 3.8,
+  les images GitHub ne la fournissant plus. Depuis que uv télécharge
+  l'interpréteur, la CI la couvre à nouveau : l'annoncer n'est plus une promesse
+  en l'air. À savoir tout de même : 3.8 est en fin de vie depuis octobre 2024,
+  doot y tourne mais l'interpréteur ne reçoit plus de correctifs.
 
 ## [1.3.0] - 2026-09-06
 
