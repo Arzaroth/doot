@@ -224,6 +224,29 @@ def _transparent_key(trns: bytes | None, color: int, depth: int) -> tuple | None
     return tuple((value & mask) * scale for value in values)
 
 
+def _verifie_palette(samples: bytearray, palette: bytes, trns: bytes | None) -> None:
+    """Refuse une palette que la norme interdit, au lieu de rendre du vide.
+
+    Sans ces trois controles, une image en couleur 3 malformee se decode sans
+    broncher en pixels transparents : elle disparait a l'ecran au lieu de dire
+    pourquoi, et l'appelant ne peut meme pas retomber sur tkinter.
+    """
+    if len(palette) % 3:
+        raise PngError(f"bloc PLTE de {len(palette)} octets, non multiple de 3")
+
+    entrees = len(palette) // 3
+    if not entrees:
+        raise PngError("image en palette sans bloc PLTE")
+
+    if trns and len(trns) > entrees:
+        raise PngError(f"tRNS de {len(trns)} entrees pour une palette de {entrees}")
+
+    if samples:
+        plus_grand = max(samples)
+        if plus_grand >= entrees:
+            raise PngError(f"index {plus_grand} hors d'une palette de {entrees} entrees")
+
+
 def _premultiplied_bgra(samples: bytearray, width: int, height: int, color: int,
                         palette: bytes, trns: bytes | None, depth: int) -> bytearray:
     """Passe les echantillons en BGRA premultiplie, dans l'ordre memoire de X."""
@@ -238,8 +261,6 @@ def _premultiplied_bgra(samples: bytearray, width: int, height: int, color: int,
             if a == 0:
                 continue
             p = index * 3
-            if p + 2 >= len(palette):
-                continue
             r, g, b = palette[p], palette[p + 1], palette[p + 2]
             d = i * 4
             if a != 255:
@@ -423,6 +444,8 @@ def frame(path: Path, scale: float = 1.0) -> Frame:
     lines = _unfilter(brut, height, max(1, bits // 8), stride)
     samples = _to_bytes_per_sample(lines, width, height, depth, channels, stride,
                                    stretch=color != 3)
+    if color == 3:
+        _verifie_palette(samples, palette, trns)
     pixels = _premultiplied_bgra(samples, width, height, color, palette, trns, depth)
 
     if scale and scale != 1.0:

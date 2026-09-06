@@ -287,6 +287,52 @@ class PngFabrique(unittest.TestCase):
                                   indices, palette=palette, trns=alphas)
                 self.verifie(path, 4, 4, pixels)
 
+    def test_palette_sans_bloc_plte(self):
+        """La norme rend PLTE obligatoire en couleur 3.
+
+        Sans lui, l'image se decodait en pixels entierement transparents : elle
+        disparaissait au lieu de dire pourquoi.
+        """
+        path = ecrire_png(self.root / "sansplte.png", 4, 4, 8, PALETTE, [0] * 16)
+        with self.assertRaisesRegex(png.PngError, "sans bloc PLTE"):
+            png.frame(path, 1.0)
+
+    def test_index_hors_de_la_palette(self):
+        """Un index qu'aucune entree ne couvre est un fichier casse, pas un trou."""
+        palette = bytes([10, 20, 30, 40, 50, 60])          # deux entrees
+        indices = [0, 1, 3, 1] + [0] * 12                  # 3 n'existe pas
+        path = ecrire_png(self.root / "horspalette.png", 4, 4, 8, PALETTE,
+                          indices, palette=palette)
+        with self.assertRaisesRegex(png.PngError, "index 3 hors"):
+            png.frame(path, 1.0)
+
+    def test_trns_plus_long_que_la_palette(self):
+        palette = bytes([10, 20, 30, 40, 50, 60])          # deux entrees
+        path = ecrire_png(self.root / "trnslong.png", 4, 4, 8, PALETTE, [0] * 16,
+                          palette=palette, trns=bytes([0, 128, 255]))
+        with self.assertRaisesRegex(png.PngError, "tRNS de 3 entrees"):
+            png.frame(path, 1.0)
+
+    def test_plte_non_multiple_de_trois(self):
+        """Un PLTE tronque decalerait toutes les couleurs sans que rien ne le dise."""
+        path = ecrire_png(self.root / "pltecourt.png", 4, 4, 8, PALETTE, [0] * 16,
+                          palette=bytes([10, 20, 30, 40, 50]))
+        with self.assertRaisesRegex(png.PngError, "non multiple de 3"):
+            png.frame(path, 1.0)
+
+    def test_trns_plus_court_que_la_palette_reste_valide(self):
+        """Garde-fou en sens inverse : la norme l'autorise, les entrees non
+        couvertes sont simplement opaques. Refuser serait aussi faux."""
+        palette = bytes([10, 20, 30, 40, 50, 60, 70, 80, 90])   # trois entrees
+        indices = [i % 3 for i in range(16)]
+        pixels = []
+        for index in indices:
+            r, g, b = palette[index * 3:index * 3 + 3]
+            pixels.append((0, 0, 0, 0) if index == 0 else (r, g, b, 255))
+        path = ecrire_png(self.root / "trnscourt.png", 4, 4, 8, PALETTE, indices,
+                          palette=palette, trns=bytes([0]))
+        self.verifie(path, 4, 4, pixels)
+
     # ------------------------------------------------------------ filtres ----
 
     def test_les_cinq_filtres(self):
