@@ -12,6 +12,24 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.4.0] - 2026-09-06
+
+L'outillage passe à uv, et Python 3.8 redevient une promesse tenue plutôt
+qu'une case cochée.
+
+### Ajouté
+- La CI installe l'interpréteur par uv au lieu de dépendre de ce que l'image du
+  runner embarque, ce qui remet `ubuntu / 3.8` dans la matrice — les images
+  GitHub ne la fournissent plus ([#6](https://github.com/boubou666/doot/pull/6)).
+- Le workflow de release construit par `uv build --no-sources` et vérifie les
+  métadonnées par `uvx twine check`, sans rien installer à côté des paquets
+  ([#8](https://github.com/boubou666/doot/pull/8)).
+- `uv publish --trusted-publishing always` remplace l'action tierce
+  ([#9](https://github.com/boubou666/doot/pull/9)). Le mode `always` donne un
+  échec net si le jeton OIDC manque, au lieu d'une bascule silencieuse vers une
+  recherche d'identifiants. uv invalide en plus le jeton de courte durée après
+  l'envoi, y compris quand celui-ci échoue.
+
 ### Modifié
 - Le README propose `uv` pour installer depuis PyPI, et `uvx` pour lancer doot
   sans l'installer. Il dit aussi où prendre uv, sur les trois systèmes. pipx
@@ -253,7 +271,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.3.0...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/boubou666/doot/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/boubou666/doot/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/boubou666/doot/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/boubou666/doot/compare/v1.1.0...v1.2.0
