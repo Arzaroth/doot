@@ -39,16 +39,31 @@ jobs:
           etiquette = os.environ["GITHUB_REF_NAME"]
           annoncee = etiquette.lstrip("v").split("-")[0]
 
-          source = Path("doot/__init__.py").read_text(encoding="utf-8")
-          trouvee = re.search(r'__version__\s*=\s*"([^"]+)"', source).group(1)
+          # Trois fichiers portent le numero de version. N'en verifier qu'un
+          # laisserait les autres deriver sans que rien ne le signale.
+          declarations = {
+              "doot/__init__.py": r'__version__\s*=\s*"([^"]+)"',
+              "pyproject.toml": r'^version\s*=\s*"([^"]+)"',
+              "packaging/PKGBUILD": r"^pkgver=(.+)$",
+          }
 
-          if annoncee != trouvee:
+          ecarts = []
+          for fichier, motif in declarations.items():
+              texte = Path(fichier).read_text(encoding="utf-8")
+              trouve = re.search(motif, texte, re.MULTILINE)
+              if not trouve:
+                  ecarts.append(f"  {fichier} : aucune version trouvee")
+              elif trouve.group(1).strip() != annoncee:
+                  ecarts.append(f"  {fichier} : {trouve.group(1).strip()}")
+
+          if ecarts:
               sys.exit(
-                  f"L'etiquette {etiquette} annonce la version {annoncee}, mais "
-                  f"doot/__init__.py declare {trouvee}.\n"
-                  "Mets a jour __version__ et pyproject.toml avant d'etiqueter."
+                  f"L'etiquette {etiquette} annonce la version {annoncee}, "
+                  "mais le code declare autre chose :\n"
+                  + "\n".join(ecarts)
+                  + "\nMets ces fichiers a jour avant d'etiqueter."
               )
-          print(f"{etiquette} correspond bien a __version__ = {trouvee}")
+          print(f"{etiquette} correspond a la version declaree dans les trois fichiers")
 
       - name: Suite de tests
         run: python -m unittest discover -s tests

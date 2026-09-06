@@ -12,6 +12,30 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.1.0] - 2026-09-06
+
+Première version où la mise à jour tient debout pour tout le monde, y compris
+pour qui a installé depuis une release et n'a aucun dépôt sous la main. Elle
+embarque évidemment la spatialisation du son et la mise à jour intégrée,
+arrivées respectivement en [0.7.0](#070---2026-09-06) et
+[1.0.0](#100---2026-09-06), l'historique étant linéaire.
+
+### Ajouté
+- `doot --check-update` se rabat sur le numéro de version, comparé à celui de
+  la dernière release, quand l'installation n'a pas de dépôt git derrière elle.
+  Il répondait jusqu'ici « commit installé inconnu » indéfiniment, à ceux-là
+  mêmes qui ne peuvent pas aller vérifier par leurs propres moyens.
+- Le workflow de release vérifie que l'étiquette correspond à la version
+  déclarée dans les trois fichiers qui la portent — `doot/__init__.py`,
+  `pyproject.toml` et le `PKGBUILD` — et non plus dans le seul premier, les
+  deux autres pouvant dériver sans que rien ne le signale.
+
+### Corrigé
+- Après une mise à jour par archive, la fiche d'installation gardait comme
+  source le dossier temporaire effacé dans la foulée. Elle reçoit désormais le
+  commit résolu, et plus de chemin mort : les vérifications suivantes
+  redeviennent précises au lieu de rester muettes.
+
 ## [1.0.0] - 2026-09-06
 
 Première version numérotée pour de bon, et la seule où l'étiquette correspond à
@@ -143,7 +167,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.0.0...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/boubou666/doot/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/boubou666/doot/compare/v0.7.0...v1.0.0
 [0.7.0]: https://github.com/boubou666/doot/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/boubou666/doot/compare/v0.5.0...v0.6.0

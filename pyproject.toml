@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "doot"
-version = "1.0.0"
+version = "1.1.0"
 description = "Un squelette trompettiste qui surgit au hasard sur ton ecran, du 1er septembre au 31 octobre."
 readme = "README.md"
 requires-python = ">=3.8"
