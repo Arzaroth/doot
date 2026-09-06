@@ -14,6 +14,14 @@ BIN_DIR="$HOME/.local/bin"
 APP_DIR="$DATA_HOME/$APP_NAME/app"
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Dossier de donnees de doot, qui n'est pas celui du code : sur macOS c'est
+# Application Support quand le code va dans ~/.local/share.
+if [ "$(uname -s)" = "Darwin" ]; then
+    RECORD_DIR="$HOME/Library/Application Support/$APP_NAME"
+else
+    RECORD_DIR="$DATA_HOME/$APP_NAME"
+fi
+
 AUTOSTART=1
 MIN_SECONDS=600
 MAX_SECONDS=3600
@@ -86,6 +94,20 @@ fi
 
 # ------------------------------------------------------------ fichiers -------
 head_ "Copie des fichiers"
+
+# Un daemon deja lance continuerait avec l'ancien code : on l'arrete, et on le
+# relance en fin d'installation s'il tournait.
+DAEMON_TOURNAIT=0
+if [ -f "$RECORD_DIR/doot.pid" ]; then
+    DAEMON_PID="$(cat "$RECORD_DIR/doot.pid" 2>/dev/null || true)"
+    if [ -n "$DAEMON_PID" ] && kill -0 "$DAEMON_PID" 2>/dev/null; then
+        kill "$DAEMON_PID" 2>/dev/null || true
+        rm -f "$RECORD_DIR/doot.pid"
+        DAEMON_TOURNAIT=1
+        say "daemon      : arrete (pid $DAEMON_PID) le temps de la copie"
+    fi
+fi
+
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR" "$BIN_DIR"
 cp -R "$SRC_DIR/doot" "$APP_DIR/doot"
@@ -106,14 +128,7 @@ case ":$PATH:" in
        say "  -> ajoute  export PATH=\"\$HOME/.local/bin:\$PATH\"  a ton ~/.bashrc / ~/.zshrc" ;;
 esac
 
-# Fiche d'installation, relue par `doot --update`. Elle va dans le dossier de
-# donnees de doot, qui n'est pas celui du code : sur macOS c'est Application
-# Support, ailleurs le repertoire XDG.
-if [ "$(uname -s)" = "Darwin" ]; then
-    RECORD_DIR="$HOME/Library/Application Support/$APP_NAME"
-else
-    RECORD_DIR="$DATA_HOME/$APP_NAME"
-fi
+# Fiche d'installation, relue par `doot --update`.
 COMMIT=""
 if [ -d "$SRC_DIR/.git" ] && command -v git >/dev/null 2>&1; then
     COMMIT="$(git -C "$SRC_DIR" rev-parse HEAD 2>/dev/null || true)"
@@ -182,8 +197,12 @@ RestartSec=30
 WantedBy=default.target
 EOF
         systemctl --user daemon-reload
-        systemctl --user enable --now doot.service
-        say "systemd     : doot.service active (systemctl --user status doot)"
+        systemctl --user enable doot.service >/dev/null 2>&1 || true
+        # restart et pas `enable --now` : sur une reinstallation l'unite tourne
+        # deja, et --now ne relancerait pas le code fraichement copie.
+        systemctl --user restart doot.service
+        DAEMON_TOURNAIT=0
+        say "systemd     : doot.service actif (systemctl --user status doot)"
     else
         DESKTOP_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
         mkdir -p "$DESKTOP_DIR"
@@ -200,6 +219,13 @@ EOF
     fi
 else
     say "demarrage automatique ignore (--no-autostart)"
+fi
+
+# Hors systemd, on relance nous-memes le daemon qui tournait avant la copie.
+if [ "$DAEMON_TOURNAIT" -eq 1 ]; then
+    "$BIN_DIR/doot" --min "$MIN_SECONDS" --max "$MAX_SECONDS" --quiet \
+        >/dev/null 2>&1 &
+    say "daemon      : redemarre avec le nouveau code"
 fi
 
 head_ "Termine"

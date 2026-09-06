@@ -91,7 +91,33 @@ Write-Item 'audio       : winsound (integre a Windows)'
 # ------------------------------------------------------------ fichiers -------
 
 Write-Head 'Copie des fichiers'
-if (Test-Path $AppDir) { Remove-Item $AppDir -Recurse -Force }
+
+# Un daemon en cours garde le dossier du code ouvert : sous Windows on ne peut
+# pas remplacer des fichiers verrouilles. On l'arrete avant, sinon une simple
+# reinstallation par-dessus echoue sur un message obscur.
+$DataDir = Join-Path $env:LOCALAPPDATA 'doot'
+$PidFile = Join-Path $DataDir 'doot.pid'
+$daemonTournait = $false
+if (Test-Path $PidFile) {
+    $daemonPid = (Get-Content $PidFile -Raw).Trim()
+    if ($daemonPid -match '^\d+$' -and (Get-Process -Id $daemonPid -ErrorAction SilentlyContinue)) {
+        Stop-Process -Id $daemonPid -Force -ErrorAction SilentlyContinue
+        Remove-Item $PidFile -Force -ErrorAction SilentlyContinue
+        $daemonTournait = $true
+        Write-Item "daemon      : arrete (pid $daemonPid) le temps de la copie"
+        Start-Sleep -Milliseconds 400
+    }
+}
+
+if (Test-Path $AppDir) {
+    try {
+        Remove-Item $AppDir -Recurse -Force -ErrorAction Stop
+    } catch {
+        Write-Item 'ATTENTION   : impossible de remplacer le code, un processus le retient.'
+        Write-Item '  -> ferme doot (doot --stop) puis relance ce script.'
+        exit 1
+    }
+}
 New-Item -ItemType Directory -Path $AppDir -Force | Out-Null
 New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
 Copy-Item (Join-Path $Src 'doot') -Destination (Join-Path $AppDir 'doot') -Recurse -Force
@@ -165,6 +191,14 @@ if ((Test-Path (Join-Path $Src '.git')) -and (Get-Command git -ErrorAction Silen
     installed_at = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 } | ConvertTo-Json | Set-Content -Path (Join-Path $RecordDir 'install.json') -Encoding utf8
 Write-Item "fiche       : $RecordDir\install.json"
+
+if ($daemonTournait) {
+    $env:PYTHONPATH = "$AppDir;$env:PYTHONPATH"
+    Start-Process -FilePath $pythonw `
+        -ArgumentList "-m", "doot", "--min", $MinSeconds, "--max", $MaxSeconds, "--quiet" `
+        -WorkingDirectory $AppDir -WindowStyle Hidden
+    Write-Item 'daemon      : redemarre avec le nouveau code'
+}
 
 Write-Head 'Termine'
 Write-Item 'Teste tout de suite : doot --once --ignore-season'
