@@ -12,6 +12,13 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Modifié
+- Le README propose `uv` pour installer depuis PyPI, et `uvx` pour lancer doot
+  sans l'installer. Il dit aussi où prendre uv, sur les trois systèmes. pipx
+  reste indiqué pour qui l'a déjà. La ligne `uvx` porte `--ignore-season`, sans
+  quoi une première visite hors saison lit un message et ne voit aucun
+  squelette.
+
 ## [1.3.0] - 2026-09-06
 
 doot s'installe désormais en une commande, sur les trois systèmes, sans cloner
