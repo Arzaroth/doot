@@ -13,6 +13,17 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 ## [Non publié]
 
 ### Ajouté
+- Une troisième façon d'arriver : le **tour complet**. Le squelette surgit sur
+  place et fait un tour sur lui-même avant de s'immobiliser, droit — 700 ms par
+  défaut, sur un quart des apparitions sur place. `--spin` l'impose (et impose
+  l'apparition sur place), `--no-spin` le coupe, `--spin-chance` et `--spin-ms`
+  en règlent la fréquence et la durée. C'est la rotation par quarts de l'entrée
+  par un bord, étalée dans le temps ; l'image est centrée dans le carré qui la
+  contient pour que les quatre orientations aient la même taille, et que la
+  fenêtre ne change ni de dimensions ni de place au milieu du tour. Réservé aux
+  PNG, comme la rotation d'entrée : les GIF animés et l'ASCII art restent
+  droits.
+
 - Une sortie audio native (`doot/audio.py`) : les WAV partent directement vers
   PulseAudio par `libpulse-simple`, ou vers ALSA par `libasound`, appelées en
   ctypes comme `x11.py` appelle libX11. PipeWire n'a pas besoin d'un chemin à

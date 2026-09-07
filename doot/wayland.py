@@ -411,7 +411,8 @@ def _locate(x: int, y: int, found: dict[int, dict]) -> tuple[int, int, int]:
 
 def play(frame: png.Frame, x: int, y: int, duration: float,
          opacity: float = 1.0, wav_path: Path | None = None, pan: float = 0.0,
-         start: tuple[int, int] | None = None, slide_ms: int = 0) -> None:
+         start: tuple[int, int] | None = None, slide_ms: int = 0,
+         spins: list | None = None, spin_ms: int = 0) -> None:
     """Fait surgir l'image sur la sortie qui contient (x, y), puis l'efface.
 
     Meme contrat que `x11.play` : leve WaylandUnavailable tant que rien n'est
@@ -422,4 +423,4 @@ def play(frame: png.Frame, x: int, y: int, duration: float,
     surface = _Overlay(frame.width, frame.height, depart_x, depart_y,
                        output_at=(x, y))
     overlay.run(surface, frame, x, y, duration, opacity, wav_path, pan,
-                start, slide_ms)
+                start, slide_ms, spins, spin_ms)

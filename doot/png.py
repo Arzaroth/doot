@@ -86,6 +86,29 @@ class Frame:
                 out[ecrit:ecrit + 4] = source[lu:lu + 4]
         return Frame(cible_l, cible_h, bytes(out))
 
+    def squared(self) -> "Frame":
+        """La meme image centree sur un carre, le reste transparent.
+
+        Un quart de tour echange largeur et hauteur : une image droite et la
+        meme pivotee n'ont pas la meme taille. Sur un carre les quatre
+        orientations en ont une seule, et la surface posee a l'ecran garde
+        donc ses dimensions et sa place pendant tout un tour, au lieu de
+        s'etirer et de sauter d'un quart au suivant.
+        """
+        cote = max(self.width, self.height)
+        if cote == self.width and cote == self.height:
+            return Frame(self.width, self.height, self.data)
+
+        out = bytearray(cote * cote * 4)
+        marge_x = (cote - self.width) // 2
+        marge_y = (cote - self.height) // 2
+        ligne = self.width * 4
+        for y in range(self.height):
+            lu = y * ligne
+            ecrit = ((y + marge_y) * cote + marge_x) * 4
+            out[ecrit:ecrit + ligne] = self.data[lu:lu + ligne]
+        return Frame(cote, cote, bytes(out))
+
     def faded(self, factor: float) -> bytes:
         """Le meme rendu a `factor` d'opacite.
 
@@ -394,6 +417,17 @@ def size(path: Path) -> tuple[int, int]:
     if width <= 0 or height <= 0:
         raise PngError("dimensions invalides")
     return width, height
+
+
+def spin_frames(frame: Frame) -> list:
+    """Les quatre etapes d'un tour complet, toutes de la meme taille.
+
+    L'indice est le nombre de quarts de tour horaires deja parcourus. Le tour
+    se referme sur l'indice 0 : l'image finit droite, exactement comme elle a
+    commence, et la position de repos calculee au depart reste la bonne.
+    """
+    carre = frame.squared()
+    return [carre.rotated(quarts) for quarts in range(4)]
 
 
 def frame(path: Path, scale: float = 1.0) -> Frame:

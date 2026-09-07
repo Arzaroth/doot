@@ -139,6 +139,49 @@ class OptionsDAffichage(CliTestCase):
             self.assertEqual(self.run_cli("--min", "500", "--max", "10", "--once"), 3)
 
 
+class TourCompletEnLigneDeCommande(CliTestCase):
+    """`--spin` et ses reglages, tels qu'ils arrivent a la fenetre."""
+
+    def setUp(self):
+        super().setUp()
+        patch = mock.patch.object(season, "in_season", lambda now=None: True)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_reglages_par_defaut(self):
+        self.run_cli("--once", "--no-sound")
+        call = self.shown[0]
+        self.assertTrue(call["spin"])
+        self.assertEqual(call["spin_chance"], cli.DEFAULT_SPIN_CHANCE)
+        self.assertEqual(call["spin_ms"], cli.DEFAULT_SPIN_MS)
+
+    def test_spin_impose_le_tour_et_l_apparition_sur_place(self):
+        """Sans quoi la demande n'aurait d'effet qu'une fois sur quatre."""
+        self.run_cli("--once", "--no-sound", "--spin")
+        call = self.shown[0]
+        self.assertEqual(call["spin_chance"], 1.0)
+        self.assertFalse(call["slide"])
+
+    def test_no_spin_coupe_le_tour_sans_toucher_au_reste(self):
+        self.run_cli("--once", "--no-sound", "--no-spin")
+        call = self.shown[0]
+        self.assertFalse(call["spin"])
+        self.assertTrue(call["slide"])
+
+    def test_proportion_et_duree_transmises(self):
+        self.run_cli("--once", "--no-sound", "--spin-chance", "0.8", "--spin-ms", "1200")
+        call = self.shown[0]
+        self.assertEqual(call["spin_chance"], 0.8)
+        self.assertEqual(call["spin_ms"], 1200)
+
+    def test_spin_et_side_sont_incompatibles(self):
+        """L'un impose l'apparition sur place, l'autre l'entree par un bord."""
+        parser = cli.build_parser()
+        with mock.patch("sys.stderr"):
+            with self.assertRaises(SystemExit):
+                parser.parse_args(["--spin", "--side", "left"])
+
+
 class CommandesInformatives(CliTestCase):
     """Elles doivent repondre sans affichage et sans effet de bord."""
 

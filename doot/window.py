@@ -170,6 +170,19 @@ def decide_slide(slide: bool, side: str | None, chance: float, rng=random) -> bo
     return rng.random() < max(0.0, min(1.0, chance))
 
 
+def decide_spin(spin: bool, chance: float, glisse: bool, rng=random) -> bool:
+    """Ce doot fait-il un tour complet sur lui-meme ?
+
+    Seulement s'il surgit sur place. Pendant une entree par un bord l'image est
+    deja pivotee pour poser les pieds contre ce bord : la faire tourner en plus
+    lui ferait perdre le seul repere de l'arrivee, et les deux mouvements se
+    disputeraient les memes premieres millisecondes du doot.
+    """
+    if not spin or glisse:
+        return False
+    return rng.random() < max(0.0, min(1.0, chance))
+
+
 def pick_side(side: str | None, rng=random) -> str:
     """Bord d'entree : 'left', 'right', 'top', 'bottom', ou tire au sort."""
     voulu = _ALIAS.get(side, side)
@@ -188,6 +201,22 @@ def _rotated_photo(tk, image_path: Path, scale: float, tours: int):
     tampon = Path(tempfile.gettempdir()) / f"doot-pivote-{os.getpid()}.png"
     png.write_png(tampon, frame)
     return tk.PhotoImage(file=str(tampon))
+
+
+def _spin_photos(tk, image_path: Path, scale: float) -> list:
+    """Les quatre etapes d'un tour complet, en PhotoImage.
+
+    Meme detour que `_rotated_photo`, et pour la meme raison. Elles partagent
+    toutes la taille du carre qui contient l'image : la fenetre n'a donc pas a
+    changer de geometrie au milieu du tour.
+    """
+    dossier = Path(tempfile.gettempdir())
+    photos = []
+    for quarts, frame in enumerate(png.spin_frames(png.frame(image_path, scale))):
+        tampon = dossier / f"doot-tour-{os.getpid()}-{quarts}.png"
+        png.write_png(tampon, frame)
+        photos.append(tk.PhotoImage(file=str(tampon)))
+    return photos
 
 
 def _auto_scale(width: int, height: int, screen_w: int, screen_h: int) -> float:
@@ -213,7 +242,8 @@ def active_monitors() -> list:
 
 
 def _show_argb(wav_path, duration, center, opacity, image_path, scale, screen,
-               spatialise, slide=True, side=None, slide_ms=420) -> bool:
+               spatialise, slide=True, side=None, slide_ms=420, spin=False,
+               spin_ms=700) -> bool:
     """Tente les overlays sans tkinter ; faux si tkinter doit prendre le relais.
 
     Wayland passe en premier : layer-shell sait poser la surface sur la sortie
@@ -229,19 +259,23 @@ def _show_argb(wav_path, duration, center, opacity, image_path, scale, screen,
     for backend, enumere in ((wayland, wayland.monitors), (x11, screens.monitors)):
         if _tente_overlay(backend, enumere, wav_path, duration, center, opacity,
                           image_path, scale, screen, spatialise, slide, side,
-                          slide_ms):
+                          slide_ms, spin, spin_ms):
             return True
     return False
 
 
 def _tente_overlay(backend, enumere, wav_path, duration, center, opacity,
                    image_path, scale, screen, spatialise, slide, side,
-                   slide_ms) -> bool:
+                   slide_ms, spin, spin_ms) -> bool:
     if not backend.available():
         return False
 
     try:
         image_width, image_height = png.size(image_path)
+        if spin:
+            # Le tour se joue dans le carre qui contient l'image : c'est lui
+            # qui doit tenir a l'ecran, et pas seulement l'image droite.
+            image_width = image_height = max(image_width, image_height)
         found = enumere()
         monitor = screens.pick(found, screen)
         wanted = scale if scale is not None else _auto_scale(
@@ -253,6 +287,10 @@ def _tente_overlay(backend, enumere, wav_path, duration, center, opacity,
         if entree:
             # Le bas de l'image se pose contre le bord d'entree.
             frame = frame.rotated(TOURS[entree])
+
+        spins = png.spin_frames(frame) if spin else None
+        if spins:
+            frame = spins[0]  # le carre : toutes les etapes ont sa taille
 
         if slide:
             depart_x, depart_y, repos_x, repos_y = monitor.entry(
@@ -268,7 +306,8 @@ def _tente_overlay(backend, enumere, wav_path, duration, center, opacity,
 
     try:
         backend.play(frame, repos_x, repos_y, duration, opacity, wav_path, pan,
-                     start=(depart_x, depart_y), slide_ms=slide_ms if slide else 0)
+                     start=(depart_x, depart_y), slide_ms=slide_ms if slide else 0,
+                     spins=spins, spin_ms=spin_ms if spins else 0)
     except Exception:
         # overlay.run ne laisse remonter qu'avant affichage : arriver ici veut
         # dire que rien n'est a l'ecran, donc le repli ne fera pas de double.
@@ -290,6 +329,9 @@ def show(
     side: str | None = None,
     slide_ms: int = 420,
     slide_chance: float = 0.5,
+    spin: bool = True,
+    spin_chance: float = 0.25,
+    spin_ms: int = 700,
 ) -> None:
     """Affiche un doot et rend la main quand il a disparu.
 
@@ -303,10 +345,18 @@ def show(
     a quelle frequence elle a lieu : le reste du temps le squelette surgit sur
     place, au milieu de l'ecran, droit et sans glisser. `side` force le bord et
     impose le glissement, `slide_ms` en regle la duree.
+
+    `spin` autorise le tour complet sur soi-meme, reserve aux apparitions sur
+    place. `spin_chance` dit a quelle frequence il a lieu, `spin_ms` en regle
+    la duree. Il demande une image PNG : les GIF animes et l'ASCII art restent
+    droits.
     """
     slide = decide_slide(slide, side, slide_chance)
+    # Un tour de duree nulle n'est pas un tour : il ne ferait que payer les
+    # quatre orientations pour ne rien montrer.
+    spin = decide_spin(spin, spin_chance, slide) and spin_ms > 0
     if _show_argb(wav_path, duration, center, opacity, image_path, scale, screen,
-                  spatialise, slide, side, slide_ms):
+                  spatialise, slide, side, slide_ms, spin, spin_ms):
         return
 
     tk, tkfont = _import_tk()
@@ -338,6 +388,7 @@ def show(
     tours = TOURS[entree] if entree else 0
 
     frames: list = []
+    spins: list = []
     if image_path is not None:
         try:
             probe = tk.PhotoImage(file=str(image_path)) if image_path.suffix.lower() != ".gif" \
@@ -345,21 +396,31 @@ def show(
             large, haut = probe.width(), probe.height()
             if tours % 2:
                 large, haut = haut, large  # un quart de tour echange les cotes
+            if spin:
+                # Le tour se joue dans le carre qui contient l'image : c'est lui
+                # qui doit tenir a l'ecran, et pas seulement l'image droite.
+                large = haut = max(large, haut)
             wanted = scale if scale is not None else _auto_scale(
                 large, haut, screen_w, screen_h
             )
-            if tours and image_path.suffix.lower() == ".png":
+            if spin and image_path.suffix.lower() == ".png":
+                spins = _spin_photos(tk, image_path, wanted)
+                frames = [spins[0]]
+            elif tours and image_path.suffix.lower() == ".png":
                 frames = [_rotated_photo(tk, image_path, wanted, tours)]
             else:
                 # Les GIF animes restent droits : png.py ne les decode pas.
                 frames = _load_frames(tk, image_path, wanted)
         except Exception:
-            frames = []  # image illisible : on retombe sur l'ASCII
+            # Image illisible : on retombe sur l'ASCII, qui ne tourne pas.
+            frames = []
+            spins = []
 
     widget_kwargs = dict(bg=background, borderwidth=0, highlightthickness=0)
     if frames:
         label = tk.Label(root, image=frames[0], **widget_kwargs)
-        label.image = frames  # garde une reference, sinon Tk libere les images
+        # garde une reference, sinon Tk libere les images
+        label.image = frames + spins
     else:
         label = tk.Label(
             root,
@@ -406,7 +467,7 @@ def show(
     fade_in_ms = min(220, total_ms // 4)
     fade_out_ms = min(500, total_ms // 3)
     tick_ms = 40
-    state = {"elapsed": 0, "step": 0}
+    state = {"elapsed": 0, "step": 0, "quart": 0}
 
     def set_alpha(value: float) -> None:
         try:
@@ -433,6 +494,14 @@ def show(
             set_alpha(max(0, total_ms - elapsed) / fade_out_ms)
         else:
             set_alpha(1.0)
+
+        # Le tour se joue sur place : les quatre quarts defilent, puis l'image
+        # reste droite (quart 0) jusqu'a la fin du doot.
+        if spins:
+            quart = int(elapsed / spin_ms * 4) % 4 if elapsed < spin_ms else 0
+            if quart != state["quart"]:
+                state["quart"] = quart
+                label.configure(image=spins[quart])
 
         if frames:
             if len(frames) > 1:

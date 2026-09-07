@@ -17,6 +17,8 @@ DEFAULT_MIN_SECONDS = 600     # 10 min
 DEFAULT_MAX_SECONDS = 3600    # 1 h
 DEFAULT_DURATION = 2.8
 DEFAULT_VOLUME = 0.55
+DEFAULT_SPIN_CHANCE = 0.25
+DEFAULT_SPIN_MS = 700
 OUT_OF_SEASON_POLL = 3600     # on reverifie la date toutes les heures
 
 
@@ -141,6 +143,33 @@ def resolve_media(args) -> tuple:
     return wav, picture, duration
 
 
+def display_options(args) -> dict:
+    """Les reglages d'affichage, tels que `window.show` les attend.
+
+    Un seul endroit pour les traduire : `--once` et le daemon montrent le meme
+    doot, et deux listes d'arguments finiraient par diverger.
+
+    `--spin` impose le tour complet, comme `--side` impose l'entree par un
+    bord : il vaut donc tous les doots, et sur place, sinon la demande
+    resterait sans effet la plupart du temps.
+    """
+    return {
+        "font_size": args.font_size,
+        "center": args.center,
+        "opacity": args.opacity,
+        "scale": args.scale,
+        "screen": args.screen,
+        "spatialise": not args.no_pan,
+        "slide": not args.no_slide and not args.spin,
+        "side": args.side,
+        "slide_ms": args.slide_ms,
+        "slide_chance": args.slide_chance,
+        "spin": not args.no_spin,
+        "spin_chance": 1.0 if args.spin else args.spin_chance,
+        "spin_ms": args.spin_ms,
+    }
+
+
 def do_once(args) -> int:
     from . import window
 
@@ -150,21 +179,8 @@ def do_once(args) -> int:
         return 3
 
     wav, picture, duration = resolve_media(args)
-    window.show(
-        wav_path=wav,
-        duration=duration,
-        font_size=args.font_size,
-        center=args.center,
-        opacity=args.opacity,
-        image_path=picture,
-        scale=args.scale,
-        screen=args.screen,
-        spatialise=not args.no_pan,
-        slide=not args.no_slide,
-        side=args.side,
-        slide_ms=args.slide_ms,
-        slide_chance=args.slide_chance,
-    )
+    window.show(wav_path=wav, duration=duration, image_path=picture,
+                **display_options(args))
     return 0
 
 
@@ -199,21 +215,8 @@ def do_daemon(args) -> int:
 
             try:
                 wav, picture, duration = resolve_media(args)
-                window.show(
-                    wav_path=wav,
-                    duration=duration,
-                    font_size=args.font_size,
-                    center=args.center,
-                    opacity=args.opacity,
-                    image_path=picture,
-                    scale=args.scale,
-                    screen=args.screen,
-                    spatialise=not args.no_pan,
-                    slide=not args.no_slide,
-                    side=args.side,
-                    slide_ms=args.slide_ms,
-                    slide_chance=args.slide_chance,
-                )
+                window.show(wav_path=wav, duration=duration, image_path=picture,
+                            **display_options(args))
                 log("doot !", quiet=args.quiet)
             except window.TkinterMissing as exc:
                 log(str(exc), quiet=args.quiet)
@@ -387,12 +390,26 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--slide-chance", type=float, default=0.5, metavar="PART",
                         help="proportion de doots qui entrent par un bord ; le reste "
                              "surgit sur place (defaut 0.5, soit un sur deux)")
-    parser.add_argument("--side", default=None,
-                        choices=("left", "right", "top", "bottom", "random"),
-                        help="bord par lequel le squelette entre (defaut : au hasard). "
-                             "Le bas de l'image se pose contre ce bord.")
+    # --side impose l'entree par un bord, --spin l'apparition sur place : les
+    # demander ensemble n'a pas de sens, et l'un mangerait l'autre en silence.
+    arrivee = parser.add_mutually_exclusive_group()
+    arrivee.add_argument("--side", default=None,
+                         choices=("left", "right", "top", "bottom", "random"),
+                         help="bord par lequel le squelette entre (defaut : au hasard). "
+                              "Le bas de l'image se pose contre ce bord.")
     parser.add_argument("--slide-ms", type=int, default=420,
                         help="duree de l'entree en millisecondes (defaut 420)")
+    arrivee.add_argument("--spin", action="store_true",
+                         help="ce doot fait un tour complet sur lui-meme ; impose "
+                              "l'apparition sur place, et demande une image PNG")
+    parser.add_argument("--no-spin", action="store_true",
+                        help="jamais de tour complet, le squelette reste droit")
+    parser.add_argument("--spin-chance", type=float, default=DEFAULT_SPIN_CHANCE,
+                        metavar="PART",
+                        help="proportion des apparitions sur place qui font un "
+                             f"tour complet (defaut {DEFAULT_SPIN_CHANCE})")
+    parser.add_argument("--spin-ms", type=int, default=DEFAULT_SPIN_MS,
+                        help=f"duree du tour complet en millisecondes (defaut {DEFAULT_SPIN_MS})")
     parser.add_argument("--screen", default=None, metavar="CHOIX",
                         help="ecran d'apparition : 'random' (defaut), 'primary', "
                              "ou un index (0, 1, 2...). Voir 'doot --screens'.")

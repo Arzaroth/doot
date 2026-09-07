@@ -104,5 +104,37 @@ class Orientation(unittest.TestCase):
             self.assertEqual(window.TOURS[cote] % 2, 0)
 
 
+class TourComplet(unittest.TestCase):
+    """La rotation complete : le squelette tourne sur lui-meme, sur place."""
+
+    def part_tournee(self, chance, tirages=4000, spin=True, glisse=False):
+        rng = random.Random(1234)
+        return sum(
+            1 for _ in range(tirages)
+            if window.decide_spin(spin, chance, glisse, rng)
+        ) / tirages
+
+    def test_la_proportion_est_respectee(self):
+        for chance in (0.2, 0.25, 0.8):
+            self.assertAlmostEqual(self.part_tournee(chance), chance, delta=0.05)
+
+    def test_zero_ne_fait_jamais_tourner(self):
+        self.assertEqual(self.part_tournee(0.0), 0.0)
+
+    def test_un_fait_toujours_tourner(self):
+        self.assertEqual(self.part_tournee(1.0), 1.0)
+
+    def test_valeurs_aberrantes_bornees(self):
+        self.assertEqual(self.part_tournee(-3.0), 0.0)
+        self.assertEqual(self.part_tournee(12.0), 1.0)
+
+    def test_no_spin_coupe_tout(self):
+        self.assertEqual(self.part_tournee(1.0, spin=False), 0.0)
+
+    def test_jamais_pendant_une_entree_par_un_bord(self):
+        """L'image y est deja pivotee pour poser les pieds contre le bord."""
+        self.assertEqual(self.part_tournee(1.0, glisse=True), 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
