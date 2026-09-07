@@ -1,0 +1,13 @@
+# Proprietaires du code. GitHub pose automatiquement une demande de revue sur
+# toute pull request touchant les chemins ci-dessous -- sauf a son propre
+# auteur, a qui il ne demande jamais de se relire. Concretement ce fichier sert
+# donc aux contributions externes : elles arrivent avec la demande deja posee,
+# au lieu d'attendre qu'on remarque la notification.
+#
+# Le ruleset de main n'active PAS "require_code_owner_review", et c'est
+# delibere : tant qu'un seul compte a les droits d'ecriture, l'exiger bloquerait
+# toutes ses propres PR, personne ne pouvant s'auto-approuver. A rebasculer le
+# jour ou un second mainteneur arrive.
+
+# Tout le depot, faute de decoupage utile a un seul proprietaire.
+*   @boubou666
