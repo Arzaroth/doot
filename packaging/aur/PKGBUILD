@@ -34,7 +34,7 @@
 
 pkgname=spooky-doot
 _repo=doot
-pkgver=1.5.0
+pkgver=1.6.0
 pkgrel=1
 pkgdesc="Un squelette trompettiste qui surgit au hasard sur ton ecran, du 1er septembre au 31 octobre"
 arch=('any')
@@ -62,7 +62,7 @@ optdepends=(
 makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
 checkdepends=('python-pillow')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('8731720bdbcc2c178c06dc9a75c1babd81ccbb253884ce10d6824b04c7b0477d')
+sha256sums=('ed518a169a8c65194b8a054020a2cb47d8d0295d2597e9fc555b86f6675c1e2f')
 
 build() {
     cd "$srcdir/$_repo-$pkgver"
