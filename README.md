@@ -230,6 +230,8 @@ doot --art                   # imprime le squelette dans le terminal
 | Option | Défaut | Description |
 | --- | --- | --- |
 | `--min` / `--max` | `600` / `3600` | bornes du délai aléatoire entre deux doot, en secondes |
+| `--burst-min` / `--burst-max` | `1` / `1` | bornes du nombre de doots enchaînés à chaque déclenchement |
+| `--burst-delay` | `0.6` | pause entre deux doots d'une même salve, en secondes |
 | `--duration` | durée du son | durée d'affichage, en secondes (au moins 2.8) |
 | `--image` | — | un PNG/GIF précis à afficher |
 | `--no-image` | — | force l'ASCII art même si une image est disponible |
@@ -279,6 +281,32 @@ Tes fichiers passent devant ceux fournis, et ils sont relus à chaque apparition
 tu peux les changer pendant que le daemon tourne. Pour revenir au dessin ASCII et
 au jingle synthétisé : `doot --no-image --regen-sound` (ou vide les deux dossiers
 et supprime `doot/assets/`).
+
+## Les salves
+
+Un déclenchement peut en amener plusieurs. `--burst-min` et `--burst-max`
+donnent les bornes : le nombre est tiré au hasard entre les deux à **chaque**
+déclenchement, et `--burst-delay` règle la pause entre deux doots de la salve.
+
+```bash
+doot --burst-min 2 --burst-max 5              # de 2 à 5 doots d'affilée
+doot --burst-min 3 --burst-max 3              # toujours 3
+doot --burst-min 2 --burst-max 4 --burst-delay 1.5   # plus espacés
+doot --once --ignore-season --burst-min 4 --burst-max 4   # pour voir tout de suite
+```
+
+Chaque doot de la salve est tiré indépendamment : son animation (sur place ou
+par un bord, et lequel), sa position, son écran, son image et son son. Une salve
+de quatre, ce sont quatre squelettes différents qui arrivent chacun à leur
+façon, pas la même apparition répétée.
+
+Une salve n'échappe pas à la saison : elle dure — la pause plus la durée
+d'affichage, autant de fois qu'il y a de doots — et la fenêtre saisonnière peut
+donc se fermer en plein milieu. Chaque doot revérifie avant de s'afficher, comme
+le daemon revérifie après chaque attente.
+
+Par défaut `--burst-min` et `--burst-max` valent `1` : un déclenchement, un
+doot, comme avant.
 
 ## Les deux façons d'arriver
 
@@ -446,7 +474,8 @@ des quatre installeurs.
 | `doot/cli.py` | la CLI, la boucle aléatoire, l'instance unique |
 
 Le daemon tire un délai au hasard entre `--min` et `--max`, dort, vérifie que la
-saison est toujours ouverte, affiche le squelette, recommence. Hors saison, il
+saison est toujours ouverte, affiche la salve du déclenchement (un seul doot par
+défaut, sinon un nombre tiré entre `--burst-min` et `--burst-max`), recommence. Hors saison, il
 se contente de revérifier la date toutes les heures.
 
 ## Licence
