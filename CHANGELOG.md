@@ -12,6 +12,8 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.6.0] - 2026-09-07
+
 ### Ajouté
 - Une troisième façon d'arriver : le **tour complet**. Le squelette surgit sur
   place et fait un tour sur lui-même avant de s'immobiliser, droit — 700 ms par
@@ -400,7 +402,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.5.0...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/boubou666/doot/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/boubou666/doot/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/boubou666/doot/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/boubou666/doot/compare/v1.4.0...v1.4.1
