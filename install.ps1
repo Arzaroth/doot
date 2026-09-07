@@ -6,11 +6,15 @@
     powershell -ExecutionPolicy Bypass -File .\install.ps1
     powershell -ExecutionPolicy Bypass -File .\install.ps1 -NoAutostart
     powershell -ExecutionPolicy Bypass -File .\install.ps1 -MinSeconds 300 -MaxSeconds 1800
+    powershell -ExecutionPolicy Bypass -File .\install.ps1 -BurstMin 2 -BurstMax 5
 #>
 [CmdletBinding()]
 param(
     [int]    $MinSeconds = 600,
     [int]    $MaxSeconds = 3600,
+    [int]    $BurstMin   = 1,
+    [int]    $BurstMax   = 1,
+    [double] $BurstDelay = 0.6,
     [switch] $NoAutostart
 )
 
@@ -18,6 +22,21 @@ $ErrorActionPreference = 'Stop'
 
 function Write-Head { param($Text) Write-Host "`n$Text" -ForegroundColor White }
 function Write-Item { param($Text) Write-Host "  $Text" }
+
+# Les drapeaux de salve ne sont ecrits que s'ils changent quelque chose : sans
+# eux, la commande engendree reste exactement celle d'avant les salves. Le
+# raccourci veut une ligne, Start-Process un tableau, d'ou les deux formes.
+#
+# "$BurstDelay" tient sur la culture invariante : PowerShell ne suit pas la
+# locale pour ses conversions, on aura donc 0.6 et jamais 0,6, ce qu'argparse
+# refuserait.
+$salveArgs = @()
+if ($BurstMax -gt 1) {
+    $salveArgs = @('--burst-min', "$BurstMin",
+                   '--burst-max', "$BurstMax",
+                   '--burst-delay', "$BurstDelay")
+}
+$salveTexte = if ($salveArgs) { ' ' + ($salveArgs -join ' ') } else { '' }
 
 Write-Head 'doot - installation'
 
@@ -150,7 +169,7 @@ if (-not $NoAutostart) {
     $shell = New-Object -ComObject WScript.Shell
     $lnk = $shell.CreateShortcut($lnkPath)
     $lnk.TargetPath       = $pythonw
-    $lnk.Arguments        = "-m doot --min $MinSeconds --max $MaxSeconds --quiet"
+    $lnk.Arguments        = "-m doot --min $MinSeconds --max $MaxSeconds$salveTexte --quiet"
     $lnk.WorkingDirectory = $AppDir
     $lnk.Description      = 'doot - squelette trompettiste saisonnier'
     $lnk.WindowStyle      = 7
@@ -182,6 +201,9 @@ if ((Test-Path (Join-Path $Src '.git')) -and (Get-Command git -ErrorAction Silen
     commit       = "$commit".Trim()
     min          = $MinSeconds
     max          = $MaxSeconds
+    burst_min    = $BurstMin
+    burst_max    = $BurstMax
+    burst_delay  = $BurstDelay
     autostart    = (-not $NoAutostart.IsPresent)
     app_dir      = $AppDir
     bin_dir      = $BinDir
@@ -195,7 +217,7 @@ Write-Item "fiche       : $RecordDir\install.json"
 if ($daemonTournait) {
     $env:PYTHONPATH = "$AppDir;$env:PYTHONPATH"
     Start-Process -FilePath $pythonw `
-        -ArgumentList "-m", "doot", "--min", $MinSeconds, "--max", $MaxSeconds, "--quiet" `
+        -ArgumentList (@("-m", "doot", "--min", $MinSeconds, "--max", $MaxSeconds) + $salveArgs + @("--quiet")) `
         -WorkingDirectory $AppDir -WindowStyle Hidden
     Write-Item 'daemon      : redemarre avec le nouveau code'
 }

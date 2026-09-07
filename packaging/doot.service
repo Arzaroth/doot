@@ -15,6 +15,10 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
+# Ajoute --burst-min 2 --burst-max 5 pour enchainer plusieurs doots par
+# declenchement. Attention : install.sh reecrit ce fichier a chaque mise a
+# jour, et le regenere depuis install.json. Pour que le reglage tienne, le
+# passer plutot a l'installeur : ./install.sh --burst-min 2 --burst-max 5
 ExecStart=%h/.local/bin/doot --min 600 --max 3600 --quiet
 Restart=on-failure
 RestartSec=30

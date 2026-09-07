@@ -12,6 +12,17 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ajouté
+- Les installeurs prennent `--burst-min` / `--burst-max` / `--burst-delay`
+  (`-BurstMin` / `-BurstMax` / `-BurstDelay` sous Windows) et les inscrivent
+  dans `install.json`, que `doot --update` relit. Les salves n'étaient
+  atteignables qu'en tapant la commande soi-même : le doot lancé à l'ouverture
+  de session tient sa ligne des installeurs, et la modifier à la main ne
+  tenait pas — l'unité systemd, le LaunchAgent et le raccourci sont regénérés
+  à chaque mise à jour. Les drapeaux ne sont écrits que s'ils changent quelque
+  chose, donc une installation existante retrouve mot pour mot la commande
+  qu'elle avait déjà.
+
 ## [1.5.0] - 2026-09-07
 
 ### Ajouté
