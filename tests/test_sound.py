@@ -309,28 +309,59 @@ class Spatialisation(unittest.TestCase):
 
 
 class Panoramique(unittest.TestCase):
-    """La syntaxe du filtre, propre a chaque lecteur."""
+    """La syntaxe du filtre, propre a chaque lecteur, et le graphe commun."""
 
     def test_mpv_passe_par_lavfi(self):
         """`--af=pan=...` ne demarre pas : l'analyseur d'options bute sur les
         barres, et le doot spatialise devient muet."""
         commande = sound._pan_filter(["mpv", "--no-video"], -0.9)
-        self.assertTrue(commande[-1].startswith("--af=lavfi=[pan=stereo|"), commande)
+        self.assertTrue(commande[-1].startswith("--af=lavfi=["), commande)
         self.assertTrue(commande[-1].endswith("]"), commande)
+        self.assertEqual(commande[-1][len("--af=lavfi=["):-1],
+                         sound._pan_graph(-0.9))
 
     def test_ffplay_garde_la_syntaxe_ffmpeg(self):
         commande = sound._pan_filter(["ffplay", "-nodisp"], 0.9)
         self.assertEqual(commande[-2], "-af")
-        self.assertTrue(commande[-1].startswith("pan=stereo|"), commande)
+        self.assertEqual(commande[-1], sound._pan_graph(0.9))
 
     def test_lecteur_inconnu(self):
         self.assertIsNone(sound._pan_filter(["paplay"], -0.9))
 
     def test_les_gains_suivent_le_cote(self):
-        gauche = sound._pan_filter(["mpv"], -1.0)[-1]
-        droite = sound._pan_filter(["mpv"], 1.0)[-1]
+        gauche = sound._pan_graph(-1.0)
+        droite = sound._pan_graph(1.0)
         self.assertIn("c0=1.0000*c0", gauche)
-        self.assertIn("c1=1.0000*c0", droite)
+        self.assertIn("c1=1.0000*c1", droite)
+
+    def test_chaque_canal_garde_le_sien(self):
+        """Une source stereo doit garder ses deux canaux.
+
+        Tirer `c1` de `c0` jetterait le canal droit, alors que `pan_wav` le
+        garde sur les WAV : le meme son changerait de rendu selon qu'il passe
+        par le filtre ou par nos echantillons, et selon le cote de l'ecran.
+        """
+        gauche, droite = sound.stereo_gains(-0.9)
+        self.assertTrue(
+            sound._pan_graph(-0.9).endswith(
+                f"pan=stereo|c0={gauche:.4f}*c0|c1={droite:.4f}*c1"),
+            sound._pan_graph(-0.9))
+
+    def test_le_mono_est_monte_en_stereo_avant_le_pan(self):
+        """Sans quoi `c1` n'existe pas et le filtre refuse de se construire."""
+        graphe = sound._pan_graph(0.5)
+        self.assertTrue(graphe.startswith("aformat=channel_layouts=stereo,"), graphe)
+        self.assertLess(graphe.index("aformat="), graphe.index("pan="))
+
+    def test_le_centre_ne_touche_a_rien(self):
+        """Le graphe doit etre l'identite au centre exact.
+
+        Le filtre n'y est pas applique — `SEUIL_PAN` s'y oppose — mais la
+        continuite en depend : de part et d'autre du seuil, le son doit valoir
+        celui d'origine, sans marche.
+        """
+        self.assertIn("c0=1.0000*c0", sound._pan_graph(0.0))
+        self.assertIn("c1=1.0000*c1", sound._pan_graph(0.0))
 
 
 class RepliSansPan(unittest.TestCase):

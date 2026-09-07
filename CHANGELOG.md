@@ -34,6 +34,13 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 - Un lecteur qui refuse la syntaxe du filtre est rejoué sans panoramique, au
   lieu de laisser un silence. Le module promettait déjà « non panoramisé plutôt
   que muet », mais rien ne tenait la promesse quand le refus venait du lecteur.
+- Un son stéréo garde ses deux canaux quand le doot est spatialisé. Le filtre
+  tirait les deux sorties du canal d'entrée gauche, ce qui jetait le droit,
+  alors que `pan_wav` fait le même travail sur les WAV en gardant chacun le
+  sien. Le même fichier changeait donc de rendu au franchissement de
+  `SEUIL_PAN` — la marche exacte que `stereo_gains` s'applique à éviter par
+  ailleurs. Un `aformat` monte d'abord le mono en stéréo, ce qui laisse une
+  seule expression valable pour les deux sources.
 
 ## [1.4.2] - 2026-09-07
 

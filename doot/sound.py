@@ -253,18 +253,40 @@ def _panned_path() -> Path:
     return Path(tempfile.gettempdir()) / f"doot-panned-{os.getpid()}.wav"
 
 
+def _pan_graph(pan: float) -> str:
+    """Le graphe libavfilter qui place le son, source mono ou stereo.
+
+    Chaque canal garde le sien : `c0` sort de `c0`, `c1` de `c1`. Tirer les
+    deux sorties de `c0`, plus court, jetterait le canal droit d'une source
+    stereo — la ou `pan_wav` fait le meme travail sur les WAV en gardant les
+    deux. Le meme son changerait alors de rendu en franchissant `SEUIL_PAN`,
+    exactement la marche que `stereo_gains` s'applique a eviter par ailleurs.
+
+    D'ou l'`aformat` en tete : il monte le mono en stereo avant le `pan`, en
+    dupliquant l'unique canal, ce qui laisse une seule expression valable pour
+    les deux sources. Sans lui, `c1` n'existe pas sur une source mono et le
+    filtre refuse de se construire. Un 5.1 y passe aussi, par un vrai
+    melange, la ou `c0` seul n'aurait garde que l'avant gauche.
+    """
+    left_gain, right_gain = stereo_gains(pan)
+    return ("aformat=channel_layouts=stereo,"
+            f"pan=stereo|c0={left_gain:.4f}*c0|c1={right_gain:.4f}*c1")
+
+
 def _pan_filter(command: list[str], pan: float) -> list[str] | None:
     """Ajoute un filtre de panoramique a mpv ou ffplay, qui savent le faire."""
-    left_gain, right_gain = stereo_gains(pan)
+    graphe = _pan_graph(pan)
     binary = Path(command[0]).name
     if binary.startswith("mpv"):
         # `pan` vient de libavfilter : mpv ne l'atteint que par `lavfi=[...]`.
         # Ecrit `--af=pan=...`, son analyseur d'options bute sur les barres et
-        # refuse de demarrer, ce qui rendait tout doot spatialise muet.
-        return command + [
-            f"--af=lavfi=[pan=stereo|c0={left_gain:.4f}*c0|c1={right_gain:.4f}*c0]"]
+        # refuse de demarrer, ce qui rendait tout doot spatialise muet. Les
+        # crochets prennent le graphe tel quel, virgule comprise.
+        return command + [f"--af=lavfi=[{graphe}]"]
     if binary.startswith("ffplay"):
-        return command + ["-af", f"pan=stereo|c0={left_gain:.4f}*c0|c1={right_gain:.4f}*c0"]
+        # `-af` recoit le graphe dans un argument a lui, sans analyseur
+        # d'options entre les deux : la forme ffmpeg y passe telle quelle.
+        return command + ["-af", graphe]
     return None
 
 
