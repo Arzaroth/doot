@@ -2,8 +2,11 @@
 
 Un compositeur ne peut pas tourner en CI, et la CI tourne aussi sous macOS et
 Windows. Ce qui est verifie ici ne depend donc d'aucune session : l'encodage du
-protocole, le choix de la sortie, et le fait que l'absence de Wayland se solde
-par un repli et non par une erreur.
+protocole, le choix de la sortie, la geometrie logique lue par xdg-output, et le
+fait que l'absence de Wayland se solde par un repli et non par une erreur.
+
+Ce qui a besoin d'un serveur en face est joue contre un compositeur en dur sur
+un `socketpair`, dont les reponses sont ecrites a l'avance.
 """
 
 from __future__ import annotations
@@ -176,6 +179,165 @@ class EchelleFractionnaire(unittest.TestCase):
         wayland._ask_logical(conn, found)     # ne doit rien emettre ni lever
         self.assertEqual(found[4]["width"], 2560)
         self.assertEqual(found[4]["scale"], 2)
+
+
+class GeometrieLogique(unittest.TestCase):
+    """`_ask_logical` contre un compositeur en dur, sur un `socketpair`.
+
+    Les tests d'echelle ci-dessus comparent deux formes de dictionnaire : ils
+    montrent la consequence, pas le chemin qui y mene. Ici c'est le protocole
+    lui-meme qui est joue — la requete emise, puis les evenements decodes —
+    faute de pouvoir mesurer sur un ecran a echelle fractionnaire.
+    """
+
+    # Un `_Connection` neuf a `next_id` 10 : le gestionnaire prend 10, les
+    # `zxdg_output_v1` 11 et 12 dans l'ordre des sorties, le callback de
+    # `roundtrip` 13. Le compositeur en dur repond donc a ces numeros-la.
+    MANAGER, PREMIER, SECOND, CALLBACK = 10, 11, 12, 13
+
+    @staticmethod
+    def _evenement(obj, opcode, corps):
+        return struct.pack("=II", obj, ((8 + len(corps)) << 16) | opcode) + corps
+
+    @staticmethod
+    def _emis(sock):
+        """Les messages que le client a poses sur la socket, decodes."""
+        sock.setblocking(False)
+        brut = b""
+        try:
+            while True:
+                bout = sock.recv(8192)
+                if not bout:
+                    break
+                brut += bout
+        except BlockingIOError:
+            pass
+        finally:
+            sock.setblocking(True)
+
+        messages = []
+        while len(brut) >= 8:
+            obj, mot = struct.unpack_from("=II", brut)
+            taille, opcode = mot >> 16, mot & 0xFFFF
+            if taille < 8 or len(brut) < taille:
+                break
+            messages.append((obj, opcode, brut[8:taille]))
+            brut = brut[taille:]
+        return messages
+
+    def _connexion(self):
+        gauche, droite = socket.socketpair()
+        self.addCleanup(droite.close)
+        self.addCleanup(gauche.close)
+        gauche.settimeout(2)          # une reponse manquante doit echouer, pas pendre
+        conn = object.__new__(wayland._Connection)
+        conn.sock, conn.buf, conn.next_id = gauche, b"", 10
+        conn.handlers, conn.registry = {}, 2
+        conn.globals = {"zxdg_output_manager_v1": [(7, 3)]}
+        return conn, droite
+
+    @staticmethod
+    def _sorties():
+        """Deux dalles a l'echelle 1.5, annoncees en pixels et arrondies a 2."""
+        return {
+            4: {"name": "DP-1", "x": 0, "y": 0,
+                "width": 2560, "height": 1440, "scale": 2},
+            5: {"name": "DP-2", "x": 1707, "y": 0,
+                "width": 2560, "height": 1440, "scale": 2},
+        }
+
+    def test_la_geometrie_logique_remplace_le_calcul(self):
+        """2560 a l'echelle 1.5 font 1707 unites, pas les 1280 de la division."""
+        conn, droite = self._connexion()
+        droite.sendall(
+            self._evenement(self.PREMIER, 0, struct.pack("=ii", 0, 0))
+            + self._evenement(self.PREMIER, 1, struct.pack("=ii", 1707, 960))
+            + self._evenement(self.SECOND, 0, struct.pack("=ii", 1707, 0))
+            + self._evenement(self.SECOND, 1, struct.pack("=ii", 1707, 960))
+            + self._evenement(self.CALLBACK, 0, struct.pack("=I", 0))
+        )
+
+        found = self._sorties()
+        wayland._ask_logical(conn, found)
+
+        self.assertEqual(found[4]["width"], 1707)
+        self.assertEqual(found[4]["height"], 960)
+        self.assertEqual(found[5]["x"], 1707)
+        # Deja logique : plus rien a diviser, sinon la dalle retrecirait a
+        # nouveau de moitie chez l'appelant.
+        self.assertEqual(found[4]["scale"], 1)
+        self.assertEqual(found[5]["scale"], 1)
+        # Le nom vient de `wl_output`, il ne doit pas etre efface au passage.
+        self.assertEqual(found[4]["name"], "DP-1")
+
+    def test_la_bonne_dalle_est_choisie_ensuite(self):
+        """La consequence, celle qui se voit : un point a 1500 reste sur DP-1.
+
+        Avec la division, le bord droit tombait a 1280 et le point partait chez
+        la voisine.
+        """
+        conn, droite = self._connexion()
+        droite.sendall(
+            self._evenement(self.PREMIER, 0, struct.pack("=ii", 0, 0))
+            + self._evenement(self.PREMIER, 1, struct.pack("=ii", 1707, 960))
+            + self._evenement(self.SECOND, 0, struct.pack("=ii", 1707, 0))
+            + self._evenement(self.SECOND, 1, struct.pack("=ii", 1707, 960))
+            + self._evenement(self.CALLBACK, 0, struct.pack("=I", 0))
+        )
+
+        found = self._sorties()
+        self.assertEqual(wayland._locate(1500, 100, found)[0], 5)   # avant
+        wayland._ask_logical(conn, found)
+        self.assertEqual(wayland._locate(1500, 100, found), (4, 1500, 100))
+
+    def test_une_requete_par_sortie(self):
+        """`get_xdg_output` doit apparier chaque objet neuf a sa sortie.
+
+        Les intervertir donnerait deux dalles aux geometries echangees, ce
+        qu'aucune assertion sur `found` ne verrait tant qu'elles se ressemblent.
+        """
+        conn, droite = self._connexion()
+        droite.sendall(
+            self._evenement(self.PREMIER, 1, struct.pack("=ii", 1707, 960))
+            + self._evenement(self.SECOND, 1, struct.pack("=ii", 1707, 960))
+            + self._evenement(self.CALLBACK, 0, struct.pack("=I", 0))
+        )
+        wayland._ask_logical(conn, self._sorties())
+
+        messages = self._emis(droite)
+        liaison = [m for m in messages if m[0] == conn.registry]
+        self.assertEqual(len(liaison), 1, messages)
+        self.assertIn(b"zxdg_output_manager_v1", liaison[0][2])
+
+        demandes = [struct.unpack("=II", corps)
+                    for obj, opcode, corps in messages
+                    if obj == self.MANAGER and opcode == wayland._XDG_OUTPUT_GET]
+        self.assertEqual(demandes, [(self.PREMIER, 4), (self.SECOND, 5)])
+
+    def test_une_sortie_muette_garde_le_calcul(self):
+        """Une taille logique absente laisse la sortie telle quelle.
+
+        Le repli est par sortie, pas global : la dalle qui a repondu garde sa
+        geometrie exacte, l'autre reste sur `mode / scale` plutot que sur une
+        moitie de reponse.
+        """
+        conn, droite = self._connexion()
+        droite.sendall(
+            self._evenement(self.PREMIER, 0, struct.pack("=ii", 0, 0))
+            + self._evenement(self.PREMIER, 1, struct.pack("=ii", 1707, 960))
+            # DP-2 n'annonce que sa position : sans taille, on ne touche a rien.
+            + self._evenement(self.SECOND, 0, struct.pack("=ii", 4242, 0))
+            + self._evenement(self.CALLBACK, 0, struct.pack("=I", 0))
+        )
+
+        found = self._sorties()
+        wayland._ask_logical(conn, found)
+
+        self.assertEqual(found[4]["width"], 1707)
+        self.assertEqual(found[4]["scale"], 1)
+        self.assertEqual(found[5]["width"], 2560)
+        self.assertEqual(found[5]["scale"], 2)
+        self.assertEqual(found[5]["x"], 1707)
 
 
 if __name__ == "__main__":
