@@ -12,6 +12,19 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ajouté
+- Un overlay Wayland natif (`doot/wayland.py`), qui parle `wlr-layer-shell`
+  directement sur la socket du compositeur. C'est le seul protocole qui laisse
+  un client choisir sa sortie et s'y positionner : ni le cœur de Wayland ni
+  xdg-shell ne le permettent, et XWayland divise les coordonnées par le facteur
+  d'échelle global avant de poser la fenêtre sur une dalle qui ne suit pas la
+  géométrie annoncée. Le multi-écrans devient donc exact sous Hyprland, Sway,
+  river et KDE. GNOME n'implémente pas layer-shell, `available()` y renvoie faux
+  et le chemin X11 reprend la main. Toujours sans dépendance : le descripteur du
+  tampon partagé passe par `SCM_RIGHTS`, tout est dans la bibliothèque standard.
+- `--screens` et `--status` décrivent les écrans tels que les verra le backend
+  qui affichera vraiment, et non un autre espace de coordonnées.
+
 ### Corrigé
 - L'énumération des écrans sous Linux ne dépend plus du binaire `xrandr`, qui
   vit dans un paquet à part (`xorg-xrandr`, `x11-xserver-utils`) que rien
