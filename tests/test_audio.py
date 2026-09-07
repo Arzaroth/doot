@@ -161,5 +161,62 @@ class Arret(unittest.TestCase):
         self.assertTrue(lecture._arret.is_set())
 
 
+class EcritureAlsa(unittest.TestCase):
+    """La boucle d'ecriture, seule partie d'ALSA qu'on puisse eprouver ici.
+
+    `snd_pcm_writei` peut rendre moins de trames que demande, et -EPIPE sur un
+    underrun. Une reprise sans borne ferait tourner le fil a vide pour toujours.
+    """
+
+    class FausseLib:
+        def __init__(self, reponses):
+            self.reponses = list(reponses)
+            self.prepares = 0
+
+        def snd_pcm_writei(self, _pcm, _bloc, trames):
+            valeur = self.reponses.pop(0) if self.reponses else trames
+            return trames if valeur == "tout" else valeur
+
+        def snd_pcm_prepare(self, _pcm):
+            self.prepares += 1
+
+    def _sortie(self, reponses):
+        sortie = object.__new__(audio._SortieAlsa)
+        sortie.lib = self.FausseLib(reponses)
+        sortie.pcm = None
+        return sortie
+
+    def test_les_ecritures_partielles_sont_reprises(self):
+        sortie = self._sortie([4, 4, "tout"])
+        self.assertTrue(sortie.write(b"\0" * 40))       # 10 trames
+
+    def test_un_underrun_isole_est_rattrape(self):
+        sortie = self._sortie([-audio.EPIPE, "tout"])
+        self.assertTrue(sortie.write(b"\0" * 40))
+        self.assertEqual(sortie.lib.prepares, 1)
+
+    def test_un_underrun_perpetuel_ne_boucle_pas(self):
+        sortie = self._sortie([-audio.EPIPE] * 1000)
+        self.assertFalse(sortie.write(b"\0" * 40))
+        self.assertLessEqual(sortie.lib.prepares, audio.REPRISES_MAX + 1)
+
+    def test_un_zero_perpetuel_ne_boucle_pas(self):
+        sortie = self._sortie([0] * 1000)
+        self.assertFalse(sortie.write(b"\0" * 40))
+
+    def test_une_vraie_erreur_arrete_tout_de_suite(self):
+        sortie = self._sortie([-5])
+        self.assertFalse(sortie.write(b"\0" * 40))
+        self.assertEqual(sortie.lib.prepares, 0)
+
+    def test_le_compteur_repart_a_chaque_progres(self):
+        """Un fichier long avec des underruns espaces doit aller au bout."""
+        reponses = []
+        for _ in range(6):
+            reponses += [-audio.EPIPE] * audio.REPRISES_MAX + [2]
+        sortie = self._sortie(reponses + ["tout"])
+        self.assertTrue(sortie.write(b"\0" * 400))
+
+
 if __name__ == "__main__":
     unittest.main()
