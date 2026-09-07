@@ -315,13 +315,28 @@ class Panoramique(unittest.TestCase):
         """`--af=pan=...` ne demarre pas : l'analyseur d'options bute sur les
         barres, et le doot spatialise devient muet."""
         commande = sound._pan_filter(["mpv", "--no-video"], -0.9)
-        self.assertTrue(commande[-1].startswith("--af=lavfi=[pan=stereo|"), commande)
+        self.assertTrue(commande[-1].startswith("--af=lavfi=["), commande)
         self.assertTrue(commande[-1].endswith("]"), commande)
 
     def test_ffplay_garde_la_syntaxe_ffmpeg(self):
         commande = sound._pan_filter(["ffplay", "-nodisp"], 0.9)
         self.assertEqual(commande[-2], "-af")
-        self.assertTrue(commande[-1].startswith("pan=stereo|"), commande)
+        self.assertIn("pan=stereo|", commande[-1])
+
+    def test_chaque_canal_garde_le_sien(self):
+        """`c1=Rg*c0` construirait les deux sorties depuis le canal gauche : une
+        source stereo y perdrait son canal droit, alors que `pan_wav` le garde.
+        """
+        for commande in (sound._pan_filter(["mpv"], -0.9),
+                         sound._pan_filter(["ffplay"], -0.9)):
+            self.assertIn("c1=0.0787*c1", commande[-1], commande)
+            self.assertNotIn("c1=0.0787*c0", commande[-1], commande)
+
+    def test_le_mono_est_monte_en_stereo_d_abord(self):
+        """Sans quoi `c1` n'existerait pas pour la source mono livree."""
+        for commande in (sound._pan_filter(["mpv"], -0.9),
+                         sound._pan_filter(["ffplay"], -0.9)):
+            self.assertIn("aformat=channel_layouts=stereo,", commande[-1])
 
     def test_lecteur_inconnu(self):
         self.assertIsNone(sound._pan_filter(["paplay"], -0.9))
@@ -330,7 +345,7 @@ class Panoramique(unittest.TestCase):
         gauche = sound._pan_filter(["mpv"], -1.0)[-1]
         droite = sound._pan_filter(["mpv"], 1.0)[-1]
         self.assertIn("c0=1.0000*c0", gauche)
-        self.assertIn("c1=1.0000*c0", droite)
+        self.assertIn("c1=1.0000*c1", droite)
 
 
 class RepliSansPan(unittest.TestCase):
@@ -348,21 +363,34 @@ class RepliSansPan(unittest.TestCase):
     def setUp(self):
         self.lances = []
         self.addCleanup(setattr, sound, "_lance", sound._lance)
-        sound._lance = lambda command, path: self.lances.append(command)
+
+        def faux_lance(command, path):
+            self.lances.append(command)
+            return "processus de repli"
+
+        sound._lance = faux_lance
+
+    def _joue(self, code):
+        lecture = sound.Lecture(self.FauxProcessus(code))
+        sound._repli_sans_pan(lecture, ["mpv"], Path("doot.mp3"), delai=0.01).join(2)
+        return lecture
 
     def test_un_refus_est_rejoue_sans_filtre(self):
-        sound._repli_sans_pan(self.FauxProcessus(1), ["mpv"],
-                              Path("doot.mp3"), delai=0.01).join(2)
+        lecture = self._joue(1)
         self.assertEqual(self.lances, [["mpv"]])
 
+    def test_le_lecteur_de_repli_reste_joignable(self):
+        """Sinon `play_async` rend le processus mort et celui qui joue est
+        perdu, ce qui mordra le jour ou `release` coupera vraiment le son."""
+        lecture = self._joue(1)
+        self.assertEqual(lecture.proc, "processus de repli")
+
     def test_une_lecture_qui_dure_n_est_pas_doublee(self):
-        sound._repli_sans_pan(self.FauxProcessus(None), ["mpv"],
-                              Path("doot.mp3"), delai=0.01).join(2)
+        self._joue(None)
         self.assertEqual(self.lances, [])
 
     def test_une_fin_normale_n_est_pas_doublee(self):
-        sound._repli_sans_pan(self.FauxProcessus(0), ["mpv"],
-                              Path("doot.mp3"), delai=0.01).join(2)
+        self._joue(0)
         self.assertEqual(self.lances, [])
 
 

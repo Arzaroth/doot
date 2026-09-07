@@ -257,14 +257,19 @@ def _pan_filter(command: list[str], pan: float) -> list[str] | None:
     """Ajoute un filtre de panoramique a mpv ou ffplay, qui savent le faire."""
     left_gain, right_gain = stereo_gains(pan)
     binary = Path(command[0]).name
+    # Chaque canal garde le sien, comme `pan_wav` le fait sur les WAV : sinon une
+    # source stereo perd son canal droit des que le panoramique s'applique.
+    # L'`aformat` monte le mono en stereo d'abord, ce qui rend `c1` toujours
+    # valable et laisse une seule expression pour les deux sortes de sources.
+    chaine = (f"aformat=channel_layouts=stereo,"
+              f"pan=stereo|c0={left_gain:.4f}*c0|c1={right_gain:.4f}*c1")
     if binary.startswith("mpv"):
         # `pan` vient de libavfilter : mpv ne l'atteint que par `lavfi=[...]`.
         # Ecrit `--af=pan=...`, son analyseur d'options bute sur les barres et
         # refuse de demarrer, ce qui rendait tout doot spatialise muet.
-        return command + [
-            f"--af=lavfi=[pan=stereo|c0={left_gain:.4f}*c0|c1={right_gain:.4f}*c0]"]
+        return command + [f"--af=lavfi=[{chaine}]"]
     if binary.startswith("ffplay"):
-        return command + ["-af", f"pan=stereo|c0={left_gain:.4f}*c0|c1={right_gain:.4f}*c0"]
+        return command + ["-af", chaine]
     return None
 
 
@@ -361,12 +366,12 @@ def play_async(path: Path, pan: float = 0.0) -> object | None:
         if filtre is not None:
             lecture = filtre
     try:
-        proc = _lance(lecture, path)
+        en_cours = Lecture(_lance(lecture, path))
     except Exception:
         return None
     if lecture is not command:
-        _repli_sans_pan(proc, command, path)
-    return proc
+        _repli_sans_pan(en_cours, command, path)
+    return en_cours
 
 
 def _lance(command: list[str], path: Path) -> subprocess.Popen:
@@ -378,18 +383,38 @@ def _lance(command: list[str], path: Path) -> subprocess.Popen:
     )
 
 
-def _repli_sans_pan(proc, command: list[str], path: Path,
+class Lecture:
+    """Le lecteur en cours.
+
+    Le repli remplace le processus en place, pour que celui qu'on peut joindre
+    soit toujours celui qui joue. Sans ca `play_async` rendrait le processus
+    mort et le lecteur de repli serait injoignable, ce qui ne se voit pas tant
+    que `release` est un no-op mais mordrait le jour ou il coupera le son.
+    """
+
+    __slots__ = ("proc",)
+
+    def __init__(self, proc):
+        self.proc = proc
+
+
+def _repli_sans_pan(lecture: "Lecture", command: list[str], path: Path,
                     delai: float = 0.25) -> threading.Thread:
     """Rejoue sans panoramique si le lecteur a refuse le filtre.
 
     Un lecteur qui n'accepte pas la syntaxe meurt aussitot. Sans ce garde-fou,
     le doot est muet, alors que ce module promet un son non panoramise plutot
     qu'un silence. La veille est dans un fil : le cas nominal ne paie rien.
+
+    Une sortie non nulle venue d'ailleurs (pas de peripherique, fichier
+    illisible) declenche une tentative aussi vouee que la premiere. On ne sait
+    pas les distinguer sans lire stderr, et un processus de plus qui meurt
+    aussitot coute moins qu'un doot muet.
     """
     def veille():
         try:
-            if proc.wait(timeout=delai) != 0:
-                _lance(command, path)
+            if lecture.proc.wait(timeout=delai) != 0:
+                lecture.proc = _lance(command, path)
         except subprocess.TimeoutExpired:
             pass
         except Exception:
