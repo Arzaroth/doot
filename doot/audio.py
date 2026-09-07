@@ -35,6 +35,7 @@ SND_PCM_FORMAT_S16_LE = 2
 SND_PCM_ACCESS_RW_INTERLEAVED = 3
 SND_LATENCE_US = 200000
 EPIPE = 32          # underrun, rendu negatif par snd_pcm_writei
+REPRISES_MAX = 8    # au-dela, le peripherique ne repartira pas
 MORCEAU = 4096          # trames par ecriture, pour pouvoir s'arreter en route
 
 _en_cours: set = set()
@@ -152,14 +153,23 @@ class _SortieAlsa:
         """
         trames = len(bloc) // 4
         pose = 0
+        reprises = 0
         while pose < trames:
             rendu = self.lib.snd_pcm_writei(self.pcm, bloc[pose * 4:], trames - pose)
+            if rendu > 0:
+                pose += rendu
+                reprises = 0
+                continue
+            if rendu < 0 and rendu != -EPIPE:
+                return False
             if rendu == -EPIPE:
                 self.lib.snd_pcm_prepare(self.pcm)
-                continue
-            if rendu < 0:
+            # Un underrun perpetuel, ou un zero rendu en boucle, ferait tourner
+            # ce fil a vide indefiniment. Mieux vaut un son coupe qu'un cœur
+            # brule en silence, d'autant que ce chemin n'a pas ete eprouve.
+            reprises += 1
+            if reprises > REPRISES_MAX:
                 return False
-            pose += rendu
         return True
 
     def drain(self):
