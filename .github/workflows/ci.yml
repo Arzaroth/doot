@@ -69,6 +69,9 @@ jobs:
           # garde-fou. Personne ne le construit en CI, mais une faute de frappe
           # ne doit pas attendre qu'un utilisateur d'Arch la decouvre.
           bash -n packaging/PKGBUILD
+          # Celui de l'AUR d'autant plus : c'est le seul que des gens
+          # construisent vraiment.
+          bash -n packaging/aur/PKGBUILD
 
       - name: Les installeurs sont executables
         # Un clone doit pouvoir lancer ./install.sh directement.

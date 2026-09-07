@@ -1,0 +1,108 @@
+# Maintainer: boubou666 <thomas.epitech@gmail.com>
+#
+# Copie de reference du PKGBUILD publie sur l'AUR sous le nom « spooky-doot ».
+# Ce n'est pas ce fichier-ci que makepkg lit chez les gens : l'AUR sert sa
+# propre copie, poussee sur ssh://aur@aur.archlinux.org/spooky-doot.git. Celle
+# du depot est la pour etre relue et versionnee avec le reste.
+#
+# Elle differe de ../PKGBUILD sur trois points :
+#
+#   1. sha256sums porte la vraie somme de l'archive. ../PKGBUILD ne peut pas :
+#      il se decrirait lui-meme, le point fixe est inatteignable, et la ligne y
+#      reste a SKIP avec la raison ecrite a cote.
+#   2. pkgname est spooky-doot : « doot » est deja pris sur l'AUR par le
+#      gestionnaire de dotfiles de pol-rivero, comme sur PyPI par un lanceur de
+#      taches. Le module et la commande restent « doot ».
+#   3. _repo rattrape l'ecart : l'archive GitHub se deplie dans doot-$pkgver,
+#      pas dans spooky-doot-$pkgver.
+#
+# Attention au point 1, qui redevient piegeux depuis que ce fichier vit dans le
+# depot : a partir de la 1.4.3, il sera lui aussi DANS l'archive qu'il decrit.
+# La somme ne peut donc etre calculee qu'une fois l'etiquette poussee, et le
+# commit qui l'inscrit vient forcement APRES elle. Autrement dit la copie
+# enfermee dans l'archive vX porte la somme de vX-1, et c'est sans consequence :
+# personne ne construit depuis elle. Seule la copie poussee sur l'AUR est lue,
+# et celle-la est juste. Ne pas « reparer » cet ecart, il est structurel.
+#
+# A chaque version, dans cet ordre :
+#   1. pousser l'etiquette vX (la release GitHub fige l'archive) ;
+#   2. mettre pkgver a jour ici, puis `updpkgsums` ;
+#   3. `makepkg --printsrcinfo > .SRCINFO` -- l'oubli est l'erreur classique,
+#      l'AUR n'affiche que .SRCINFO et le paquet resterait a l'ancienne version
+#      pour tout le monde ;
+#   4. copier les deux fichiers dans le clone AUR et pousser.
+
+pkgname=spooky-doot
+_repo=doot
+pkgver=1.4.2
+pkgrel=1
+pkgdesc="Un squelette trompettiste qui surgit au hasard sur ton ecran, du 1er septembre au 31 octobre"
+arch=('any')
+url="https://github.com/boubou666/doot"
+license=('MIT')
+depends=('python' 'tk')
+
+# La commande s'installe en /usr/bin/doot, que le paquet AUR « doot » installe
+# aussi. Les deux ne peuvent pas cohabiter et pacman le dira proprement plutot
+# que d'echouer sur une collision de fichiers.
+#
+# Pas de provides=('doot') en revanche : ce serait mentir. Un paquet qui depend
+# de « doot » attend le gestionnaire de dotfiles, pas un squelette qui joue de
+# la trompette.
+conflicts=('doot')
+
+optdepends=(
+    'pipewire-audio: lecture du son via pw-play'
+    'libpulse: lecture du son via paplay'
+    'alsa-utils: lecture du son via aplay'
+    'mpv: lecture des sons compresses et son spatialise'
+    'ffmpeg: idem, via ffplay'
+    'xorg-xrandr: second recours pour la detection des ecrans multiples'
+)
+makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
+checkdepends=('python-pillow')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('91d2949dde7e9e45f671e6902e1ce8b522c997316d9ba44f7c8e314b4cd167cb')
+
+build() {
+    cd "$srcdir/$_repo-$pkgver"
+
+    # Le reste du projet est passe a uv, pas ce fichier, et c'est delibere.
+    # `uv build` isole la construction et telecharge ses dependances, ce qu'un
+    # makepkg ne doit pas faire ; l'en empecher demande --no-build-isolation,
+    # qui exige alors setuptools deja present. On ajouterait donc uv aux
+    # makedepends pour obtenir exactement le meme resultat que python-build,
+    # qui est par ailleurs la convention Arch. uv ne gagne rien ici.
+    python -m build --wheel --no-isolation
+}
+
+check() {
+    cd "$srcdir/$_repo-$pkgver"
+
+    # La suite n'ouvre aucune fenetre et ne touche pas au reseau : elle passe
+    # dans un chroot sans serveur graphique. Sans python-pillow, les tests de
+    # conformite PNG se contentent de sauter.
+    python -m unittest discover -s tests
+}
+
+package() {
+    cd "$srcdir/$_repo-$pkgver"
+    python -m installer --destdir="$pkgdir" dist/*.whl
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -Dm644 CHANGELOG.md "$pkgdir/usr/share/doc/$pkgname/CHANGELOG.md"
+
+    # Unite systemd utilisateur, activable par chacun. Le modele pointe vers
+    # ~/.local/bin, ou l'installeur manuel depose la commande ; le paquet, lui,
+    # la met dans /usr/bin.
+    local unite="$pkgdir/usr/lib/systemd/user/doot.service"
+    install -Dm644 packaging/doot.service "$unite"
+    sed -i 's|%h/.local/bin/doot|/usr/bin/doot|' "$unite"
+
+    # Un sed qui ne trouve pas son motif ne dit rien et laisse une unite qui
+    # pointe dans le vide. On verifie plutot que de le supposer.
+    grep -q 'ExecStart=/usr/bin/doot' "$unite" || {
+        echo "le chemin de l'unite systemd n'a pas ete reecrit" >&2
+        return 1
+    }
+}
