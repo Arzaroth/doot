@@ -132,7 +132,7 @@ Options : `./install.sh --no-autostart`, `--min 300`, `--max 1800`.
 
 | Distribution  | Affichage (tkinter)                | Son (au choix)                                   |
 | ------------- | ---------------------------------- | ------------------------------------------------ |
-| Arch/Manjaro  | `sudo pacman -S python tk`         | `pipewire-audio`, `libpulse`, `alsa-utils`, `mpv` |
+| Arch/Manjaro  | `sudo pacman -S python tk`         | `libpulse` (ou `alsa-lib`), plus `mpv` pour les mp3 |
 | Debian/Ubuntu | `sudo apt install python3-tk`      | déjà là (`paplay` / `aplay`)                      |
 | Fedora        | `sudo dnf install python3-tkinter` | déjà là                                           |
 | openSUSE      | `sudo zypper install python3-tk`   | déjà là                                           |
@@ -259,7 +259,8 @@ issue et je les retire.
 
 Trois niveaux de repli, dans cet ordre : tes fichiers → les fichiers fournis →
 l'ASCII art et le jingle synthétisé maison (harmoniques, vibrato, enveloppe ADSR),
-utilisés notamment sur un Linux sans lecteur mp3.
+utilisés notamment sur un Linux sans lecteur mp3 — le jingle étant un WAV, il
+part par la sortie native et ne demande donc aucun lecteur.
 
 ### Mettre les tiens
 
@@ -347,9 +348,11 @@ Comment c'est appliqué, selon ce que la plateforme sait faire :
 | `.wav` | panoramisé dans les échantillons | idem | idem |
 | `.mp3` et compressés | volume par canal via MCI | non spatialisé | `mpv` ou `ffplay` si présent, sinon non spatialisé |
 
-Les WAV sont traités par doot lui-même, ce qui marche partout et avec n'importe
-quel lecteur. Pour les formats compressés il faut un intermédiaire capable de
-le faire : MCI sous Windows, un filtre `pan` sous Linux. Quand rien ne sait,
+Les WAV sont traités par doot lui-même. Sous Linux il les envoie aussi
+lui-même à PulseAudio, à PipeWire qui en sert l'interface, ou à ALSA : aucun
+lecteur n'intervient, donc rien ne peut diverger entre le calcul et la
+restitution. Pour les formats compressés il faut un intermédiaire capable de
+panoramiser : MCI sous Windows, un filtre `pan` sous Linux. Quand rien ne sait,
 le son est joué au centre plutôt que pas du tout.
 
 `--no-pan` désactive tout ça.
@@ -373,9 +376,11 @@ Il contient `image/` et `sound/` (tes médias), `doot.wav` (le jingle en cache),
 du tableau ci-dessus. Sous Wayland, l'overlay passe par XWayland ; si ton
 compositeur le refuse, lance la session en X11 ou utilise `--center`.
 
-**Pas de son** → `doot --status` indique le lecteur détecté. Sous Linux il faut
-au moins un de `mpv`, `ffplay`, `play`, `cvlc` (tous formats) ou `pw-play`,
-`paplay`, `aplay` (wav). Sans aucun, doot s'affiche en silence plutôt que de planter.
+**Pas de son** → `doot --status` donne les deux lignes qui comptent, la sortie
+native et le lecteur. Les `.wav` ne demandent que `libpulse` ou `alsa-lib`, qui
+sont là dès qu'une pile audio l'est. Les mp3 et autres formats compressés
+demandent en plus un lecteur capable de les décoder : `mpv`, `ffplay`, `play`
+ou `cvlc`. Sans rien du tout, doot s'affiche en silence plutôt que de planter.
 
 **Mon image ne s'affiche pas** → tkinter ne lit que le PNG et le GIF. Convertis
 ton jpg/webp, par exemple avec `ffmpeg -i image.webp image.png`. Une image
