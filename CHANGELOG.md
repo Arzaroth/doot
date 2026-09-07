@@ -13,6 +13,22 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 ## [Non publié]
 
 ### Ajouté
+- Une sortie audio native (`doot/audio.py`) : les WAV partent directement vers
+  PulseAudio par `libpulse-simple`, ou vers ALSA par `libasound`, appelées en
+  ctypes comme `x11.py` appelle libX11. PipeWire n'a pas besoin d'un chemin à
+  lui, il sert l'interface PulseAudio. Plus de sous-processus, plus de fichier
+  temporaire panoramisé, et le panoramique appliqué sur les échantillons comme
+  `pan_wav` le fait déjà, donc les deux chemins ne peuvent plus diverger.
+  Toujours sans dépendance.
+- `doot --status` indique la sortie audio utilisée et rappelle que le lecteur
+  externe ne sert plus qu'aux formats compressés.
+
+### Modifié
+- Les formats compressés gardent le lecteur externe : aucun décodeur audio
+  n'existe dans la bibliothèque standard. `sound.stop_all()` coupe désormais
+  aussi les lectures natives en cours.
+
+### Ajouté
 - Un overlay Wayland natif (`doot/wayland.py`), qui parle `wlr-layer-shell`
   directement sur la socket du compositeur. C'est le seul protocole qui laisse
   un client choisir sa sortie et s'y positionner : ni le cœur de Wayland ni

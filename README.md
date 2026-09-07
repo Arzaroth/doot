@@ -139,7 +139,9 @@ Options : `./install.sh --no-autostart`, `--min 300`, `--max 1800`.
 | macOS         | `brew install python-tk`           | `afplay`, intégré                                 |
 
 Pour lire des **mp3** sous Linux il faut un lecteur qui gère le compressé :
-`mpv`, `ffmpeg` (ffplay), `sox` ou `vlc`. Les `.wav` passent partout.
+`mpv`, `ffmpeg` (ffplay), `sox` ou `vlc`. Les `.wav`, eux, ne demandent rien :
+doot les envoie lui-même à PulseAudio, à PipeWire qui en sert l'interface, ou à
+ALSA, sans passer par un lecteur. `doot --status` dit laquelle est utilisée.
 
 ### Arch Linux, via un paquet
 
@@ -434,6 +436,7 @@ des quatre installeurs.
 | `doot/wayland.py` | l'overlay natif Wayland, en layer-shell |
 | `doot/overlay.py` | la boucle d'animation, partagée par les deux overlays |
 | `doot/sound.py` | synthèse du jingle, durée et lecture selon l'OS |
+| `doot/audio.py` | la sortie audio native (PulseAudio/PipeWire, ALSA) |
 | `doot/window.py` | l'overlay tkinter, la transparence, le fondu |
 | `doot/cli.py` | la CLI, la boucle aléatoire, l'instance unique |
 
