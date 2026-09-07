@@ -139,6 +139,104 @@ class OptionsDAffichage(CliTestCase):
             self.assertEqual(self.run_cli("--min", "500", "--max", "10", "--once"), 3)
 
 
+class Salves(CliTestCase):
+    """Plusieurs doots a la suite pour un seul declenchement."""
+
+    def setUp(self):
+        super().setUp()
+        patch = mock.patch.object(season, "in_season", lambda now=None: True)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def sans_attente(self):
+        """Neutralise les pauses de la salve, et note ce qui a ete demande."""
+        pauses = []
+        patch = mock.patch.object(cli.time, "sleep", pauses.append)
+        patch.start()
+        self.addCleanup(patch.stop)
+        return pauses
+
+    def test_par_defaut_un_seul_doot(self):
+        self.sans_attente()
+        self.run_cli("--once", "--no-sound")
+        self.assertEqual(len(self.shown), 1)
+
+    def test_salve_fixe(self):
+        self.sans_attente()
+        self.run_cli("--once", "--no-sound", "--burst-min", "3", "--burst-max", "3")
+        self.assertEqual(len(self.shown), 3)
+
+    def test_le_nombre_reste_dans_la_fourchette(self):
+        self.sans_attente()
+        for _ in range(30):
+            self.shown.clear()
+            self.run_cli("--once", "--no-sound", "--burst-min", "2", "--burst-max", "5")
+            self.assertIn(len(self.shown), range(2, 6))
+
+    def test_bornes_inversees_rattrapees(self):
+        self.sans_attente()
+        self.run_cli("--once", "--no-sound", "--burst-min", "4", "--burst-max", "1")
+        self.assertEqual(len(self.shown), 4)
+
+    def test_zero_devient_un(self):
+        self.sans_attente()
+        self.run_cli("--once", "--no-sound", "--burst-min", "0", "--burst-max", "0")
+        self.assertEqual(len(self.shown), 1)
+
+    def test_delai_entre_les_doots(self):
+        """Une pause entre deux doots, donc n-1 pour une salve de n."""
+        pauses = self.sans_attente()
+        self.run_cli("--once", "--no-sound", "--burst-min", "3", "--burst-max", "3",
+                     "--burst-delay", "0.25")
+        self.assertEqual(pauses, [0.25, 0.25])
+
+    def test_delai_nul_ne_dort_pas(self):
+        pauses = self.sans_attente()
+        self.run_cli("--once", "--no-sound", "--burst-min", "3", "--burst-max", "3",
+                     "--burst-delay", "0")
+        self.assertEqual(pauses, [])
+
+    def test_delai_negatif_rattrape(self):
+        pauses = self.sans_attente()
+        self.run_cli("--once", "--no-sound", "--burst-min", "2", "--burst-max", "2",
+                     "--burst-delay", "-3")
+        self.assertEqual(pauses, [])
+
+    def test_chaque_doot_de_la_salve_retire_son_animation(self):
+        """Un appel a window.show par doot : c'est lui qui tire l'animation.
+
+        Une salve qui n'appellerait show qu'une fois rejouerait la meme entree
+        n fois, ce qui n'aurait aucun interet.
+        """
+        self.sans_attente()
+        self.run_cli("--once", "--no-sound", "--burst-min", "4", "--burst-max", "4",
+                     "--slide-chance", "0.5")
+        self.assertEqual(len(self.shown), 4)
+        for appel in self.shown:
+            self.assertTrue(appel["slide"])
+            self.assertIsNone(appel["side"])
+            self.assertEqual(appel["slide_chance"], 0.5)
+
+    def test_hors_saison_aucune_salve(self):
+        self.sans_attente()
+        with mock.patch.object(season, "in_season", lambda now=None: False):
+            code = self.run_cli("--once", "--no-sound", "--burst-min", "5", "--burst-max", "5")
+        self.assertEqual(code, 3)
+        self.assertEqual(self.shown, [])
+
+    def test_burst_size_suit_le_tirage(self):
+        args = cli.build_parser().parse_args(["--burst-min", "2", "--burst-max", "7"])
+
+        class Fixe:
+            def randint(self, bas, haut):
+                self.vus = (bas, haut)
+                return haut
+
+        rng = Fixe()
+        self.assertEqual(cli.burst_size(args, rng), 7)
+        self.assertEqual(rng.vus, (2, 7))
+
+
 class CommandesInformatives(CliTestCase):
     """Elles doivent repondre sans affichage et sans effet de bord."""
 

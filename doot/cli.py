@@ -17,6 +17,7 @@ DEFAULT_MIN_SECONDS = 600     # 10 min
 DEFAULT_MAX_SECONDS = 3600    # 1 h
 DEFAULT_DURATION = 2.8
 DEFAULT_VOLUME = 0.55
+DEFAULT_BURST_DELAY = 0.6
 OUT_OF_SEASON_POLL = 3600     # on reverifie la date toutes les heures
 
 
@@ -141,30 +142,55 @@ def resolve_media(args) -> tuple:
     return wav, picture, duration
 
 
-def do_once(args) -> int:
+def burst_size(args, rng=random) -> int:
+    """Combien de doots ce declenchement enchaine-t-il."""
+    bas = max(1, args.burst_min)
+    haut = max(bas, args.burst_max)
+    return rng.randint(bas, haut)
+
+
+def emit_doots(args, journal: bool = False) -> int:
+    """Joue la salve de ce declenchement ; renvoie le nombre de doots affiches.
+
+    Chaque doot de la salve repasse par `resolve_media` et `window.show` : il
+    retire donc son son, son image, son ecran, son bord d'entree. Deux
+    squelettes d'affilee n'arrivent jamais pareil, ce qui est tout l'interet
+    d'en enchainer plusieurs.
+    """
     from . import window
 
+    total = burst_size(args)
+    for index in range(1, total + 1):
+        if index > 1 and args.burst_delay > 0:
+            time.sleep(args.burst_delay)
+        wav, picture, duration = resolve_media(args)
+        window.show(
+            wav_path=wav,
+            duration=duration,
+            font_size=args.font_size,
+            center=args.center,
+            opacity=args.opacity,
+            image_path=picture,
+            scale=args.scale,
+            screen=args.screen,
+            spatialise=not args.no_pan,
+            slide=not args.no_slide,
+            side=args.side,
+            slide_ms=args.slide_ms,
+            slide_chance=args.slide_chance,
+        )
+        if journal:
+            log("doot !" if total == 1 else f"doot {index}/{total} !", quiet=args.quiet)
+    return total
+
+
+def do_once(args) -> int:
     if not args.ignore_season and not season.in_season():
         print(f"doot : {season.describe()}")
         print(f"Saison : {season.SEASON_LABEL}. (--ignore-season pour forcer un test.)")
         return 3
 
-    wav, picture, duration = resolve_media(args)
-    window.show(
-        wav_path=wav,
-        duration=duration,
-        font_size=args.font_size,
-        center=args.center,
-        opacity=args.opacity,
-        image_path=picture,
-        scale=args.scale,
-        screen=args.screen,
-        spatialise=not args.no_pan,
-        slide=not args.no_slide,
-        side=args.side,
-        slide_ms=args.slide_ms,
-        slide_chance=args.slide_chance,
-    )
+    emit_doots(args)
     return 0
 
 
@@ -175,8 +201,9 @@ def do_daemon(args) -> int:
         log(f"une instance tourne deja (pid {running_pid()}), sortie.", quiet=args.quiet)
         return 1
 
+    salve = "" if args.burst_max <= 1 else f" - salve {args.burst_min}-{args.burst_max} doots"
     log(
-        f"demarrage (pid {os.getpid()}) - intervalle {args.min}-{args.max}s - "
+        f"demarrage (pid {os.getpid()}) - intervalle {args.min}-{args.max}s{salve} - "
         f"saison {season.SEASON_LABEL}",
         quiet=args.quiet,
     )
@@ -198,23 +225,7 @@ def do_daemon(args) -> int:
                 continue  # la saison s'est fermee pendant l'attente
 
             try:
-                wav, picture, duration = resolve_media(args)
-                window.show(
-                    wav_path=wav,
-                    duration=duration,
-                    font_size=args.font_size,
-                    center=args.center,
-                    opacity=args.opacity,
-                    image_path=picture,
-                    scale=args.scale,
-                    screen=args.screen,
-                    spatialise=not args.no_pan,
-                    slide=not args.no_slide,
-                    side=args.side,
-                    slide_ms=args.slide_ms,
-                    slide_chance=args.slide_chance,
-                )
-                log("doot !", quiet=args.quiet)
+                emit_doots(args, journal=True)
             except window.TkinterMissing as exc:
                 log(str(exc), quiet=args.quiet)
                 return 4
@@ -262,6 +273,9 @@ def do_status(args) -> int:
     found = window.active_monitors()
     target = "au hasard" if args.screen in (None, "", "random") else f"--screen {args.screen}"
     print(f"  ecrans      : {screens.describe(found)} -> apparition {target}")
+    if args.burst_max > 1:
+        print(f"  salve       : {args.burst_min} a {args.burst_max} doots par "
+              f"declenchement, {args.burst_delay}s entre chacun")
 
     print(f"  journal     : {p['log']}")
     if sys.platform == "win32":
@@ -369,6 +383,15 @@ def build_parser() -> argparse.ArgumentParser:
                         help=f"delai minimum entre deux doot, en secondes (defaut {DEFAULT_MIN_SECONDS})")
     parser.add_argument("--max", type=int, default=DEFAULT_MAX_SECONDS,
                         help=f"delai maximum entre deux doot, en secondes (defaut {DEFAULT_MAX_SECONDS})")
+    parser.add_argument("--burst-min", type=int, default=1, metavar="N",
+                        help="nombre minimum de doots enchaines a chaque declenchement (defaut 1)")
+    parser.add_argument("--burst-max", type=int, default=1, metavar="N",
+                        help="nombre maximum de doots enchaines a chaque declenchement "
+                             "(defaut 1) ; le nombre est tire entre les deux bornes et "
+                             "chaque doot de la salve retire son animation")
+    parser.add_argument("--burst-delay", type=float, default=DEFAULT_BURST_DELAY,
+                        metavar="SECONDES",
+                        help=f"pause entre deux doots d'une meme salve (defaut {DEFAULT_BURST_DELAY})")
     parser.add_argument("--duration", type=float, default=None,
                         help=f"duree d'affichage en secondes (defaut : la duree du son, au moins {DEFAULT_DURATION})")
     parser.add_argument("--image", default=None, metavar="FICHIER",
@@ -414,6 +437,12 @@ def main(argv: list[str] | None = None) -> int:
         args.min = 1
     if args.max < args.min:
         args.max = args.min
+    if args.burst_min < 1:
+        args.burst_min = 1
+    if args.burst_max < args.burst_min:
+        args.burst_max = args.burst_min
+    if args.burst_delay < 0:
+        args.burst_delay = 0.0
 
     p = paths()
     p["data"].mkdir(parents=True, exist_ok=True)

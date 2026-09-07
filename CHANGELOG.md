@@ -13,6 +13,14 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 ## [Non publié]
 
 ### Ajouté
+- Les salves : `--burst-min` / `--burst-max` enchaînent plusieurs doots sur un
+  seul déclenchement, le nombre étant retiré à chaque fois entre les deux
+  bornes, et `--burst-delay` règle la pause entre deux doots de la salve. Chaque
+  doot repasse par le tirage complet — animation, bord d'entrée, position,
+  écran, image, son — parce qu'une salve qui rejouerait la même apparition
+  n fois n'aurait aucun intérêt. Par défaut `1` / `1` : le comportement
+  d'avant, un déclenchement pour un doot.
+
 - Une sortie audio native (`doot/audio.py`) : les WAV partent directement vers
   PulseAudio par `libpulse-simple`, ou vers ALSA par `libasound`, appelées en
   ctypes comme `x11.py` appelle libX11. PipeWire n'a pas besoin d'un chemin à
