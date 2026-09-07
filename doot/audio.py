@@ -20,6 +20,7 @@ chemins sont enfin d'accord.
 from __future__ import annotations
 
 import array
+import atexit
 import ctypes
 import ctypes.util
 import sys
@@ -33,6 +34,7 @@ SND_PCM_STREAM_PLAYBACK = 0
 SND_PCM_FORMAT_S16_LE = 2
 SND_PCM_ACCESS_RW_INTERLEAVED = 3
 SND_LATENCE_US = 200000
+EPIPE = 32          # underrun, rendu negatif par snd_pcm_writei
 MORCEAU = 4096          # trames par ecriture, pour pouvoir s'arreter en route
 
 _en_cours: set = set()
@@ -84,6 +86,7 @@ def _prepare_alsa(lib):
                                        ctypes.c_uint]
     lib.snd_pcm_writei.restype = ctypes.c_long
     lib.snd_pcm_writei.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong]
+    lib.snd_pcm_prepare.argtypes = [ctypes.c_void_p]
     lib.snd_pcm_drain.argtypes = [ctypes.c_void_p]
     lib.snd_pcm_close.argtypes = [ctypes.c_void_p]
 
@@ -140,7 +143,24 @@ class _SortieAlsa:
             raise OSError("snd_pcm_set_params a echoue")
 
     def write(self, bloc: bytes) -> bool:
-        return self.lib.snd_pcm_writei(self.pcm, bloc, len(bloc) // 4) >= 0
+        """Ecrit tout le bloc, en reprenant apres un underrun.
+
+        `snd_pcm_writei` peut rendre moins de trames que demande, et -EPIPE sur
+        un underrun demande un `snd_pcm_prepare` pour repartir. Non eprouve sur
+        un ALSA nu, faute de machine sans serveur de son : ici le greffon ALSA
+        de PipeWire repond a sa place.
+        """
+        trames = len(bloc) // 4
+        pose = 0
+        while pose < trames:
+            rendu = self.lib.snd_pcm_writei(self.pcm, bloc[pose * 4:], trames - pose)
+            if rendu == -EPIPE:
+                self.lib.snd_pcm_prepare(self.pcm)
+                continue
+            if rendu < 0:
+                return False
+            pose += rendu
+        return True
 
     def drain(self):
         self.lib.snd_pcm_drain(self.pcm)
@@ -193,16 +213,19 @@ def _pcm_stereo(path: Path, pan: float) -> tuple[bytes, int] | None:
     if sys.byteorder == "big":
         echantillons.byteswap()
 
+    # `int(round(...))` et non `int(...)` : `pan_wav` arrondit, et tirer vers
+    # zero ajouterait un biais par echantillon. Les deux chemins doivent rendre
+    # les memes octets, un test les compare l'un a l'autre.
     gauche_gain, droite_gain = sound.stereo_gains(pan)
     sortie = array.array("h", bytes(len(echantillons) * (2 if canaux == 1 else 1) * 2))
     if canaux == 1:
         for i, valeur in enumerate(echantillons):
-            sortie[2 * i] = int(valeur * gauche_gain)
-            sortie[2 * i + 1] = int(valeur * droite_gain)
+            sortie[2 * i] = int(round(valeur * gauche_gain))
+            sortie[2 * i + 1] = int(round(valeur * droite_gain))
     else:
         for i in range(0, len(echantillons) - 1, 2):
-            sortie[i] = int(echantillons[i] * gauche_gain)
-            sortie[i + 1] = int(echantillons[i + 1] * droite_gain)
+            sortie[i] = int(round(echantillons[i] * gauche_gain))
+            sortie[i + 1] = int(round(echantillons[i + 1] * droite_gain))
     if sys.byteorder == "big":
         sortie.byteswap()
     return sortie.tobytes(), rate
@@ -211,24 +234,7 @@ def _pcm_stereo(path: Path, pan: float) -> tuple[bytes, int] | None:
 class Lecture:
     """Un son en cours, que l'on peut laisser finir ou couper."""
 
-    __slots__ = ("_arret", "_fil", "__weakref__")
-
-    def __init__(self):
-        self._arret = threading.Event()
-        self._fil = None
-
-    def stop(self):
-        self._arret.set()
-
-    def join(self, timeout=None):
-        if self._fil is not None:
-            self._fil.join(timeout)
-
-
-class Lecture:
-    """Un son en cours, que l'on peut laisser finir ou couper."""
-
-    __slots__ = ("_arret", "_fil", "__weakref__")
+    __slots__ = ("_arret", "_fil")
 
     def __init__(self):
         self._arret = threading.Event()
@@ -248,6 +254,10 @@ def play(path: Path, pan: float = 0.0) -> "Lecture | None":
     Rendre None n'est pas une erreur : l'appelant se rabat sur le lecteur
     externe, seul capable des formats compresses.
     """
+    # Avant tout le reste : convertir le PCM pour decouvrir ensuite qu'aucune
+    # sortie n'existe, c'est du travail jete a chaque doot sous Windows et macOS.
+    if not available():
+        return None
     prepare = _pcm_stereo(Path(path), pan)
     if prepare is None:
         return None
@@ -285,6 +295,21 @@ def play(path: Path, pan: float = 0.0) -> "Lecture | None":
     lecture._fil = threading.Thread(target=verse, daemon=True)
     lecture._fil.start()
     return lecture
+
+
+def _laisse_finir(delai: float = 5.0) -> None:
+    """A la sortie, laisse les sons en cours aller au bout.
+
+    `sound.release` promet de ne pas tronquer une note ; un sous-processus y
+    parvenait en survivant a doot. Le fil reste daemon pour qu'un serveur audio
+    bloque ne retienne jamais le programme, et cette attente bornee tient la
+    promesse dans tous les cas ordinaires.
+    """
+    for lecture in list(_en_cours):
+        lecture.join(delai)
+
+
+atexit.register(_laisse_finir)
 
 
 def stop_all() -> None:

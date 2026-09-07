@@ -43,8 +43,8 @@ class PreparationDesEchantillons(unittest.TestCase):
         gauche, droite = sound.stereo_gains(-1.0)
         self.assertEqual(rate, 44100)
         self.assertEqual(len(ech), 16, "8 trames mono -> 8 trames stereo")
-        self.assertEqual(ech[0], int(10000 * gauche))
-        self.assertEqual(ech[1], int(10000 * droite))
+        self.assertEqual(ech[0], int(round(10000 * gauche)))
+        self.assertEqual(ech[1], int(round(10000 * droite)))
 
     def test_chaque_canal_stereo_garde_le_sien(self):
         """`c1=Rg*c0` jetterait le canal droit : c'est le bug corrige cote filtre."""
@@ -52,14 +52,36 @@ class PreparationDesEchantillons(unittest.TestCase):
         pcm, _ = audio._pcm_stereo(chemin, -0.9)
         ech = array.array("h"); ech.frombytes(pcm)
         gauche, droite = sound.stereo_gains(-0.9)
-        self.assertEqual(ech[0], int(20000 * gauche))
-        self.assertEqual(ech[1], int(4000 * droite), "la droite vient de la droite")
+        self.assertEqual(ech[0], int(round(20000 * gauche)))
+        self.assertEqual(ech[1], int(round(4000 * droite)),
+                         "la droite vient de la droite")
 
     def test_le_centre_ne_touche_a_rien(self):
         chemin = _ecris(self.racine / "c.wav", 2, [(20000, 4000)] * 4)
         pcm, _ = audio._pcm_stereo(chemin, 0.0)
         ech = array.array("h"); ech.frombytes(pcm)
         self.assertEqual((ech[0], ech[1]), (20000, 4000))
+
+    def test_les_deux_chemins_rendent_les_memes_octets(self):
+        """La comparaison croisee, seule capable de voir une divergence.
+
+        Les assertions ci-dessus reprennent la formule du code teste : une
+        troncature au lieu d'un arrondi y passerait des deux cotes. Ici c'est la
+        sortie native qui est comparee a celle de `pan_wav`, donc a l'autre
+        implementation, et l'ecart d'une unite se voit.
+        """
+        # 7 et -9 sont choisis pour que l'arrondi et la troncature different
+        # sur le canal attenue : sans eux les deux implementations tombent sur
+        # les memes octets et le test ne prouverait rien.
+        for canaux, trames in ((1, [10000, -7777, 7, -9, 32000] * 4),
+                               (2, [(20000, 7), (-19999, -9), (5, -5)] * 4)):
+            with self.subTest(canaux=canaux):
+                source = _ecris(self.racine / ("x%d.wav" % canaux), canaux, trames)
+                natif, _ = audio._pcm_stereo(source, -0.9)
+                copie = sound.pan_wav(source, self.racine / ("p%d.wav" % canaux), -0.9)
+                self.assertIsNotNone(copie)
+                with wave.open(str(copie), "rb") as handle:
+                    self.assertEqual(natif, handle.readframes(handle.getnframes()))
 
     def test_un_format_non_gere_rend_none(self):
         chemin = self.racine / "8bits.wav"

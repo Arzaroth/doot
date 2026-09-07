@@ -23,12 +23,6 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 - `doot --status` indique la sortie audio utilisée et rappelle que le lecteur
   externe ne sert plus qu'aux formats compressés.
 
-### Modifié
-- Les formats compressés gardent le lecteur externe : aucun décodeur audio
-  n'existe dans la bibliothèque standard. `sound.stop_all()` coupe désormais
-  aussi les lectures natives en cours.
-
-### Ajouté
 - Un overlay Wayland natif (`doot/wayland.py`), qui parle `wlr-layer-shell`
   directement sur la socket du compositeur. C'est le seul protocole qui laisse
   un client choisir sa sortie et s'y positionner : ni le cœur de Wayland ni
@@ -42,6 +36,11 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
   passe par `SCM_RIGHTS`, tout est dans la bibliothèque standard.
 - `--screens` et `--status` décrivent les écrans tels que les verra le backend
   qui affichera vraiment, et non un autre espace de coordonnées.
+
+### Modifié
+- Les formats compressés gardent le lecteur externe : aucun décodeur audio
+  n'existe dans la bibliothèque standard. `sound.stop_all()` coupe désormais
+  aussi les lectures natives en cours.
 
 ### Corrigé
 - L'overlay Wayland lit la géométrie logique des écrans par
