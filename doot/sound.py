@@ -24,6 +24,8 @@ import threading
 import wave
 from pathlib import Path
 
+from . import audio
+
 SAMPLE_RATE = 44100
 TOTAL_SECONDS = 1.30
 
@@ -343,6 +345,13 @@ def play_async(path: Path, pan: float = 0.0) -> object | None:
     path = Path(path)
     spatialise = abs(pan) > SEUIL_PAN
 
+    # Sortie native d'abord : pas de lecteur externe, pas de fichier temporaire,
+    # et le panoramique applique sur les echantillons comme `pan_wav`. Elle rend
+    # None hors WAV, aucun decodeur audio n'existant dans la stdlib.
+    native = audio.play(path, pan if spatialise else 0.0)
+    if native is not None:
+        return native
+
     # Un WAV, on le panoramise nous-memes : ca marche partout, quel que soit
     # le lecteur, et sans rien installer.
     if spatialise and path.suffix.lower() == ".wav":
@@ -460,6 +469,7 @@ def release(handle: object | None) -> None:
 
 def stop_all() -> None:
     """Coupe net tout son en cours (arret du programme)."""
+    audio.stop_all()
     if sys.platform == "win32":
         try:
             import winsound

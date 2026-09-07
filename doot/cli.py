@@ -268,7 +268,13 @@ def do_status(args) -> int:
         print("  lecteur     : winsound + MCI (integres)")
     else:
         player = sound.find_player()
-        print(f"  lecteur     : {player[0] if player else 'AUCUN (installe mpv/ffmpeg/pipewire/alsa-utils)'}")
+        print(f"  lecteur     : {player[0] if player else 'AUCUN (installe mpv/ffmpeg/pipewire/alsa-utils)'}"
+              f"  (formats compresses)")
+        from . import audio
+
+        native = next((s.nom for s in audio._SORTIES
+                       if s.bibliotheque() is not None), None)
+        print(f"  sortie wav  : {native + ' (natif, sans lecteur)' if native else 'via le lecteur'}")
     try:
         from . import window  # noqa: F401
 
