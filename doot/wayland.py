@@ -10,9 +10,11 @@ choisi et se positionne par ancrage et marges, en coordonnees logiques. On parle
 donc le protocole directement sur la socket, comme screens.py le fait pour X11.
 Le descripteur du tampon partage passe par SCM_RIGHTS, tout est dans la stdlib.
 
-Marche sur wlroots (Hyprland, Sway, river) et KDE. GNOME n'implemente pas
-layer-shell : `available()` renvoie False et l'appelant garde le chemin X11 ou
-tkinter.
+Verifie sur Hyprland. Sway, river et KDE implementent aussi layer-shell, mais
+le glissement s'appuie sur des marges negatives et rien ne dit qu'ils ne les
+bornent pas a zero : le squelette apparaitrait alors pose contre le bord au lieu
+d'y entrer. GNOME n'implemente pas layer-shell du tout : `available()` renvoie
+False et l'appelant garde le chemin X11 ou tkinter.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ import struct
 import sys
 from pathlib import Path
 
-from . import overlay, png, screens, sound
+from . import overlay, png, screens
 
 ARGB8888 = 0
 LAYER_OVERLAY = 3
@@ -40,6 +42,7 @@ _POOL_CREATE_BUFFER = 0
 _SURFACE_ATTACH, _SURFACE_DAMAGE = 1, 2
 _SURFACE_SET_INPUT_REGION, _SURFACE_COMMIT = 5, 6
 _SHELL_GET_LAYER_SURFACE = 0
+_XDG_OUTPUT_GET = 1
 _LAYER_SET_SIZE, _LAYER_SET_ANCHOR, _LAYER_SET_EXCLUSIVE = 0, 1, 2
 _LAYER_SET_MARGIN, _LAYER_SET_KEYBOARD, _LAYER_ACK = 3, 4, 6
 
@@ -179,7 +182,55 @@ def _collect_outputs(conn: _Connection) -> dict[int, dict]:
         conn.handlers[(oid, 3)] = on_scale
         conn.handlers[(oid, 4)] = on_name
     conn.roundtrip()
+    _ask_logical(conn, found)
     return found
+
+
+def _ask_logical(conn: _Connection, found: dict[int, dict]) -> None:
+    """Remplace le calcul `mode / scale` par la geometrie logique exacte.
+
+    `wl_output.scale` est un entier : sous echelle fractionnaire les
+    compositeurs laissent `mode` en pixels physiques et arrondissent `scale` au
+    superieur, donc la division retreci l'ecran. Une dalle 2560 a l'echelle 1.5
+    fait 1707 unites logiques et la division en annonce 1280 : le squelette se
+    cantonnerait au quart superieur gauche, et une entree par la droite
+    demarrerait au milieu de la dalle au lieu de son bord.
+
+    `zxdg_output_manager_v1` donne la valeur juste. Absent, on garde le calcul.
+    """
+    if not conn.globals.get("zxdg_output_manager_v1"):
+        return
+    try:
+        manager = conn.bind("zxdg_output_manager_v1", 3)
+    except WaylandUnavailable:
+        return
+
+    logiques: dict[int, dict] = {}
+    par_sortie: dict[int, int] = {}
+    for oid in found:
+        xid = conn.id()
+        logiques[xid] = {}
+        par_sortie[oid] = xid
+        conn.send(manager, _XDG_OUTPUT_GET, struct.pack("=II", xid, oid))
+
+        def on_position(body, xid=xid):
+            x, y = struct.unpack_from("=ii", body)
+            logiques[xid]["x"], logiques[xid]["y"] = x, y
+
+        def on_size(body, xid=xid):
+            width, height = struct.unpack_from("=ii", body)
+            logiques[xid]["width"], logiques[xid]["height"] = width, height
+
+        conn.handlers[(xid, 0)] = on_position
+        conn.handlers[(xid, 1)] = on_size
+    conn.roundtrip()
+
+    for oid, xid in par_sortie.items():
+        mesures = logiques[xid]
+        if mesures.get("width") and mesures.get("height"):
+            found[oid].update(mesures)
+            # La taille est deja logique : plus rien a diviser.
+            found[oid]["scale"] = 1
 
 
 def available() -> bool:

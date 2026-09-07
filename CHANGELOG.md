@@ -18,14 +18,24 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
   un client choisir sa sortie et s'y positionner : ni le cœur de Wayland ni
   xdg-shell ne le permettent, et XWayland divise les coordonnées par le facteur
   d'échelle global avant de poser la fenêtre sur une dalle qui ne suit pas la
-  géométrie annoncée. Le multi-écrans devient donc exact sous Hyprland, Sway,
-  river et KDE. GNOME n'implémente pas layer-shell, `available()` y renvoie faux
-  et le chemin X11 reprend la main. Toujours sans dépendance : le descripteur du
-  tampon partagé passe par `SCM_RIGHTS`, tout est dans la bibliothèque standard.
+  géométrie annoncée. Le multi-écrans devient donc exact, vérifié sur Hyprland ;
+  Sway, river et KDE implémentent aussi layer-shell, mais le comportement de
+  KWin sur les marges négatives du glissement n'a pas été regardé. GNOME ne
+  l'implémente pas du tout : `available()` y renvoie faux et le chemin X11
+  reprend la main. Toujours sans dépendance : le descripteur du tampon partagé
+  passe par `SCM_RIGHTS`, tout est dans la bibliothèque standard.
 - `--screens` et `--status` décrivent les écrans tels que les verra le backend
   qui affichera vraiment, et non un autre espace de coordonnées.
 
 ### Corrigé
+- L'overlay Wayland lit la géométrie logique des écrans par
+  `zxdg_output_manager_v1` au lieu de la déduire de `mode / scale`.
+  `wl_output.scale` est un entier : sous échelle fractionnaire les compositeurs
+  laissent `mode` en pixels physiques et arrondissent `scale` au supérieur, si
+  bien qu'une dalle 2560 à l'échelle 1.5 était annoncée à 1280 unités logiques
+  au lieu de 1707. Le squelette se cantonnait alors au quart supérieur gauche,
+  et une entrée par la droite démarrait au milieu de la dalle au lieu de son
+  bord. Le calcul précédent sert de repli si l'interface manque.
 - Le son revient quand le doot est spatialisé. mpv n'atteint le filtre `pan` de
   libavfilter que par `--af=lavfi=[...]` ; écrit `--af=pan=...`, son analyseur
   d'options bute sur les barres verticales, refuse de démarrer et le doot est

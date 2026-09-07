@@ -137,5 +137,46 @@ class SansSession(unittest.TestCase):
         self.assertFalse(wayland.available())
 
 
+class EchelleFractionnaire(unittest.TestCase):
+    """`mode / scale` ne vaut que pour une echelle entiere.
+
+    `wl_output.scale` est un entier : sous echelle fractionnaire le compositeur
+    laisse `mode` en pixels et arrondit `scale` au superieur. La geometrie
+    logique doit donc venir de `zxdg_output_manager_v1`, pas d'une division.
+    """
+
+    def test_la_division_donne_la_mauvaise_dalle(self):
+        """Une 2560 a l'echelle 1.5 fait 1707 unites logiques, pas 1280.
+
+        Avec la division, le bord droit tombe a 1280 : un point a 1500, qui est
+        bien sur la premiere dalle, est attribue a la voisine.
+        """
+        naif = {
+            4: {"name": "DP-1", "x": 0, "y": 0,
+                "width": 2560, "height": 1440, "scale": 2},
+            5: {"name": "DP-2", "x": 1707, "y": 0,
+                "width": 1920, "height": 1080, "scale": 1},
+        }
+        self.assertEqual(wayland._locate(1500, 100, naif)[0], 5)
+
+    def test_la_geometrie_logique_rend_la_bonne_dalle(self):
+        exact = {
+            4: {"name": "DP-1", "x": 0, "y": 0,
+                "width": 1707, "height": 960, "scale": 1},
+            5: {"name": "DP-2", "x": 1707, "y": 0,
+                "width": 1920, "height": 1080, "scale": 1},
+        }
+        self.assertEqual(wayland._locate(1500, 100, exact), (4, 1500, 100))
+
+    def test_sans_le_gestionnaire_on_garde_le_calcul(self):
+        conn = object.__new__(wayland._Connection)
+        conn.globals, conn.handlers = {}, {}
+        found = {4: {"name": "DP-1", "x": 0, "y": 0,
+                     "width": 2560, "height": 1440, "scale": 2}}
+        wayland._ask_logical(conn, found)     # ne doit rien emettre ni lever
+        self.assertEqual(found[4]["width"], 2560)
+        self.assertEqual(found[4]["scale"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()
