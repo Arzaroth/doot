@@ -30,9 +30,10 @@ tourne mais reste sagement endormi : le squelette range sa trompette.
 - **Multi-écrans** : les moniteurs sont énumérés pour de vrai (Win32, Wayland,
   RandR, CoreGraphics), le squelette surgit sur l'un d'eux au hasard, jamais à cheval
   entre deux dalles ni sous la barre des tâches.
-- **Deux façons d'arriver**, tirées au sort : il surgit au milieu de l'écran,
-  ou il glisse depuis l'un des quatre bords en pivotant pour avoir les pieds sur
-  le bord d'où il vient — entré par le haut, il arrive tête en bas.
+- **Trois façons d'arriver**, tirées au sort : il surgit au milieu de l'écran,
+  il y surgit en faisant un tour complet sur lui-même, ou il glisse depuis l'un
+  des quatre bords en pivotant pour avoir les pieds sur le bord d'où il vient —
+  entré par le haut, il arrive tête en bas.
 - **Son spatialisé** : le doot sort du côté où le squelette est apparu, calculé
   sur l'ensemble du bureau — collé à droite de l'écran de droite, il sonne
   franchement à droite.
@@ -245,6 +246,10 @@ doot --art                   # imprime le squelette dans le terminal
 | `--side` | au hasard | bord d'entrée : `left`, `right`, `top`, `bottom` (impose l'entrée) |
 | `--slide-ms` | `420` | durée de l'entrée, en millisecondes |
 | `--no-slide` | — | jamais d'entrée par un bord, tout surgit sur place |
+| `--spin` | — | ce doot fait un tour complet sur lui-même (impose l'apparition sur place) |
+| `--spin-chance` | `0.25` | proportion des apparitions sur place qui font un tour complet |
+| `--spin-ms` | `700` | durée du tour complet, en millisecondes |
+| `--no-spin` | — | jamais de tour complet, le squelette reste droit |
 | `--screen` | `random` | écran d'apparition : `random`, `primary`, ou un index (`0`, `1`…) |
 | `--no-sound` | — | mode muet |
 | `--no-pan` | — | son au centre, au lieu de suivre la position du squelette |
@@ -296,10 +301,10 @@ doot --burst-min 2 --burst-max 4 --burst-delay 1.5   # plus espacés
 doot --once --ignore-season --burst-min 4 --burst-max 4   # pour voir tout de suite
 ```
 
-Chaque doot de la salve est tiré indépendamment : son animation (sur place ou
-par un bord, et lequel), sa position, son écran, son image et son son. Une salve
-de quatre, ce sont quatre squelettes différents qui arrivent chacun à leur
-façon, pas la même apparition répétée.
+Chaque doot de la salve est tiré indépendamment : son animation (sur place, en
+tournant, ou par un bord — et lequel), sa position, son écran, son image et son
+son. Une salve de quatre, ce sont quatre squelettes différents qui arrivent
+chacun à leur façon, pas la même apparition répétée.
 
 ### Les garder au démarrage
 
@@ -331,21 +336,26 @@ le daemon revérifie après chaque attente.
 Par défaut `--burst-min` et `--burst-max` valent `1` : un déclenchement, un
 doot, comme avant.
 
-## Les deux façons d'arriver
+## Les trois façons d'arriver
 
-Il y en a deux, tirées au sort à chaque apparition :
+Il y en a trois, tirées au sort à chaque apparition :
 
 - **au milieu**, comme depuis toujours : il surgit sur place, à un endroit
   quelconque de l'écran, droit, en fondu ;
+- **en tournant**, au même endroit, mais en faisant un tour complet sur
+  lui-même ;
 - **par un bord**, en glissant depuis l'extérieur.
 
-Une fois sur deux par défaut. `--slide-chance` règle la proportion — `0` pour
-n'avoir que des apparitions sur place, `1` que des entrées par un bord, `0.8`
-pour surtout des entrées :
+Une entrée par un bord une fois sur deux par défaut. `--slide-chance` règle la
+proportion — `0` pour n'avoir que des apparitions sur place, `1` que des entrées
+par un bord, `0.8` pour surtout des entrées :
 
 ```bash
 doot --slide-chance 0.8
 ```
+
+Le tour complet se partage le reste : un quart des apparitions sur place par
+défaut, réglable par `--spin-chance`.
 
 ### L'entrée par un bord
 
@@ -380,6 +390,42 @@ du *doot* changent de côté sans cesser d'être lisibles.
 
 Pendant le glissement il n'y a pas de fondu d'apparition : le bord de l'écran
 révèle déjà le squelette, et les deux ensemble font bouillie.
+
+### Le tour complet
+
+Le squelette apparaît sur place, comme d'habitude, et fait **un tour complet sur
+lui-même** avant de s'immobiliser — 700 ms par défaut, dans le sens horaire. Il
+finit droit : le tour se referme exactement là où il a commencé.
+
+C'est la même rotation que celle de l'entrée par un bord, mais étalée dans le
+temps : les quatre quarts de tour défilent l'un après l'autre.
+
+| Avancement | Rotation | Résultat |
+| --- | --- | --- |
+| 0 – ¼ | aucune | image droite |
+| ¼ – ½ | un quart horaire | tête à droite |
+| ½ – ¾ | demi-tour | tête en bas |
+| ¾ – 1 | trois quarts | tête à gauche |
+
+L'image est centrée dans le carré qui la contient : les quatre orientations ont
+alors la même taille, et la fenêtre ne change ni de dimensions ni de place au
+milieu du tour.
+
+```bash
+doot --once --spin           # un tour complet, tout de suite
+doot --once --spin-ms 1500   # un tour bien plus lent
+doot --spin-chance 1         # toutes les apparitions sur place tournent
+doot --no-spin               # jamais de tour, comme avant
+```
+
+Il ne se cumule pas avec l'entrée par un bord : l'image y est déjà pivotée pour
+poser les pieds contre le bord, et la faire tourner en plus lui ferait perdre le
+seul repère de l'arrivée. `--spin` impose donc l'apparition sur place, et
+demander `--side` en même temps est refusé.
+
+Il demande une **image PNG** : les GIF animés et le squelette ASCII restent
+droits, faute de pouvoir être pivotés (`doot/png.py` ne décode pas les GIF, et
+des glyphes à chasse fixe tournés d'un quart de tour ne veulent plus rien dire).
 
 ## Le son spatialisé
 

@@ -593,5 +593,100 @@ class RotationDeFrame(unittest.TestCase):
         self.assertEqual(transparents, 12)
 
 
+@unittest.skipIf(png is None, "doot/png.py absent (arrive avec l'overlay X11)")
+class TourCompletDeFrame(unittest.TestCase):
+    """Le carre et ses quatre orientations, pour la rotation complete."""
+
+    def setUp(self):
+        dossier = TemporaryDirectory()
+        self.addCleanup(dossier.cleanup)
+        self.root = Path(dossier.name)
+
+        # 6 x 4, derniere ligne verte : « le bas », qu'on suit pendant le tour
+        valeurs = []
+        for y in range(4):
+            for x in range(6):
+                couleur = (0, 255, 0, 255) if y == 3 else (40, 40, 40, 255)
+                valeurs += list(couleur)
+        self.chemin = ecrire_png(self.root / "bas.png", 6, 4, 8, RVBA, valeurs)
+        self.frame = png.frame(self.chemin, 1.0)
+
+    def vert_sur_le_bord(self, frame, ou):
+        """Nombre de pixels verts poses sur le bord demande."""
+        l, h = frame.width, frame.height
+        total = 0
+        for y in range(h):
+            for x in range(l):
+                p = (y * l + x) * 4
+                if not (frame.data[p + 1] > 200 and frame.data[p + 2] < 100):
+                    continue
+                if (ou == "bas" and y == h - 1) or (ou == "haut" and y == 0)                         or (ou == "gauche" and x == 0) or (ou == "droite" and x == l - 1):
+                    total += 1
+        return total
+
+    def test_le_carre_prend_le_plus_grand_cote(self):
+        carre = self.frame.squared()
+        self.assertEqual((carre.width, carre.height), (6, 6))
+        self.assertEqual(len(carre.data), 6 * 6 * 4)
+
+    def test_le_carre_centre_l_image(self):
+        """L'image doit rester au milieu, sinon elle tournerait de travers."""
+        carre = self.frame.squared()
+        for y in range(self.frame.height):
+            origine = y * self.frame.width * 4
+            cible = ((y + 1) * 6) * 4  # une ligne de marge en haut, aucune a gauche
+            self.assertEqual(
+                carre.data[cible:cible + self.frame.width * 4],
+                self.frame.data[origine:origine + self.frame.width * 4],
+                f"ligne {y}",
+            )
+
+    def test_les_marges_du_carre_sont_transparentes(self):
+        carre = self.frame.squared()
+        for y in (0, 5):  # les lignes ajoutees
+            for x in range(6):
+                p = (y * 6 + x) * 4
+                self.assertEqual(carre.data[p:p + 4], bytes(4),
+                                 f"pixel ({x},{y}) devrait etre transparent")
+
+    def test_une_image_deja_carree_est_rendue_telle_quelle(self):
+        valeurs = [10, 20, 30, 255] * 16
+        carree = png.frame(ecrire_png(self.root / "c.png", 4, 4, 8, RVBA, valeurs), 1.0)
+        self.assertEqual(carree.squared().data, carree.data)
+
+    def test_les_quatre_etapes_ont_la_meme_taille(self):
+        """C'est la raison d'etre du carre : la surface ne change pas en route."""
+        etapes = png.spin_frames(self.frame)
+        self.assertEqual(len(etapes), 4)
+        for etape in etapes:
+            self.assertEqual((etape.width, etape.height), (6, 6))
+
+    def test_le_tour_fait_bien_le_tour(self):
+        """Le bas passe a gauche, en haut, a droite, et revient en bas.
+
+        Sur une image deja carree, ou le carre ne rajoute aucune marge : la
+        bande verte touche donc vraiment le bord a chaque etape.
+        """
+        valeurs = []
+        for y in range(4):
+            for x in range(4):
+                valeurs += list((0, 255, 0, 255) if y == 3 else (40, 40, 40, 255))
+        source = png.frame(ecrire_png(self.root / "carre.png", 4, 4, 8, RVBA, valeurs), 1.0)
+
+        etapes = png.spin_frames(source)
+        oppose = {"bas": "haut", "gauche": "droite", "haut": "bas", "droite": "gauche"}
+        for quarts, ou in enumerate(("bas", "gauche", "haut", "droite")):
+            self.assertEqual(self.vert_sur_le_bord(etapes[quarts], ou), 4,
+                             f"apres {quarts} quart(s), la bande devrait border {ou}")
+            self.assertEqual(self.vert_sur_le_bord(etapes[quarts], oppose[ou]), 0,
+                             f"apres {quarts} quart(s), rien de vert en face")
+
+    def test_le_tour_se_referme_sur_l_image_droite(self):
+        """La derniere etape ramenee d'un quart doit redonner la premiere."""
+        etapes = png.spin_frames(self.frame)
+        self.assertEqual(etapes[3].rotated(1).data, etapes[0].data)
+        self.assertEqual(etapes[0].data, self.frame.squared().data)
+
+
 if __name__ == "__main__":
     unittest.main()

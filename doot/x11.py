@@ -327,24 +327,28 @@ class _Overlay:
 
 def play(frame: png.Frame, x: int, y: int, duration: float,
          opacity: float = 1.0, wav_path: Path | None = None, pan: float = 0.0,
-         start: tuple[int, int] | None = None, slide_ms: int = 0) -> None:
+         start: tuple[int, int] | None = None, slide_ms: int = 0,
+         spins: list | None = None, spin_ms: int = 0) -> None:
     """Fait surgir l'image puis la laisse s'effacer.
 
     `pan` place le son de -1 (gauche) a +1 (droite), selon l'endroit du bureau
     ou l'image apparait. `start` et `slide_ms` font entrer l'image en glissant
-    depuis ce point jusqu'a (`x`, `y`), sur l'un ou l'autre axe.
+    depuis ce point jusqu'a (`x`, `y`), sur l'un ou l'autre axe. `spins` et
+    `spin_ms` lui font faire un tour complet sur place.
 
     Leve X11Unavailable tant que rien n'est affiche ; une fois la fenetre a
     l'ecran, on ne remonte plus d'erreur, un doot ecourte valant mieux qu'un
     doot en double par le chemin de repli.
     """
     with _errors_muted():
-        _play(frame, x, y, duration, opacity, wav_path, pan, start, slide_ms)
+        _play(frame, x, y, duration, opacity, wav_path, pan, start, slide_ms,
+              spins, spin_ms)
 
 
 def _play(frame, x, y, duration, opacity, wav_path, pan=0.0,
-          start=None, slide_ms=0) -> None:
+          start=None, slide_ms=0, spins=None, spin_ms=0) -> None:
     glisse = slide_ms > 0 and start is not None and tuple(start) != (x, y)
     depart_x, depart_y = start if glisse else (x, y)
     overlay.run(_Overlay(frame.width, frame.height, depart_x, depart_y),
-                frame, x, y, duration, opacity, wav_path, pan, start, slide_ms)
+                frame, x, y, duration, opacity, wav_path, pan, start, slide_ms,
+                spins, spin_ms)
