@@ -23,7 +23,7 @@ optdepends=(
     'alsa-utils: lecture du son via aplay'
     'mpv: lecture des sons compresses et son spatialise'
     'ffmpeg: idem, via ffplay'
-    'xorg-xrandr: detection des ecrans multiples'
+    'xorg-xrandr: second recours pour la detection des ecrans multiples'
 )
 makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
 checkdepends=('python-pillow')

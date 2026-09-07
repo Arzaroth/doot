@@ -27,7 +27,7 @@ tourne mais reste sagement endormi : le squelette range sa trompette.
 - **Zéro dépendance** : uniquement la bibliothèque standard de Python 3.8+
 - **Discret** : overlay sans bordure, qui ne vole jamais le focus et — sous Windows —
   laisse passer les clics de souris. Il ne bloque rien, il fait juste *doot*.
-- **Multi-écrans** : les moniteurs sont énumérés pour de vrai (Win32, xrandr,
+- **Multi-écrans** : les moniteurs sont énumérés pour de vrai (Win32, RandR,
   CoreGraphics), le squelette surgit sur l'un d'eux au hasard, jamais à cheval
   entre deux dalles ni sous la barre des tâches.
 - **Deux façons d'arriver**, tirées au sort : il surgit au milieu de l'écran,
@@ -372,9 +372,10 @@ ton jpg/webp, par exemple avec `ffmpeg -i image.webp image.png`. Une image
 illisible fait simplement revenir l'ASCII art.
 
 **Il n'apparaît que sur un seul écran** → `doot --screens` liste ce que doot
-détecte. Sous Linux la détection passe par `xrandr` : sans lui (ou sous Wayland
-pur), tout le bureau est vu comme un seul écran. Installe `xorg-xrandr`, ou fixe
-la cible avec `doot --screen 0`. Avec des écrans à facteurs d'échelle différents
+détecte. Sous Linux, doot interroge RandR directement sur la socket X, sans rien
+à installer. Sous Wayland pur, sans XWayland, il n'y a pas de socket X à
+interroger et tout le bureau reste vu comme un seul écran ; fixe alors la cible
+avec `doot --screen 0`. Avec des écrans à facteurs d'échelle différents
 sous Windows, la position peut se décaler un peu : `--screen primary` évite le
 problème.
 
@@ -418,7 +419,7 @@ des quatre installeurs.
 | `doot/season.py` | la fenêtre 1er septembre → 31 octobre |
 | `doot/art.py` | l'ASCII art et les images de l'animation |
 | `doot/image.py` | le choix du PNG/GIF déposé par l'utilisateur |
-| `doot/screens.py` | l'énumération des écrans (Win32 / xrandr / CoreGraphics) |
+| `doot/screens.py` | l'énumération des écrans (Win32 / RandR / CoreGraphics) |
 | `doot/sound.py` | synthèse du jingle, durée et lecture selon l'OS |
 | `doot/window.py` | l'overlay tkinter, la transparence, le fondu |
 | `doot/cli.py` | la CLI, la boucle aléatoire, l'instance unique |
