@@ -12,6 +12,8 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.4.2] - 2026-09-07
+
 ### Corrigé
 - L'énumération des écrans sous Linux ne dépend plus du binaire `xrandr`, qui
   vit dans un paquet à part (`xorg-xrandr`, `x11-xserver-utils`) que rien
@@ -305,7 +307,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.4.1...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.4.2...HEAD
+[1.4.2]: https://github.com/boubou666/doot/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/boubou666/doot/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/boubou666/doot/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/boubou666/doot/compare/v1.2.1...v1.3.0
