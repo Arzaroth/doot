@@ -127,7 +127,8 @@ Le script copie le code dans `~/.local/share/doot/app`, crée la commande
 `systemd --user` si disponible, sinon une entrée XDG autostart, et un
 LaunchAgent sur macOS.
 
-Options : `./install.sh --no-autostart`, `--min 300`, `--max 1800`.
+Options : `./install.sh --no-autostart`, `--min 300`, `--max 1800`,
+`--burst-min 2 --burst-max 5` (voir [Les salves](#les-salves)).
 
 **Prérequis système** (`install.sh` te le dira si quelque chose manque) :
 
@@ -231,6 +232,8 @@ doot --art                   # imprime le squelette dans le terminal
 | Option | Défaut | Description |
 | --- | --- | --- |
 | `--min` / `--max` | `600` / `3600` | bornes du délai aléatoire entre deux doot, en secondes |
+| `--burst-min` / `--burst-max` | `1` / `1` | bornes du nombre de doots enchaînés à chaque déclenchement |
+| `--burst-delay` | `0.6` | pause entre deux doots d'une même salve, en secondes |
 | `--duration` | durée du son | durée d'affichage, en secondes (au moins 2.8) |
 | `--image` | — | un PNG/GIF précis à afficher |
 | `--no-image` | — | force l'ASCII art même si une image est disponible |
@@ -284,6 +287,54 @@ Tes fichiers passent devant ceux fournis, et ils sont relus à chaque apparition
 tu peux les changer pendant que le daemon tourne. Pour revenir au dessin ASCII et
 au jingle synthétisé : `doot --no-image --regen-sound` (ou vide les deux dossiers
 et supprime `doot/assets/`).
+
+## Les salves
+
+Un déclenchement peut en amener plusieurs. `--burst-min` et `--burst-max`
+donnent les bornes : le nombre est tiré au hasard entre les deux à **chaque**
+déclenchement, et `--burst-delay` règle la pause entre deux doots de la salve.
+
+```bash
+doot --burst-min 2 --burst-max 5              # de 2 à 5 doots d'affilée
+doot --burst-min 3 --burst-max 3              # toujours 3
+doot --burst-min 2 --burst-max 4 --burst-delay 1.5   # plus espacés
+doot --once --ignore-season --burst-min 4 --burst-max 4   # pour voir tout de suite
+```
+
+Chaque doot de la salve est tiré indépendamment : son animation (sur place, en
+tournant, ou par un bord — et lequel), sa position, son écran, son image et son
+son. Une salve de quatre, ce sont quatre squelettes différents qui arrivent
+chacun à leur façon, pas la même apparition répétée.
+
+### Les garder au démarrage
+
+Les options ci-dessus valent pour la commande que tu tapes. Le doot lancé à
+l'ouverture de session, lui, tient sa ligne de commande des installeurs — il
+faut donc la leur demander :
+
+```bash
+./install.sh --burst-min 2 --burst-max 5                       # Linux, macOS
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -BurstMin 2 -BurstMax 5
+```
+
+Le réglage part dans `install.json`, la fiche que relit `doot --update` : il
+survit donc aux mises à jour. Éditer l'unité systemd, le LaunchAgent ou le
+raccourci à la main marche aussi, mais **la prochaine mise à jour les
+réécrit** — les installeurs les regénèrent depuis la fiche.
+
+Sans ces options, la ligne engendrée est exactement celle d'avant les salves :
+mettre doot à jour ne fait donc apparaître aucune salve chez personne.
+
+Une salve n'échappe pas à la saison : elle dure — la pause plus la durée
+d'affichage, autant de fois qu'il y a de doots — et la fenêtre saisonnière peut
+donc se fermer en plein milieu. Chaque doot revérifie avant de s'afficher, comme
+le daemon revérifie après chaque attente.
+
+Par défaut `--burst-min` et `--burst-max` valent `1` : un déclenchement, un
+doot, comme avant.
 
 ## Les trois façons d'arriver
 
@@ -492,7 +543,8 @@ des quatre installeurs.
 | `doot/cli.py` | la CLI, la boucle aléatoire, l'instance unique |
 
 Le daemon tire un délai au hasard entre `--min` et `--max`, dort, vérifie que la
-saison est toujours ouverte, affiche le squelette, recommence. Hors saison, il
+saison est toujours ouverte, affiche la salve du déclenchement (un seul doot par
+défaut, sinon un nombre tiré entre `--burst-min` et `--burst-max`), recommence. Hors saison, il
 se contente de revérifier la date toutes les heures.
 
 ## Licence

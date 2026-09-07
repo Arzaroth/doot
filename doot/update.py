@@ -182,11 +182,31 @@ def refresh_source(fiche: dict, travail: Path, verbose=print) -> tuple[Path, str
     return download_source(travail), "archive"
 
 
+def salve_reglee(fiche: dict) -> tuple[str, str, str] | None:
+    """(min, max, delai) si la fiche demande des salves, sinon rien.
+
+    Une fiche ecrite avant les salves n'a aucune de ces cles : le defaut les
+    ramene a 1, et l'installeur comme le daemon sont alors relances avec
+    exactement la commande d'avant. Une fiche abimee ne doit pas non plus
+    faire echouer une mise a jour pour si peu, d'ou le repli silencieux.
+    """
+    try:
+        haut = int(fiche.get("burst_max", 1))
+        bas = int(fiche.get("burst_min", 1))
+        delai = float(fiche.get("burst_delay", 0.6))
+    except (TypeError, ValueError):
+        return None
+    if haut <= 1:
+        return None
+    return str(bas), str(haut), str(delai)
+
+
 def run_installer(source: Path, fiche: dict, verbose=print) -> None:
     """Rejoue l'installeur de la plateforme avec les options d'origine."""
     minimum = str(fiche.get("min", 600))
     maximum = str(fiche.get("max", 3600))
     autostart = fiche.get("autostart", True)
+    salve = salve_reglee(fiche)
 
     if sys.platform == "win32":
         script = source / "install.ps1"
@@ -194,11 +214,17 @@ def run_installer(source: Path, fiche: dict, verbose=print) -> None:
             "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
             "-File", str(script), "-MinSeconds", minimum, "-MaxSeconds", maximum,
         ]
+        if salve:
+            commande += ["-BurstMin", salve[0], "-BurstMax", salve[1],
+                         "-BurstDelay", salve[2]]
         if not autostart:
             commande.append("-NoAutostart")
     else:
         script = source / "install.sh"
         commande = ["bash", str(script), "--min", minimum, "--max", maximum]
+        if salve:
+            commande += ["--burst-min", salve[0], "--burst-max", salve[1],
+                         "--burst-delay", salve[2]]
         if not autostart:
             commande.append("--no-autostart")
 
@@ -244,6 +270,12 @@ def start_daemon(fiche: dict) -> bool:
     """Relance le daemon en tache de fond, par le chemin de la plateforme."""
     minimum = str(fiche.get("min", 600))
     maximum = str(fiche.get("max", 3600))
+    salve = salve_reglee(fiche)
+    options = ["--min", minimum, "--max", maximum]
+    if salve:
+        options += ["--burst-min", salve[0], "--burst-max", salve[1],
+                    "--burst-delay", salve[2]]
+    options.append("--quiet")
 
     try:
         if sys.platform == "win32":
@@ -254,7 +286,7 @@ def start_daemon(fiche: dict) -> bool:
                 env["PYTHONPATH"] = app + os.pathsep + env.get("PYTHONPATH", "")
             DETACHED = 0x00000008 | 0x08000000  # DETACHED_PROCESS | CREATE_NO_WINDOW
             subprocess.Popen(
-                [pythonw, "-m", "doot", "--min", minimum, "--max", maximum, "--quiet"],
+                [pythonw, "-m", "doot", *options],
                 cwd=app or None, env=env, creationflags=DETACHED,
                 close_fds=True,
             )
@@ -269,7 +301,7 @@ def start_daemon(fiche: dict) -> bool:
         lanceur = Path.home() / ".local" / "bin" / "doot"
         if lanceur.is_file():
             subprocess.Popen(
-                [str(lanceur), "--min", minimum, "--max", maximum, "--quiet"],
+                [str(lanceur), *options],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 stdin=subprocess.DEVNULL, start_new_session=True,
             )

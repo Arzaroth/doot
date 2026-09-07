@@ -222,6 +222,25 @@ class Installeur(UpdateTestCase):
         for interdit in ("-NoAutostart", "--no-autostart"):
             self.assertNotIn(interdit, commande)
 
+    def test_la_salve_est_reprise(self):
+        commande = self.commande_pour({"min": 1, "max": 2, "burst_min": 2,
+                                       "burst_max": 5, "burst_delay": 1.5})
+        drapeau = "-BurstMax" if sys.platform == "win32" else "--burst-max"
+        self.assertIn(drapeau, commande)
+        self.assertEqual(commande[commande.index(drapeau) + 1], "5")
+
+    def test_fiche_d_avant_les_salves_ne_change_rien(self):
+        """Le cas de toutes les installations existantes."""
+        commande = self.commande_pour({"min": 1, "max": 2, "autostart": True})
+        for interdit in ("-BurstMin", "-BurstMax", "-BurstDelay",
+                         "--burst-min", "--burst-max", "--burst-delay"):
+            self.assertNotIn(interdit, commande)
+
+    def test_salve_a_un_ne_met_aucun_drapeau(self):
+        commande = self.commande_pour({"burst_min": 1, "burst_max": 1})
+        for interdit in ("-BurstMax", "--burst-max"):
+            self.assertNotIn(interdit, commande)
+
     def test_installeur_manquant(self):
         source = self.root / "vide"
         source.mkdir()
@@ -237,6 +256,32 @@ class Installeur(UpdateTestCase):
         with mock.patch.object(update.subprocess, "run", return_value=faux):
             with self.assertRaises(update.UpdateError):
                 update.run_installer(source, {}, verbose=lambda *a: None)
+
+
+class Salve(UpdateTestCase):
+    """Ce que la fiche dit des salves, et ce qu'on en fait."""
+
+    def test_fiche_muette_ne_demande_rien(self):
+        self.assertIsNone(update.salve_reglee({}))
+
+    def test_une_seule_apparition_ne_demande_rien(self):
+        """1 a 1, c'est le defaut : inutile de l'ecrire dans la commande."""
+        self.assertIsNone(update.salve_reglee({"burst_min": 1, "burst_max": 1}))
+
+    def test_bornes_reprises(self):
+        self.assertEqual(
+            update.salve_reglee({"burst_min": 2, "burst_max": 5, "burst_delay": 1.5}),
+            ("2", "5", "1.5"),
+        )
+
+    def test_les_defauts_completent(self):
+        self.assertEqual(update.salve_reglee({"burst_max": 4}), ("1", "4", "0.6"))
+
+    def test_fiche_abimee_ne_fait_pas_echouer(self):
+        """Une valeur illisible vaut mieux qu'une mise a jour qui s'arrete."""
+        self.assertIsNone(update.salve_reglee({"burst_max": "oups"}))
+        self.assertIsNone(update.salve_reglee({"burst_max": None}))
+        self.assertIsNone(update.salve_reglee({"burst_max": 5, "burst_delay": "?"}))
 
 
 class InstallationSysteme(UpdateTestCase):

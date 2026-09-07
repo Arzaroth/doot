@@ -24,6 +24,29 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
   PNG, comme la rotation d'entrée : les GIF animés et l'ASCII art restent
   droits.
 
+- Les installeurs prennent `--burst-min` / `--burst-max` / `--burst-delay`
+  (`-BurstMin` / `-BurstMax` / `-BurstDelay` sous Windows) et les inscrivent
+  dans `install.json`, que `doot --update` relit. Les salves n'étaient
+  atteignables qu'en tapant la commande soi-même : le doot lancé à l'ouverture
+  de session tient sa ligne des installeurs, et la modifier à la main ne
+  tenait pas — l'unité systemd, le LaunchAgent et le raccourci sont regénérés
+  à chaque mise à jour. Les drapeaux ne sont écrits que s'ils changent quelque
+  chose, donc une installation existante retrouve mot pour mot la commande
+  qu'elle avait déjà.
+
+## [1.5.0] - 2026-09-07
+
+### Ajouté
+- Les salves : `--burst-min` / `--burst-max` enchaînent plusieurs doots sur un
+  seul déclenchement, le nombre étant retiré à chaque fois entre les deux
+  bornes, et `--burst-delay` règle la pause entre deux doots de la salve. Chaque
+  doot repasse par le tirage complet — animation, bord d'entrée, position,
+  écran, image, son — parce qu'une salve qui rejouerait la même apparition
+  n fois n'aurait aucun intérêt. La saison est revérifiée avant chaque doot de
+  la salve : une salve dure, et la fenêtre saisonnière peut se fermer en plein
+  milieu comme elle peut se fermer pendant l'attente du daemon. Par défaut
+  `1` / `1` : le comportement d'avant, un déclenchement pour un doot.
+
 - Une sortie audio native (`doot/audio.py`) : les WAV partent directement vers
   PulseAudio par `libpulse-simple`, ou vers ALSA par `libasound`, appelées en
   ctypes comme `x11.py` appelle libX11. PipeWire n'a pas besoin d'un chemin à
@@ -377,7 +400,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.4.2...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/boubou666/doot/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/boubou666/doot/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/boubou666/doot/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/boubou666/doot/compare/v1.3.0...v1.4.0
