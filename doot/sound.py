@@ -20,6 +20,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import wave
 from pathlib import Path
 
@@ -257,7 +258,11 @@ def _pan_filter(command: list[str], pan: float) -> list[str] | None:
     left_gain, right_gain = stereo_gains(pan)
     binary = Path(command[0]).name
     if binary.startswith("mpv"):
-        return command + [f"--af=pan=stereo|c0={left_gain:.4f}*c0|c1={right_gain:.4f}*c0"]
+        # `pan` vient de libavfilter : mpv ne l'atteint que par `lavfi=[...]`.
+        # Ecrit `--af=pan=...`, son analyseur d'options bute sur les barres et
+        # refuse de demarrer, ce qui rendait tout doot spatialise muet.
+        return command + [
+            f"--af=lavfi=[pan=stereo|c0={left_gain:.4f}*c0|c1={right_gain:.4f}*c0]"]
     if binary.startswith("ffplay"):
         return command + ["-af", f"pan=stereo|c0={left_gain:.4f}*c0|c1={right_gain:.4f}*c0"]
     return None
@@ -349,19 +354,50 @@ def play_async(path: Path, pan: float = 0.0) -> object | None:
     command = find_player(path)
     if not command:
         return None
+
+    lecture = command
     if spatialise:
         filtre = _pan_filter(command, pan)
         if filtre is not None:
-            command = filtre
+            lecture = filtre
     try:
-        return subprocess.Popen(
-            command + [str(path)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-        )
+        proc = _lance(lecture, path)
     except Exception:
         return None
+    if lecture is not command:
+        _repli_sans_pan(proc, command, path)
+    return proc
+
+
+def _lance(command: list[str], path: Path) -> subprocess.Popen:
+    return subprocess.Popen(
+        command + [str(path)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL,
+    )
+
+
+def _repli_sans_pan(proc, command: list[str], path: Path,
+                    delai: float = 0.25) -> threading.Thread:
+    """Rejoue sans panoramique si le lecteur a refuse le filtre.
+
+    Un lecteur qui n'accepte pas la syntaxe meurt aussitot. Sans ce garde-fou,
+    le doot est muet, alors que ce module promet un son non panoramise plutot
+    qu'un silence. La veille est dans un fil : le cas nominal ne paie rien.
+    """
+    def veille():
+        try:
+            if proc.wait(timeout=delai) != 0:
+                _lance(command, path)
+        except subprocess.TimeoutExpired:
+            pass
+        except Exception:
+            pass
+
+    fil = threading.Thread(target=veille, daemon=True)
+    fil.start()
+    return fil
 
 
 def release(handle: object | None) -> None:

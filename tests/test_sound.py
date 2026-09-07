@@ -6,6 +6,7 @@ joue rien, on verifie ce qui est produit et ce qui est choisi.
 
 from __future__ import annotations
 
+import subprocess
 import tempfile
 import unittest
 import wave
@@ -305,6 +306,64 @@ class Spatialisation(unittest.TestCase):
         avant = self.source.read_bytes()
         sound.pan_wav(self.source, self.root / "p.wav", 1.0)
         self.assertEqual(self.source.read_bytes(), avant)
+
+
+class Panoramique(unittest.TestCase):
+    """La syntaxe du filtre, propre a chaque lecteur."""
+
+    def test_mpv_passe_par_lavfi(self):
+        """`--af=pan=...` ne demarre pas : l'analyseur d'options bute sur les
+        barres, et le doot spatialise devient muet."""
+        commande = sound._pan_filter(["mpv", "--no-video"], -0.9)
+        self.assertTrue(commande[-1].startswith("--af=lavfi=[pan=stereo|"), commande)
+        self.assertTrue(commande[-1].endswith("]"), commande)
+
+    def test_ffplay_garde_la_syntaxe_ffmpeg(self):
+        commande = sound._pan_filter(["ffplay", "-nodisp"], 0.9)
+        self.assertEqual(commande[-2], "-af")
+        self.assertTrue(commande[-1].startswith("pan=stereo|"), commande)
+
+    def test_lecteur_inconnu(self):
+        self.assertIsNone(sound._pan_filter(["paplay"], -0.9))
+
+    def test_les_gains_suivent_le_cote(self):
+        gauche = sound._pan_filter(["mpv"], -1.0)[-1]
+        droite = sound._pan_filter(["mpv"], 1.0)[-1]
+        self.assertIn("c0=1.0000*c0", gauche)
+        self.assertIn("c1=1.0000*c0", droite)
+
+
+class RepliSansPan(unittest.TestCase):
+    """Un lecteur qui refuse le filtre ne doit pas rendre le doot muet."""
+
+    class FauxProcessus:
+        def __init__(self, code):
+            self.code = code
+
+        def wait(self, timeout=None):
+            if self.code is None:
+                raise subprocess.TimeoutExpired("lecteur", timeout)
+            return self.code
+
+    def setUp(self):
+        self.lances = []
+        self.addCleanup(setattr, sound, "_lance", sound._lance)
+        sound._lance = lambda command, path: self.lances.append(command)
+
+    def test_un_refus_est_rejoue_sans_filtre(self):
+        sound._repli_sans_pan(self.FauxProcessus(1), ["mpv"],
+                              Path("doot.mp3"), delai=0.01).join(2)
+        self.assertEqual(self.lances, [["mpv"]])
+
+    def test_une_lecture_qui_dure_n_est_pas_doublee(self):
+        sound._repli_sans_pan(self.FauxProcessus(None), ["mpv"],
+                              Path("doot.mp3"), delai=0.01).join(2)
+        self.assertEqual(self.lances, [])
+
+    def test_une_fin_normale_n_est_pas_doublee(self):
+        sound._repli_sans_pan(self.FauxProcessus(0), ["mpv"],
+                              Path("doot.mp3"), delai=0.01).join(2)
+        self.assertEqual(self.lances, [])
 
 
 if __name__ == "__main__":

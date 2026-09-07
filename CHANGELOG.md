@@ -13,6 +13,16 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 ## [Non publié]
 
 ### Corrigé
+- Le son revient quand le doot est spatialisé. mpv n'atteint le filtre `pan` de
+  libavfilter que par `--af=lavfi=[...]` ; écrit `--af=pan=...`, son analyseur
+  d'options bute sur les barres verticales, refuse de démarrer et le doot est
+  muet. Comme le panoramique s'applique dès que le squelette n'est pas au centre
+  du bureau, presque tous les doots l'étaient sur une configuration multi-écrans.
+- Un lecteur qui refuse la syntaxe du filtre est rejoué sans panoramique, au
+  lieu de laisser un silence. Le module promettait déjà « non panoramisé plutôt
+  que muet », mais rien ne tenait la promesse quand le refus venait du lecteur.
+
+### Corrigé
 - L'énumération des écrans sous Linux ne dépend plus du binaire `xrandr`, qui
   vit dans un paquet à part (`xorg-xrandr`, `x11-xserver-utils`) que rien
   n'installe pour un bureau. Sans lui, la détection échouait en silence et doot
