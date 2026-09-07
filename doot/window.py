@@ -8,7 +8,8 @@ Multiplateforme :
   - Windows : fond reellement transparent (-transparentcolor) + fenetre
     "click-through" et sans vol de focus (styles etendus Win32).
   - macOS   : fenetre sans bordure, sans icone dans le Dock.
-  - Linux   : l'overlay ARGB de x11.py prend la main quand il peut (vraie
+  - Linux   : l'overlay layer-shell de wayland.py, sinon l'ARGB de x11.py
+              prend la main quand il peut (vraie
     transparence par pixel) ; sinon tkinter, type de fenetre "splash" et fond
     sombre, faute d'alpha par pixel sur le visual par defaut.
 """
@@ -22,7 +23,7 @@ import tempfile
 from fractions import Fraction
 from pathlib import Path
 
-from . import art, png, screens, sound, x11
+from . import art, png, screens, sound, wayland, x11
 
 TRANSPARENT_KEY = "#ff00ff"
 FALLBACK_BG = "#0b0b12"
@@ -198,21 +199,50 @@ def _auto_scale(width: int, height: int, screen_w: int, screen_h: int) -> float:
     return min(limit_h / height, limit_w / width)
 
 
+def active_monitors() -> list:
+    """Les ecrans tels que les verra le backend qui affichera reellement.
+
+    `--screens` et `--status` doivent decrire l'espace de coordonnees dans
+    lequel le squelette sera pose, pas un autre.
+    """
+    if wayland.available():
+        found = wayland.monitors()
+        if found:
+            return found
+    return screens.monitors()
+
+
 def _show_argb(wav_path, duration, center, opacity, image_path, scale, screen,
                spatialise, slide=True, side=None, slide_ms=420) -> bool:
-    """Tente l'overlay ARGB de x11.py ; faux si tkinter doit prendre le relais.
+    """Tente les overlays sans tkinter ; faux si tkinter doit prendre le relais.
 
-    Reserve aux PNG : x11.py compose les pixels lui-meme et png.py ne lit pas
-    les GIF animes.
+    Wayland passe en premier : layer-shell sait poser la surface sur la sortie
+    voulue, ce qu'aucun client XWayland ne peut faire. Chaque backend enumere
+    lui-meme ses ecrans, parce que les coordonnees doivent venir du meme espace
+    que le rendu.
+
+    Reserve aux PNG : les deux composent leurs pixels eux-memes et png.py ne
+    lit pas les GIF animes.
     """
     if image_path is None or image_path.suffix.lower() != ".png":
         return False
-    if not x11.available():
+    for backend, enumere in ((wayland, wayland.monitors), (x11, screens.monitors)):
+        if _tente_overlay(backend, enumere, wav_path, duration, center, opacity,
+                          image_path, scale, screen, spatialise, slide, side,
+                          slide_ms):
+            return True
+    return False
+
+
+def _tente_overlay(backend, enumere, wav_path, duration, center, opacity,
+                   image_path, scale, screen, spatialise, slide, side,
+                   slide_ms) -> bool:
+    if not backend.available():
         return False
 
     try:
         image_width, image_height = png.size(image_path)
-        found = screens.monitors()
+        found = enumere()
         monitor = screens.pick(found, screen)
         wanted = scale if scale is not None else _auto_scale(
             image_width, image_height, monitor.width, monitor.height
@@ -237,9 +267,11 @@ def _show_argb(wav_path, duration, center, opacity, image_path, scale, screen,
         return False
 
     try:
-        x11.play(frame, repos_x, repos_y, duration, opacity, wav_path, pan,
-                 start=(depart_x, depart_y), slide_ms=slide_ms if slide else 0)
-    except x11.X11Unavailable:
+        backend.play(frame, repos_x, repos_y, duration, opacity, wav_path, pan,
+                     start=(depart_x, depart_y), slide_ms=slide_ms if slide else 0)
+    except Exception:
+        # overlay.run ne laisse remonter qu'avant affichage : arriver ici veut
+        # dire que rien n'est a l'ecran, donc le repli ne fera pas de double.
         return False
     return True
 

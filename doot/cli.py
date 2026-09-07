@@ -257,9 +257,9 @@ def do_status(args) -> int:
         print("  image       : ASCII art (depose un PNG/GIF dans le dossier ci-dessous)")
     print(f"  images      : {p['image']}  ({len(pictures)} fichier(s))")
 
-    from . import screens
+    from . import screens, window
 
-    found = screens.monitors()
+    found = window.active_monitors()
     target = "au hasard" if args.screen in (None, "", "random") else f"--screen {args.screen}"
     print(f"  ecrans      : {screens.describe(found)} -> apparition {target}")
 
@@ -295,9 +295,9 @@ def do_check_update(args) -> int:
 
 
 def do_screens(args) -> int:
-    from . import screens
+    from . import screens, window
 
-    found = screens.monitors()
+    found = window.active_monitors()
     print(f"doot : {len(found)} ecran(s) detecte(s)")
     for index, monitor in enumerate(found):
         tag = "  (principal)" if monitor.primary else ""

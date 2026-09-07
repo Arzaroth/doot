@@ -27,8 +27,8 @@ tourne mais reste sagement endormi : le squelette range sa trompette.
 - **Zéro dépendance** : uniquement la bibliothèque standard de Python 3.8+
 - **Discret** : overlay sans bordure, qui ne vole jamais le focus et — sous Windows —
   laisse passer les clics de souris. Il ne bloque rien, il fait juste *doot*.
-- **Multi-écrans** : les moniteurs sont énumérés pour de vrai (Win32, RandR,
-  CoreGraphics), le squelette surgit sur l'un d'eux au hasard, jamais à cheval
+- **Multi-écrans** : les moniteurs sont énumérés pour de vrai (Win32, Wayland,
+  RandR, CoreGraphics), le squelette surgit sur l'un d'eux au hasard, jamais à cheval
   entre deux dalles ni sous la barre des tâches.
 - **Deux façons d'arriver**, tirées au sort : il surgit au milieu de l'écran,
   ou il glisse depuis l'un des quatre bords en pivotant pour avoir les pieds sur
@@ -380,10 +380,12 @@ ton jpg/webp, par exemple avec `ffmpeg -i image.webp image.png`. Une image
 illisible fait simplement revenir l'ASCII art.
 
 **Il n'apparaît que sur un seul écran** → `doot --screens` liste ce que doot
-détecte. Sous Linux, doot interroge RandR directement sur la socket X, sans rien
-à installer. Sous Wayland pur, sans XWayland, il n'y a pas de socket X à
-interroger et tout le bureau reste vu comme un seul écran ; fixe alors la cible
-avec `doot --screen 0`. Avec des écrans à facteurs d'échelle différents
+détecte. Sous Wayland, doot parle à ton compositeur et pose le squelette sur la
+sortie voulue, à condition qu'il gère `wlr-layer-shell` : c'est le cas de
+Hyprland, Sway, river et KDE, mais pas de GNOME. Sinon doot repasse par X11, où
+il interroge RandR directement sur la socket, sans rien à installer. Sous GNOME
+Wayland, XWayland impose sa propre disposition et la cible n'est pas garantie ;
+fixe-la avec `doot --screen 0`. Avec des écrans à facteurs d'échelle différents
 sous Windows, la position peut se décaler un peu : `--screen primary` évite le
 problème.
 
@@ -428,6 +430,7 @@ des quatre installeurs.
 | `doot/art.py` | l'ASCII art et les images de l'animation |
 | `doot/image.py` | le choix du PNG/GIF déposé par l'utilisateur |
 | `doot/screens.py` | l'énumération des écrans (Win32 / RandR / CoreGraphics) |
+| `doot/wayland.py` | l'overlay natif Wayland, en layer-shell |
 | `doot/sound.py` | synthèse du jingle, durée et lecture selon l'OS |
 | `doot/window.py` | l'overlay tkinter, la transparence, le fondu |
 | `doot/cli.py` | la CLI, la boucle aléatoire, l'instance unique |
