@@ -217,6 +217,25 @@ class Salves(CliTestCase):
             self.assertIsNone(appel["side"])
             self.assertEqual(appel["slide_chance"], 0.5)
 
+    def test_la_saison_qui_se_ferme_coupe_la_salve(self):
+        """Une salve dure : la saison peut se fermer en plein milieu.
+
+        Le premier doot a ete valide par l'appelant, les suivants revalident.
+        """
+        self.sans_attente()
+        reponses = iter([True, False, False, False])
+        with mock.patch.object(season, "in_season", lambda now=None: next(reponses)):
+            self.run_cli("--once", "--no-sound", "--burst-min", "3", "--burst-max", "3",
+                         "--burst-delay", "0")
+        self.assertEqual(len(self.shown), 1)
+
+    def test_ignore_season_laisse_la_salve_entiere(self):
+        self.sans_attente()
+        with mock.patch.object(season, "in_season", lambda now=None: False):
+            self.run_cli("--once", "--ignore-season", "--no-sound",
+                         "--burst-min", "3", "--burst-max", "3", "--burst-delay", "0")
+        self.assertEqual(len(self.shown), 3)
+
     def test_hors_saison_aucune_salve(self):
         self.sans_attente()
         with mock.patch.object(season, "in_season", lambda now=None: False):

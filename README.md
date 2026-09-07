@@ -300,6 +300,11 @@ par un bord, et lequel), sa position, son écran, son image et son son. Une salv
 de quatre, ce sont quatre squelettes différents qui arrivent chacun à leur
 façon, pas la même apparition répétée.
 
+Une salve n'échappe pas à la saison : elle dure — la pause plus la durée
+d'affichage, autant de fois qu'il y a de doots — et la fenêtre saisonnière peut
+donc se fermer en plein milieu. Chaque doot revérifie avant de s'afficher, comme
+le daemon revérifie après chaque attente.
+
 Par défaut `--burst-min` et `--burst-max` valent `1` : un déclenchement, un
 doot, comme avant.
 

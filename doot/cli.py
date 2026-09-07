@@ -156,13 +156,24 @@ def emit_doots(args, journal: bool = False) -> int:
     retire donc son son, son image, son ecran, son bord d'entree. Deux
     squelettes d'affilee n'arrivent jamais pareil, ce qui est tout l'interet
     d'en enchainer plusieurs.
+
+    Une salve dure : la pause plus la duree d'affichage, autant de fois qu'il y
+    a de doots. La saison peut donc se fermer en plein milieu, comme elle peut
+    se fermer pendant l'attente du daemon. On la reverifie avant chaque doot
+    sauf le premier, que l'appelant vient de valider.
     """
     from . import window
 
     total = burst_size(args)
+    joues = 0
     for index in range(1, total + 1):
-        if index > 1 and args.burst_delay > 0:
-            time.sleep(args.burst_delay)
+        if index > 1:
+            if args.burst_delay > 0:
+                time.sleep(args.burst_delay)
+            if not args.ignore_season and not season.in_season():
+                if journal:
+                    log("la saison s'est fermee pendant la salve.", quiet=args.quiet)
+                break
         wav, picture, duration = resolve_media(args)
         window.show(
             wav_path=wav,
@@ -179,9 +190,10 @@ def emit_doots(args, journal: bool = False) -> int:
             slide_ms=args.slide_ms,
             slide_chance=args.slide_chance,
         )
+        joues += 1
         if journal:
             log("doot !" if total == 1 else f"doot {index}/{total} !", quiet=args.quiet)
-    return total
+    return joues
 
 
 def do_once(args) -> int:
