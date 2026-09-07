@@ -12,6 +12,16 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Corrigé
+- L'overlay Wayland lit la géométrie logique des écrans par
+  `zxdg_output_manager_v1` au lieu de la déduire de `mode / scale`.
+  `wl_output.scale` est un entier : sous échelle fractionnaire les compositeurs
+  laissent `mode` en pixels physiques et arrondissent `scale` au supérieur, si
+  bien qu'une dalle 2560 à l'échelle 1.5 était annoncée à 1280 unités logiques
+  au lieu de 1707. Le squelette se cantonnait alors au quart supérieur gauche,
+  et une entrée par la droite démarrait au milieu de la dalle au lieu de son
+  bord. Le calcul précédent sert de repli si l'interface manque.
+
 ### Ajouté
 - Un overlay Wayland natif (`doot/wayland.py`), qui parle `wlr-layer-shell`
   directement sur la socket du compositeur. C'est le seul protocole qui laisse

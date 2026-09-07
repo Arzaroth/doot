@@ -381,8 +381,10 @@ illisible fait simplement revenir l'ASCII art.
 
 **Il n'apparaît que sur un seul écran** → `doot --screens` liste ce que doot
 détecte. Sous Wayland, doot parle à ton compositeur et pose le squelette sur la
-sortie voulue, à condition qu'il gère `wlr-layer-shell` : c'est le cas de
-Hyprland, Sway, river et KDE, mais pas de GNOME. Sinon doot repasse par X11, où
+sortie voulue, à condition qu'il gère `wlr-layer-shell`. Vérifié sur
+Hyprland ; Sway et river l'implémentent aussi, KDE également même si son
+comportement sur les marges négatives du glissement n'a pas été vérifié. GNOME
+ne l'implémente pas. Sinon doot repasse par X11, où
 il interroge RandR directement sur la socket, sans rien à installer. Sous GNOME
 Wayland, XWayland impose sa propre disposition et la cible n'est pas garantie ;
 fixe-la avec `doot --screen 0`. Avec des écrans à facteurs d'échelle différents
@@ -431,6 +433,7 @@ des quatre installeurs.
 | `doot/image.py` | le choix du PNG/GIF déposé par l'utilisateur |
 | `doot/screens.py` | l'énumération des écrans (Win32 / RandR / CoreGraphics) |
 | `doot/wayland.py` | l'overlay natif Wayland, en layer-shell |
+| `doot/overlay.py` | la boucle d'animation, partagée par les deux overlays |
 | `doot/sound.py` | synthèse du jingle, durée et lecture selon l'OS |
 | `doot/window.py` | l'overlay tkinter, la transparence, le fondu |
 | `doot/cli.py` | la CLI, la boucle aléatoire, l'instance unique |
