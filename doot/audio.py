@@ -35,7 +35,6 @@ SND_PCM_FORMAT_S16_LE = 2
 SND_PCM_ACCESS_RW_INTERLEAVED = 3
 SND_LATENCE_US = 200000
 EPIPE = 32          # underrun, rendu negatif par snd_pcm_writei
-REPRISES = 8        # tours sans progres toleres avant d'abandonner le bloc
 MORCEAU = 4096          # trames par ecriture, pour pouvoir s'arreter en route
 
 _en_cours: set = set()
@@ -144,38 +143,23 @@ class _SortieAlsa:
             raise OSError("snd_pcm_set_params a echoue")
 
     def write(self, bloc: bytes) -> bool:
-        """Ecrit tout le bloc, en reprenant apres un underrun, un temps borne.
+        """Ecrit tout le bloc, en reprenant apres un underrun.
 
         `snd_pcm_writei` peut rendre moins de trames que demande, et -EPIPE sur
-        un underrun demande un `snd_pcm_prepare` pour repartir. Les deux se
-        reprennent, mais pas indefiniment : un peripherique qui sous-alimente
-        sans jamais avancer rendrait -EPIPE a chaque tour, et la boucle
-        brulerait un coeur dans un fil daemon que personne ne regarde. Un
-        `snd_pcm_writei` qui rend 0 ferait de meme.
-
-        Le compteur ne retient que les tours **sans progres** : une lecture qui
-        avance par a-coups, meme en se relancant souvent, va jusqu'au bout. Ce
-        qui s'arrete, c'est ce qui n'avance plus du tout.
-
-        Non eprouve sur un ALSA nu, faute de machine sans serveur de son : ici
-        le greffon ALSA de PipeWire repond a sa place.
+        un underrun demande un `snd_pcm_prepare` pour repartir. Non eprouve sur
+        un ALSA nu, faute de machine sans serveur de son : ici le greffon ALSA
+        de PipeWire repond a sa place.
         """
         trames = len(bloc) // 4
         pose = 0
-        surplace = 0
         while pose < trames:
             rendu = self.lib.snd_pcm_writei(self.pcm, bloc[pose * 4:], trames - pose)
-            if rendu > 0:                       # du son est parti : on repart a zero
-                pose += rendu
-                surplace = 0
-                continue
-            if rendu == -EPIPE:                 # underrun : le peripherique redemarre
+            if rendu == -EPIPE:
                 self.lib.snd_pcm_prepare(self.pcm)
-            elif rendu < 0:                     # erreur dont on ne sait pas revenir
+                continue
+            if rendu < 0:
                 return False
-            surplace += 1
-            if surplace > REPRISES:
-                return False
+            pose += rendu
         return True
 
     def drain(self):
