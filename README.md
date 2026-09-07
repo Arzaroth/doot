@@ -149,6 +149,14 @@ makepkg -si
 systemctl --user enable --now doot.service
 ```
 
+**Et sur l'AUR ?** Pas encore : le paquet n'y est pas publié, donc `yay -S` ne
+trouvera rien pour l'instant. Le `PKGBUILD` prêt à l'être vit dans
+`packaging/aur/`, sous le nom **`spooky-doot`** — `doot` y est déjà pris par un
+gestionnaire de dotfiles, exactement comme sur PyPI par un lanceur de tâches. Il
+déclare `conflicts=('doot')` : les deux paquets installent `/usr/bin/doot` et ne
+peuvent donc pas cohabiter. En attendant la publication, le `makepkg -si`
+ci-dessus reste la voie.
+
 ### Windows
 
 ```powershell
