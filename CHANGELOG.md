@@ -12,6 +12,15 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Corrigé
+- L'énumération des écrans sous Linux ne dépend plus du binaire `xrandr`, qui
+  vit dans un paquet à part (`xorg-xrandr`, `x11-xserver-utils`) que rien
+  n'installe pour un bureau. Sans lui, la détection échouait en silence et doot
+  se rabattait sur un unique écran 1920x1080 à l'origine, sans rapport avec la
+  machine. doot interroge maintenant RandR 1.5 sur la socket X, avec la même
+  requête que celle envoyée par `xrandr --listmonitors` ; le binaire reste en
+  second recours.
+
 ## [1.4.1] - 2026-09-07
 
 ### Ajouté

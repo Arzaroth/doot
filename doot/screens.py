@@ -7,7 +7,7 @@ interroge donc le systeme :
 
   - Windows : EnumDisplayMonitors + GetMonitorInfoW (zone de travail, hors barre
     des taches)
-  - Linux   : `xrandr --listmonitors`
+  - Linux   : RandR 1.5 par le protocole X11 (socket), sinon `xrandr --listmonitors`
   - macOS   : CoreGraphics (CGGetActiveDisplayList + CGDisplayBounds)
 
 Chaque methode retombe proprement sur un ecran unique si elle echoue.
@@ -15,7 +15,10 @@ Chaque methode retombe proprement sur un ecran unique si elle echoue.
 
 from __future__ import annotations
 
+import os
 import re
+import socket
+import struct
 import subprocess
 import sys
 
@@ -151,8 +154,172 @@ _XRANDR_LINE = re.compile(
     r"(?P<width>\d+)/\d+x(?P<height>\d+)/\d+\+(?P<x>-?\d+)\+(?P<y>-?\d+)"
 )
 
+_X_GET_ATOM_NAME = 17
+_X_QUERY_EXTENSION = 98
+_RR_QUERY_VERSION = 0
+_RR_GET_MONITORS = 42
 
-def _linux_monitors() -> list[Monitor]:
+
+def _x_pad(length: int) -> int:
+    return -length % 4
+
+
+def _x_cookie(display_num: str) -> tuple[bytes, bytes]:
+    """Le MIT-MAGIC-COOKIE-1 du .Xauthority, en enregistrements gros-boutistes."""
+    path = os.environ.get("XAUTHORITY") or os.path.expanduser("~/.Xauthority")
+    try:
+        with open(path, "rb") as handle:
+            blob = handle.read()
+    except OSError:
+        return b"", b""
+
+    entries = []
+    offset = 0
+    while offset + 2 <= len(blob):
+        try:
+            family, = struct.unpack_from(">H", blob, offset)
+            offset += 2
+            fields = []
+            for _ in range(4):
+                size, = struct.unpack_from(">H", blob, offset)
+                offset += 2
+                fields.append(blob[offset:offset + size])
+                offset += size
+        except struct.error:
+            break
+        entries.append((family,) + tuple(fields))
+
+    host = socket.gethostname().encode()
+    for strict in (True, False):
+        for family, address, number, name, data in entries:
+            if name != b"MIT-MAGIC-COOKIE-1":
+                continue
+            if number.decode("latin-1") not in ("", display_num):
+                continue
+            if strict and family == 256 and address != host:
+                continue
+            return name, data
+    return b"", b""
+
+
+class _XConnection:
+    """Le strict necessaire du protocole X11 : poignee de main et requetes."""
+
+    def __init__(self):
+        display = os.environ.get("DISPLAY") or ":0"
+        host, _, tail = display.rpartition(":")
+        host = host.replace("/unix", "").replace("unix/", "")
+        number = tail.split(".")[0] or "0"
+        self.sock = self._open(host, number)
+        self.sock.settimeout(4)
+        try:
+            self._setup(*_x_cookie(number))
+        except Exception:
+            self.close()
+            raise
+
+    @staticmethod
+    def _open(host: str, number: str) -> socket.socket:
+        if host in ("", "unix", "localhost"):
+            for address in ("\0/tmp/.X11-unix/X" + number, "/tmp/.X11-unix/X" + number):
+                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                try:
+                    sock.connect(address)
+                    return sock
+                except OSError:
+                    sock.close()
+            if host == "":
+                raise ConnectionError("aucune socket X pour :" + number)
+        return socket.create_connection((host or "localhost", 6000 + int(number)), 4)
+
+    def _recv(self, size: int) -> bytes:
+        buf = b""
+        while len(buf) < size:
+            chunk = self.sock.recv(size - len(buf))
+            if not chunk:
+                raise ConnectionError("le serveur X a ferme la connexion")
+            buf += chunk
+        return buf
+
+    def _setup(self, name: bytes, data: bytes):
+        order = 0x42 if sys.byteorder == "big" else 0x6C
+        self.endian = ">" if order == 0x42 else "<"
+        self.sock.sendall(
+            struct.pack(self.endian + "BxHHHH2x", order, 11, 0, len(name), len(data))
+            + name + b"\0" * _x_pad(len(name))
+            + data + b"\0" * _x_pad(len(data))
+        )
+        status, _, _, _, extra = struct.unpack(self.endian + "BBHHH", self._recv(8))
+        body = self._recv(extra * 4)
+        if status != 1:
+            raise ConnectionError("connexion X refusee")
+        vendor, _, screens_count, formats = struct.unpack_from(
+            self.endian + "HHBB", body, 16)
+        if not screens_count:
+            raise ConnectionError("le serveur X n'annonce aucun ecran")
+        offset = 32 + vendor + _x_pad(vendor) + 8 * formats
+        self.root, = struct.unpack_from(self.endian + "I", body, offset)
+
+    def request(self, major: int, minor: int, payload: bytes = b"") -> bytes:
+        payload += b"\0" * _x_pad(len(payload))
+        self.sock.sendall(
+            struct.pack(self.endian + "BBH", major, minor, 1 + len(payload) // 4)
+            + payload
+        )
+        while True:
+            packet = self._recv(32)
+            if packet[0] == 0:
+                raise OSError("erreur X, code %d" % packet[1])
+            if packet[0] == 1:
+                extra, = struct.unpack_from(self.endian + "I", packet, 4)
+                return packet + (self._recv(extra * 4) if extra else b"")
+
+    def close(self):
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+
+
+def _linux_monitors_wire() -> list[Monitor]:
+    """RandR 1.5 demande a la socket X, sans binaire ni bibliotheque."""
+    conn = None
+    try:
+        conn = _XConnection()
+        end = conn.endian
+        reply = conn.request(_X_QUERY_EXTENSION, 0,
+                             struct.pack(end + "H2x", 5) + b"RANDR")
+        present, opcode = struct.unpack_from(end + "2B", reply, 8)
+        if not present:
+            return []
+
+        reply = conn.request(opcode, _RR_QUERY_VERSION, struct.pack(end + "II", 1, 5))
+        if struct.unpack_from(end + "II", reply, 8) < (1, 5):
+            return []
+
+        reply = conn.request(opcode, _RR_GET_MONITORS,
+                             struct.pack(end + "IBxxx", conn.root, 1))
+        count, = struct.unpack_from(end + "4xI", reply, 8)
+
+        found: list[Monitor] = []
+        offset = 32
+        for _ in range(count):
+            atom, primary, _auto, outputs, x, y, width, height = \
+                struct.unpack_from(end + "IBBHhhHH", reply, offset)
+            offset += 24 + 4 * outputs
+            named = conn.request(_X_GET_ATOM_NAME, 0, struct.pack(end + "I", atom))
+            size, = struct.unpack_from(end + "H", named, 8)
+            found.append(
+                Monitor(x, y, width, height, primary=bool(primary),
+                        name=named[32:32 + size].decode("latin-1"))
+            )
+        return found
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def _linux_monitors_cli() -> list[Monitor]:
     try:
         out = subprocess.run(
             ["xrandr", "--listmonitors"],
@@ -179,6 +346,17 @@ def _linux_monitors() -> list[Monitor]:
             )
         )
     return found
+
+
+def _linux_monitors() -> list[Monitor]:
+    for detect in (_linux_monitors_wire, _linux_monitors_cli):
+        try:
+            found = detect()
+        except Exception:
+            continue
+        if found:
+            return found
+    return []
 
 
 # --------------------------------------------------------------- macOS -------
