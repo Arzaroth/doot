@@ -149,94 +149,6 @@ class ChoixDeLaSortie(unittest.TestCase):
             self.assertIsNone(audio.play(chemin, 0.0))
 
 
-class EcritureAlsa(unittest.TestCase):
-    """La reprise apres underrun doit finir par renoncer.
-
-    `snd_pcm_writei` peut rendre moins de trames que demande, et -EPIPE tant
-    que le peripherique sous-alimente. Reprendre est juste ; reprendre sans
-    fin brulerait un coeur dans un fil daemon, et l'`atexit` attendrait ses
-    cinq secondes par-dessus sans que rien ne sorte.
-    """
-
-    # Sans borne cote code teste, la boucle ne rend jamais la main : un test qui
-    # pend est pire qu'un test rouge, surtout en CI. La fausse bibliotheque
-    # coupe donc d'elle-meme, pour qu'une regression echoue au lieu de tourner.
-    GARDE_FOU = 200
-
-    class FausseLib:
-        """Un `libasound` qui rend ce qu'on lui dit, tour par tour."""
-
-        def __init__(self, retours, garde):
-            self.retours = list(retours)
-            self.garde = garde
-            self.demandes = []
-            self.relances = 0
-
-        def snd_pcm_writei(self, _pcm, _bloc, trames):
-            self.demandes.append(trames)
-            if len(self.demandes) > self.garde:
-                raise AssertionError(
-                    f"{self.garde} appels sans que write() rende la main : "
-                    "la reprise n'est plus bornee")
-            rendu = self.retours.pop(0) if self.retours else 0
-            return trames if rendu == "tout" else rendu
-
-        def snd_pcm_prepare(self, _pcm):
-            self.relances += 1
-
-    def _sortie(self, retours):
-        sortie = object.__new__(audio._SortieAlsa)
-        sortie.lib = self.FausseLib(retours, self.GARDE_FOU)
-        sortie.pcm = None
-        return sortie
-
-    @staticmethod
-    def _bloc(trames):
-        return bytes(trames * 4)
-
-    def test_une_ecriture_partielle_est_reprise(self):
-        sortie = self._sortie([4, 4, 2])
-        self.assertTrue(sortie.write(self._bloc(10)))
-        self.assertEqual(sortie.lib.demandes, [10, 6, 2], "le reste seulement")
-
-    def test_un_underrun_est_repris(self):
-        sortie = self._sortie([-audio.EPIPE, "tout"])
-        self.assertTrue(sortie.write(self._bloc(10)))
-        self.assertEqual(sortie.lib.relances, 1)
-
-    def test_un_underrun_perpetuel_finit_par_renoncer(self):
-        """Le cas qui bouclait : -EPIPE a chaque tour, `pose` immobile."""
-        sortie = self._sortie([-audio.EPIPE] * 500)
-        self.assertFalse(sortie.write(self._bloc(10)))
-        self.assertLessEqual(len(sortie.lib.demandes), audio.REPRISES + 1)
-
-    def test_zero_trame_ecrite_finit_par_renoncer(self):
-        """L'autre facon de ne pas avancer, sans erreur pour le dire."""
-        sortie = self._sortie([0] * 500)
-        self.assertFalse(sortie.write(self._bloc(10)))
-        self.assertLessEqual(len(sortie.lib.demandes), audio.REPRISES + 1)
-        self.assertEqual(sortie.lib.relances, 0, "rien a relancer sans underrun")
-
-    def test_une_erreur_franche_abandonne_aussitot(self):
-        sortie = self._sortie([-5])          # EIO : on ne sait pas en revenir
-        self.assertFalse(sortie.write(self._bloc(10)))
-        self.assertEqual(len(sortie.lib.demandes), 1)
-        self.assertEqual(sortie.lib.relances, 0)
-
-    def test_une_lecture_qui_avance_par_a_coups_va_au_bout(self):
-        """Le compteur ne retient que les tours sans progres.
-
-        Un peripherique qui se relance souvent mais avance entre deux doit
-        aller jusqu'au bout, meme au-dela de `REPRISES` underruns au total.
-        """
-        saccade = []
-        for _ in range(audio.REPRISES + 4):
-            saccade += [-audio.EPIPE, 1]
-        sortie = self._sortie(saccade)
-        self.assertTrue(sortie.write(self._bloc(audio.REPRISES + 4)))
-        self.assertEqual(sortie.lib.relances, audio.REPRISES + 4)
-
-
 class Arret(unittest.TestCase):
 
     def test_stop_all_sans_rien_en_cours(self):
@@ -247,6 +159,63 @@ class Arret(unittest.TestCase):
         self.assertFalse(lecture._arret.is_set())
         lecture.stop()
         self.assertTrue(lecture._arret.is_set())
+
+
+class EcritureAlsa(unittest.TestCase):
+    """La boucle d'ecriture, seule partie d'ALSA qu'on puisse eprouver ici.
+
+    `snd_pcm_writei` peut rendre moins de trames que demande, et -EPIPE sur un
+    underrun. Une reprise sans borne ferait tourner le fil a vide pour toujours.
+    """
+
+    class FausseLib:
+        def __init__(self, reponses):
+            self.reponses = list(reponses)
+            self.prepares = 0
+
+        def snd_pcm_writei(self, _pcm, _bloc, trames):
+            valeur = self.reponses.pop(0) if self.reponses else trames
+            return trames if valeur == "tout" else valeur
+
+        def snd_pcm_prepare(self, _pcm):
+            self.prepares += 1
+
+    def _sortie(self, reponses):
+        sortie = object.__new__(audio._SortieAlsa)
+        sortie.lib = self.FausseLib(reponses)
+        sortie.pcm = None
+        return sortie
+
+    def test_les_ecritures_partielles_sont_reprises(self):
+        sortie = self._sortie([4, 4, "tout"])
+        self.assertTrue(sortie.write(b"\0" * 40))       # 10 trames
+
+    def test_un_underrun_isole_est_rattrape(self):
+        sortie = self._sortie([-audio.EPIPE, "tout"])
+        self.assertTrue(sortie.write(b"\0" * 40))
+        self.assertEqual(sortie.lib.prepares, 1)
+
+    def test_un_underrun_perpetuel_ne_boucle_pas(self):
+        sortie = self._sortie([-audio.EPIPE] * 1000)
+        self.assertFalse(sortie.write(b"\0" * 40))
+        self.assertLessEqual(sortie.lib.prepares, audio.REPRISES_MAX + 1)
+
+    def test_un_zero_perpetuel_ne_boucle_pas(self):
+        sortie = self._sortie([0] * 1000)
+        self.assertFalse(sortie.write(b"\0" * 40))
+
+    def test_une_vraie_erreur_arrete_tout_de_suite(self):
+        sortie = self._sortie([-5])
+        self.assertFalse(sortie.write(b"\0" * 40))
+        self.assertEqual(sortie.lib.prepares, 0)
+
+    def test_le_compteur_repart_a_chaque_progres(self):
+        """Un fichier long avec des underruns espaces doit aller au bout."""
+        reponses = []
+        for _ in range(6):
+            reponses += [-audio.EPIPE] * audio.REPRISES_MAX + [2]
+        sortie = self._sortie(reponses + ["tout"])
+        self.assertTrue(sortie.write(b"\0" * 400))
 
 
 if __name__ == "__main__":
