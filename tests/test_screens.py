@@ -295,5 +295,61 @@ class EntreeParLeCote(unittest.TestCase):
         self.assertEqual((rx, ry), (self.gauche.x, self.gauche.y))
 
 
+class EnumerationLinux(unittest.TestCase):
+    """La chaine libXrandr -> `xrandr` -> repli, sans dependre de la machine."""
+
+    def setUp(self):
+        self.addCleanup(setattr, screens, "_linux_monitors_wire",
+                        screens._linux_monitors_wire)
+        self.addCleanup(setattr, screens, "_linux_monitors_cli",
+                        screens._linux_monitors_cli)
+
+    @staticmethod
+    def _un(nom):
+        return [screens.Monitor(0, 0, 800, 600, name=nom)]
+
+    def test_la_bibliotheque_passe_avant_le_binaire(self):
+        screens._linux_monitors_wire = lambda: self._un("lib")
+        screens._linux_monitors_cli = lambda: self._un("cli")
+        self.assertEqual([m.name for m in screens._linux_monitors()], ["lib"])
+
+    def test_repli_sur_le_binaire_si_la_bibliotheque_ne_trouve_rien(self):
+        screens._linux_monitors_wire = list
+        screens._linux_monitors_cli = lambda: self._un("cli")
+        self.assertEqual([m.name for m in screens._linux_monitors()], ["cli"])
+
+    def test_une_erreur_de_chargement_ne_bloque_pas_la_suite(self):
+        def absente():
+            raise OSError("libXrandr introuvable")
+
+        screens._linux_monitors_wire = absente
+        screens._linux_monitors_cli = lambda: self._un("cli")
+        self.assertEqual([m.name for m in screens._linux_monitors()], ["cli"])
+
+    def test_sans_rien_la_liste_est_vide(self):
+        screens._linux_monitors_wire = list
+        screens._linux_monitors_cli = list
+        self.assertEqual(screens._linux_monitors(), [])
+
+    def test_analyse_de_la_sortie_de_xrandr(self):
+        class Sortie:
+            returncode = 0
+            stdout = (
+                "Monitors: 2\n"
+                " 0: +*eDP-1 2256/280x1504/190+0+0  eDP-1\n"
+                " 1: +DP-9 1920/540x1080/300+2256+0  DP-9\n"
+            )
+
+        self.addCleanup(setattr, screens.subprocess, "run", screens.subprocess.run)
+        screens.subprocess.run = lambda *args, **kwargs: Sortie()
+
+        found = screens._linux_monitors_cli()
+        self.assertEqual([m.name for m in found], ["eDP-1", "DP-9"])
+        self.assertEqual((found[0].width, found[0].height), (2256, 1504))
+        self.assertEqual((found[1].x, found[1].y), (2256, 0))
+        self.assertTrue(found[0].primary)
+        self.assertFalse(found[1].primary)
+
+
 if __name__ == "__main__":
     unittest.main()
