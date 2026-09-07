@@ -199,7 +199,7 @@ def _x_cookie(display_num: str) -> tuple[bytes, bytes]:
             if strict and family == 256 and address != host:
                 continue
             return name, data
-    return (entries[0][3], entries[0][4]) if entries else (b"", b"")
+    return b"", b""
 
 
 class _XConnection:
@@ -212,7 +212,11 @@ class _XConnection:
         number = tail.split(".")[0] or "0"
         self.sock = self._open(host, number)
         self.sock.settimeout(4)
-        self._setup(*_x_cookie(number))
+        try:
+            self._setup(*_x_cookie(number))
+        except Exception:
+            self.close()
+            raise
 
     @staticmethod
     def _open(host: str, number: str) -> socket.socket:
@@ -279,9 +283,10 @@ class _XConnection:
 
 def _linux_monitors_wire() -> list[Monitor]:
     """RandR 1.5 demande a la socket X, sans binaire ni bibliotheque."""
-    conn = _XConnection()
-    end = conn.endian
+    conn = None
     try:
+        conn = _XConnection()
+        end = conn.endian
         reply = conn.request(_X_QUERY_EXTENSION, 0,
                              struct.pack(end + "H2x", 5) + b"RANDR")
         present, opcode = struct.unpack_from(end + "2B", reply, 8)
@@ -310,7 +315,8 @@ def _linux_monitors_wire() -> list[Monitor]:
             )
         return found
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 def _linux_monitors_cli() -> list[Monitor]:

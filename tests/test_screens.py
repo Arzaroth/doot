@@ -9,6 +9,7 @@ posee sur un ecran tombe entierement dedans.
 from __future__ import annotations
 
 import random
+import socket
 import unittest
 
 from doot import screens
@@ -296,7 +297,7 @@ class EntreeParLeCote(unittest.TestCase):
 
 
 class EnumerationLinux(unittest.TestCase):
-    """La chaine libXrandr -> `xrandr` -> repli, sans dependre de la machine."""
+    """La chaine socket X -> `xrandr` -> repli, sans dependre de la machine."""
 
     def setUp(self):
         self.addCleanup(setattr, screens, "_linux_monitors_wire",
@@ -308,23 +309,43 @@ class EnumerationLinux(unittest.TestCase):
     def _un(nom):
         return [screens.Monitor(0, 0, 800, 600, name=nom)]
 
-    def test_la_bibliotheque_passe_avant_le_binaire(self):
-        screens._linux_monitors_wire = lambda: self._un("lib")
+    def test_la_socket_passe_avant_le_binaire(self):
+        screens._linux_monitors_wire = lambda: self._un("wire")
         screens._linux_monitors_cli = lambda: self._un("cli")
-        self.assertEqual([m.name for m in screens._linux_monitors()], ["lib"])
+        self.assertEqual([m.name for m in screens._linux_monitors()], ["wire"])
 
-    def test_repli_sur_le_binaire_si_la_bibliotheque_ne_trouve_rien(self):
+    def test_repli_sur_le_binaire_si_la_socket_ne_trouve_rien(self):
         screens._linux_monitors_wire = list
         screens._linux_monitors_cli = lambda: self._un("cli")
         self.assertEqual([m.name for m in screens._linux_monitors()], ["cli"])
 
-    def test_une_erreur_de_chargement_ne_bloque_pas_la_suite(self):
-        def absente():
-            raise OSError("libXrandr introuvable")
+    def test_une_erreur_de_connexion_ne_bloque_pas_la_suite(self):
+        def refusee():
+            raise ConnectionError("connexion X refusee")
 
-        screens._linux_monitors_wire = absente
+        screens._linux_monitors_wire = refusee
         screens._linux_monitors_cli = lambda: self._un("cli")
         self.assertEqual([m.name for m in screens._linux_monitors()], ["cli"])
+
+    def test_la_socket_se_ferme_si_la_poignee_de_main_echoue(self):
+        """Le repli normal quand l'auth echoue ne doit pas laisser de descripteur."""
+        gauche, droite = socket.socketpair()
+        self.addCleanup(droite.close)
+        self.addCleanup(gauche.close)
+        ouvre = screens._XConnection.__dict__["_open"]
+        poignee = screens._XConnection.__dict__["_setup"]
+        self.addCleanup(setattr, screens._XConnection, "_open", ouvre)
+        self.addCleanup(setattr, screens._XConnection, "_setup", poignee)
+
+        def refus(self, *args):
+            raise ConnectionError("connexion X refusee")
+
+        screens._XConnection._open = staticmethod(lambda host, number: gauche)
+        screens._XConnection._setup = refus
+
+        with self.assertRaises(ConnectionError):
+            screens._XConnection()
+        self.assertEqual(gauche.fileno(), -1)
 
     def test_sans_rien_la_liste_est_vide(self):
         screens._linux_monitors_wire = list
