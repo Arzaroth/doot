@@ -126,7 +126,8 @@ Le script copie le code dans `~/.local/share/doot/app`, crée la commande
 `systemd --user` si disponible, sinon une entrée XDG autostart, et un
 LaunchAgent sur macOS.
 
-Options : `./install.sh --no-autostart`, `--min 300`, `--max 1800`.
+Options : `./install.sh --no-autostart`, `--min 300`, `--max 1800`,
+`--burst-min 2 --burst-max 5` (voir [Les salves](#les-salves)).
 
 **Prérequis système** (`install.sh` te le dira si quelque chose manque) :
 
@@ -299,6 +300,28 @@ Chaque doot de la salve est tiré indépendamment : son animation (sur place ou
 par un bord, et lequel), sa position, son écran, son image et son son. Une salve
 de quatre, ce sont quatre squelettes différents qui arrivent chacun à leur
 façon, pas la même apparition répétée.
+
+### Les garder au démarrage
+
+Les options ci-dessus valent pour la commande que tu tapes. Le doot lancé à
+l'ouverture de session, lui, tient sa ligne de commande des installeurs — il
+faut donc la leur demander :
+
+```bash
+./install.sh --burst-min 2 --burst-max 5                       # Linux, macOS
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -BurstMin 2 -BurstMax 5
+```
+
+Le réglage part dans `install.json`, la fiche que relit `doot --update` : il
+survit donc aux mises à jour. Éditer l'unité systemd, le LaunchAgent ou le
+raccourci à la main marche aussi, mais **la prochaine mise à jour les
+réécrit** — les installeurs les regénèrent depuis la fiche.
+
+Sans ces options, la ligne engendrée est exactement celle d'avant les salves :
+mettre doot à jour ne fait donc apparaître aucune salve chez personne.
 
 Une salve n'échappe pas à la saison : elle dure — la pause plus la durée
 d'affichage, autant de fois qu'il y a de doots — et la fenêtre saisonnière peut

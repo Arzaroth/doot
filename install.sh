@@ -4,6 +4,7 @@
 #   ./install.sh                 # installe + demarrage automatique a la session
 #   ./install.sh --no-autostart  # installe seulement la commande `doot`
 #   ./install.sh --min 300 --max 1800
+#   ./install.sh --burst-min 2 --burst-max 5   # plusieurs doots d'affilee
 #
 # Aucun droit root, aucune dependance Python : tout est dans la stdlib.
 set -euo pipefail
@@ -25,19 +26,44 @@ fi
 AUTOSTART=1
 MIN_SECONDS=600
 MAX_SECONDS=3600
+BURST_MIN=1
+BURST_MAX=1
+BURST_DELAY=0.6
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --no-autostart) AUTOSTART=0; shift ;;
         --min) MIN_SECONDS="$2"; shift 2 ;;
         --max) MAX_SECONDS="$2"; shift 2 ;;
-        -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
+        --burst-min) BURST_MIN="$2"; shift 2 ;;
+        --burst-max) BURST_MAX="$2"; shift 2 ;;
+        --burst-delay) BURST_DELAY="$2"; shift 2 ;;
+        -h|--help) sed -n '2,9p' "$0"; exit 0 ;;
         *) echo "option inconnue : $1" >&2; exit 2 ;;
     esac
 done
 
 say()  { printf '  %s\n' "$*"; }
 head_() { printf '\n\033[1m%s\033[0m\n' "$*"; }
+
+# Les bornes de salve sont comparees puis recopiees telles quelles dans la
+# fiche JSON : une valeur qui n'est pas un nombre casserait l'une ou l'autre
+# loin d'ici, avec un message qui ne dirait pas d'ou elle vient.
+for couple in "--burst-min:$BURST_MIN" "--burst-max:$BURST_MAX"; do
+    case "${couple#*:}" in
+        ''|*[!0-9]*) echo "${couple%%:*} attend un entier : ${couple#*:}" >&2; exit 2 ;;
+    esac
+done
+case "$BURST_DELAY" in
+    ''|*[!0-9.]*|*.*.*) echo "--burst-delay attend un nombre : $BURST_DELAY" >&2; exit 2 ;;
+esac
+
+# Les drapeaux de salve ne sont ecrits que s'ils changent quelque chose : sans
+# eux, la commande engendree reste exactement celle d'avant les salves.
+SALVE_OPTS=""
+if [ "$BURST_MAX" -gt 1 ]; then
+    SALVE_OPTS="--burst-min $BURST_MIN --burst-max $BURST_MAX --burst-delay $BURST_DELAY "
+fi
 
 head_ "doot - installation"
 
@@ -140,6 +166,9 @@ cat > "$RECORD_DIR/install.json" <<EOF
   "commit": "$COMMIT",
   "min": $MIN_SECONDS,
   "max": $MAX_SECONDS,
+  "burst_min": $BURST_MIN,
+  "burst_max": $BURST_MAX,
+  "burst_delay": $BURST_DELAY,
   "autostart": $([ "$AUTOSTART" -eq 1 ] && echo true || echo false),
   "app_dir": "$APP_DIR",
   "bin_dir": "$BIN_DIR",
@@ -153,6 +182,16 @@ say "fiche       : $RECORD_DIR/install.json"
 # --------------------------------------------------------- demarrage ---------
 if [ "$AUTOSTART" -eq 1 ]; then
     head_ "Demarrage automatique"
+    # Le plist veut un <string> par mot, la ou systemd et .desktop prennent la
+    # ligne entiere : la meme salve s'ecrit donc deux fois, pas une.
+    SALVE_PLIST=""
+    if [ -n "$SALVE_OPTS" ]; then
+        SALVE_PLIST="
+        <string>--burst-min</string><string>$BURST_MIN</string>
+        <string>--burst-max</string><string>$BURST_MAX</string>
+        <string>--burst-delay</string><string>$BURST_DELAY</string>"
+    fi
+
     if [ "$(uname -s)" = "Darwin" ]; then
         PLIST="$HOME/Library/LaunchAgents/com.doot.skeleton.plist"
         mkdir -p "$(dirname "$PLIST")"
@@ -166,7 +205,7 @@ if [ "$AUTOSTART" -eq 1 ]; then
     <array>
         <string>$BIN_DIR/doot</string>
         <string>--min</string><string>$MIN_SECONDS</string>
-        <string>--max</string><string>$MAX_SECONDS</string>
+        <string>--max</string><string>$MAX_SECONDS</string>$SALVE_PLIST
         <string>--quiet</string>
     </array>
     <key>RunAtLoad</key><true/>
@@ -189,7 +228,7 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=$BIN_DIR/doot --min $MIN_SECONDS --max $MAX_SECONDS --quiet
+ExecStart=$BIN_DIR/doot --min $MIN_SECONDS --max $MAX_SECONDS $SALVE_OPTS--quiet
 Restart=on-failure
 RestartSec=30
 
@@ -211,7 +250,7 @@ EOF
 Type=Application
 Name=doot
 Comment=Squelette trompettiste saisonnier
-Exec=$BIN_DIR/doot --min $MIN_SECONDS --max $MAX_SECONDS --quiet
+Exec=$BIN_DIR/doot --min $MIN_SECONDS --max $MAX_SECONDS $SALVE_OPTS--quiet
 Terminal=false
 X-GNOME-Autostart-enabled=true
 EOF
@@ -223,7 +262,10 @@ fi
 
 # Hors systemd, on relance nous-memes le daemon qui tournait avant la copie.
 if [ "$DAEMON_TOURNAIT" -eq 1 ]; then
-    "$BIN_DIR/doot" --min "$MIN_SECONDS" --max "$MAX_SECONDS" --quiet \
+    # $SALVE_OPTS n'est volontairement pas entre guillemets : il porte
+    # plusieurs mots, ou rien du tout.
+    # shellcheck disable=SC2086
+    "$BIN_DIR/doot" --min "$MIN_SECONDS" --max "$MAX_SECONDS" $SALVE_OPTS --quiet \
         >/dev/null 2>&1 &
     say "daemon      : redemarre avec le nouveau code"
 fi
