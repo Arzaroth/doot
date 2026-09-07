@@ -325,32 +325,25 @@ class Panoramique(unittest.TestCase):
         self.assertEqual(commande[-2], "-af")
         self.assertEqual(commande[-1], sound._pan_graph(0.9))
 
-    def test_lecteur_inconnu(self):
-        self.assertIsNone(sound._pan_filter(["paplay"], -0.9))
-
-    def test_les_gains_suivent_le_cote(self):
-        gauche = sound._pan_graph(-1.0)
-        droite = sound._pan_graph(1.0)
-        self.assertIn("c0=1.0000*c0", gauche)
-        self.assertIn("c1=1.0000*c1", droite)
-
     def test_chaque_canal_garde_le_sien(self):
-        """Une source stereo doit garder ses deux canaux.
-
-        Tirer `c1` de `c0` jetterait le canal droit, alors que `pan_wav` le
-        garde sur les WAV : le meme son changerait de rendu selon qu'il passe
-        par le filtre ou par nos echantillons, et selon le cote de l'ecran.
+        """`c1=Rg*c0` construirait les deux sorties depuis le canal gauche : une
+        source stereo y perdrait son canal droit, alors que `pan_wav` le garde.
         """
-        gauche, droite = sound.stereo_gains(-0.9)
-        self.assertTrue(
-            sound._pan_graph(-0.9).endswith(
-                f"pan=stereo|c0={gauche:.4f}*c0|c1={droite:.4f}*c1"),
-            sound._pan_graph(-0.9))
+        for commande in (sound._pan_filter(["mpv"], -0.9),
+                         sound._pan_filter(["ffplay"], -0.9)):
+            self.assertIn("c1=0.0787*c1", commande[-1], commande)
+            self.assertNotIn("c1=0.0787*c0", commande[-1], commande)
 
-    def test_le_mono_est_monte_en_stereo_avant_le_pan(self):
-        """Sans quoi `c1` n'existe pas et le filtre refuse de se construire."""
-        graphe = sound._pan_graph(0.5)
-        self.assertTrue(graphe.startswith("aformat=channel_layouts=stereo,"), graphe)
+    def test_le_mono_est_monte_en_stereo_d_abord(self):
+        """Pour que `c1` existe quelle que soit la source.
+
+        mpv s'en passerait, son pipeline montant deja en stereo avant les
+        filtres, mais le graphe ne doit pas dependre de ce detail de lecteur.
+        """
+        for commande in (sound._pan_filter(["mpv"], -0.9),
+                         sound._pan_filter(["ffplay"], -0.9)):
+            self.assertIn("aformat=channel_layouts=stereo,", commande[-1])
+        graphe = sound._pan_graph(-0.9)
         self.assertLess(graphe.index("aformat="), graphe.index("pan="))
 
     def test_le_centre_ne_touche_a_rien(self):
@@ -362,6 +355,15 @@ class Panoramique(unittest.TestCase):
         """
         self.assertIn("c0=1.0000*c0", sound._pan_graph(0.0))
         self.assertIn("c1=1.0000*c1", sound._pan_graph(0.0))
+
+    def test_lecteur_inconnu(self):
+        self.assertIsNone(sound._pan_filter(["paplay"], -0.9))
+
+    def test_les_gains_suivent_le_cote(self):
+        gauche = sound._pan_graph(-1.0)
+        droite = sound._pan_graph(1.0)
+        self.assertIn("c0=1.0000*c0", gauche)
+        self.assertIn("c1=1.0000*c1", droite)
 
 
 class RepliSansPan(unittest.TestCase):
@@ -379,21 +381,34 @@ class RepliSansPan(unittest.TestCase):
     def setUp(self):
         self.lances = []
         self.addCleanup(setattr, sound, "_lance", sound._lance)
-        sound._lance = lambda command, path: self.lances.append(command)
+
+        def faux_lance(command, path):
+            self.lances.append(command)
+            return "processus de repli"
+
+        sound._lance = faux_lance
+
+    def _joue(self, code):
+        lecture = sound.Lecture(self.FauxProcessus(code))
+        sound._repli_sans_pan(lecture, ["mpv"], Path("doot.mp3"), delai=0.01).join(2)
+        return lecture
 
     def test_un_refus_est_rejoue_sans_filtre(self):
-        sound._repli_sans_pan(self.FauxProcessus(1), ["mpv"],
-                              Path("doot.mp3"), delai=0.01).join(2)
+        lecture = self._joue(1)
         self.assertEqual(self.lances, [["mpv"]])
 
+    def test_le_lecteur_de_repli_reste_joignable(self):
+        """Sinon `play_async` rend le processus mort et celui qui joue est
+        perdu, ce qui mordra le jour ou `release` coupera vraiment le son."""
+        lecture = self._joue(1)
+        self.assertEqual(lecture.proc, "processus de repli")
+
     def test_une_lecture_qui_dure_n_est_pas_doublee(self):
-        sound._repli_sans_pan(self.FauxProcessus(None), ["mpv"],
-                              Path("doot.mp3"), delai=0.01).join(2)
+        self._joue(None)
         self.assertEqual(self.lances, [])
 
     def test_une_fin_normale_n_est_pas_doublee(self):
-        sound._repli_sans_pan(self.FauxProcessus(0), ["mpv"],
-                              Path("doot.mp3"), delai=0.01).join(2)
+        self._joue(0)
         self.assertEqual(self.lances, [])
 
 

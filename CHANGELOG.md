@@ -51,6 +51,10 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
   `SEUIL_PAN` — la marche exacte que `stereo_gains` s'applique à éviter par
   ailleurs. Un `aformat` monte d'abord le mono en stéréo, ce qui laisse une
   seule expression valable pour les deux sources.
+- Le lecteur rendu par `play_async` est toujours celui qui joue. Quand le
+  repli sans panoramique relançait le son, le processus rendu restait le mort :
+  sans effet tant que `release` laisse volontairement la note finir, mais le
+  lecteur de repli aurait été injoignable le jour où il coupera vraiment.
 
 ## [1.4.2] - 2026-09-07
 
