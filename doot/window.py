@@ -269,7 +269,9 @@ def _tente_overlay(backend, enumere, wav_path, duration, center, opacity,
     try:
         backend.play(frame, repos_x, repos_y, duration, opacity, wav_path, pan,
                      start=(depart_x, depart_y), slide_ms=slide_ms if slide else 0)
-    except (wayland.WaylandUnavailable, x11.X11Unavailable):
+    except Exception:
+        # overlay.run ne laisse remonter qu'avant affichage : arriver ici veut
+        # dire que rien n'est a l'ecran, donc le repli ne fera pas de double.
         return False
     return True
 

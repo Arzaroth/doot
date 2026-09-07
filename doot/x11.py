@@ -19,11 +19,10 @@ import contextlib
 import ctypes
 import os
 import sys
-import time
 from ctypes import POINTER, byref, c_char_p, c_int, c_long, c_uint, c_ulong, c_void_p
 from pathlib import Path
 
-from . import png, screens, sound
+from . import overlay, png, screens, sound
 
 TRUE_COLOR = 4
 Z_PIXMAP = 2
@@ -41,7 +40,6 @@ CW_OVERRIDE_REDIRECT = 1 << 9
 CW_EVENT_MASK = 1 << 11
 CW_COLORMAP = 1 << 13
 
-TICK = 0.04
 OPAQUE = 0xFFFFFFFF
 
 
@@ -348,50 +346,5 @@ def _play(frame, x, y, duration, opacity, wav_path, pan=0.0,
           start=None, slide_ms=0) -> None:
     glisse = slide_ms > 0 and start is not None and tuple(start) != (x, y)
     depart_x, depart_y = start if glisse else (x, y)
-    overlay = _Overlay(frame.width, frame.height, depart_x, depart_y)
-    playback = None
-    try:
-        overlay.map()
-        playback = sound.play_async(wav_path, pan) if wav_path else None
-
-        total = max(0.4, float(duration))
-        fade_in = min(0.22, total / 4)
-        fade_out = min(0.5, total / 3)
-        ceiling = max(0.0, min(1.0, opacity))
-        start = time.monotonic()
-        shown = None
-
-        glissement = slide_ms / 1000.0
-
-        while True:
-            elapsed = time.monotonic() - start
-            if elapsed >= total:
-                break
-
-            # Pendant le glissement, pas de fondu d'apparition : le bord de
-            # l'ecran revele deja le squelette.
-            if glisse and elapsed <= glissement:
-                avance = screens.ease_out(elapsed / glissement)
-                overlay.move(depart_x + (x - depart_x) * avance,
-                             depart_y + (y - depart_y) * avance)
-                factor = 1.0
-            elif not glisse and elapsed < fade_in:
-                factor = elapsed / fade_in
-            elif elapsed > total - fade_out:
-                factor = max(0.0, (total - elapsed) / fade_out)
-            else:
-                factor = 1.0
-
-            level = round(factor * ceiling * 255)
-            # Pendant le glissement on redessine a chaque pas : l'opacite ne
-            # bouge pas, donc rien ne le declencherait, et le contenu d'une
-            # fenetre qu'on deplace n'est pas garanti d'etre conserve.
-            if level != shown or (glisse and elapsed <= glissement):
-                overlay.draw(frame.faded(level / 255))
-                shown = level
-            time.sleep(TICK)
-    except Exception:
-        pass
-    finally:
-        sound.release(playback)
-        overlay.close()
+    overlay.run(_Overlay(frame.width, frame.height, depart_x, depart_y),
+                frame, x, y, duration, opacity, wav_path, pan, start, slide_ms)

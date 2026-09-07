@@ -23,12 +23,10 @@ import os
 import socket
 import struct
 import sys
-import time
 from pathlib import Path
 
-from . import png, screens, sound
+from . import overlay, png, screens, sound
 
-TICK = 1 / 60
 ARGB8888 = 0
 LAYER_OVERLAY = 3
 ANCHOR_TOP, ANCHOR_LEFT = 1, 4
@@ -273,7 +271,7 @@ class _Overlay:
         self.frame_size = self.stride * height
         self.fd = os.memfd_create("doot", 0)
         os.ftruncate(self.fd, self.frame_size * 2)
-        self.map = mmap.mmap(self.fd, self.frame_size * 2)
+        self.pixels = mmap.mmap(self.fd, self.frame_size * 2)
         pool = self.conn.id()
         self.conn.send(shm, _SHM_CREATE_POOL,
                        struct.pack("=Ii", pool, self.frame_size * 2), fd=self.fd)
@@ -298,6 +296,9 @@ class _Overlay:
                        struct.pack("=iiii", int(y) - self.origin[1], 0, 0,
                                    int(x) - self.origin[0]))
 
+    def map(self):
+        """La surface est deja a l'ecran des la construction."""
+
     def poll(self):
         """Vide ce qui est arrive sans jamais bloquer."""
         self.conn.sock.setblocking(False)
@@ -317,8 +318,8 @@ class _Overlay:
         self.poll()
         buf = next((b for b in self.buffers if not self.busy[b]), self.buffers[0])
         offset = self.buffers.index(buf) * self.frame_size
-        self.map.seek(offset)
-        self.map.write(payload[:self.frame_size])
+        self.pixels.seek(offset)
+        self.pixels.write(payload[:self.frame_size])
         self.busy[buf] = True
         self.conn.send(self.surface, _SURFACE_ATTACH, struct.pack("=Iii", buf, 0, 0))
         self.conn.send(self.surface, _SURFACE_DAMAGE,
@@ -331,7 +332,7 @@ class _Overlay:
 
     def close(self):
         try:
-            self.map.close()
+            self.pixels.close()
             os.close(self.fd)
         except Exception:
             pass
@@ -367,44 +368,7 @@ def play(frame: png.Frame, x: int, y: int, duration: float,
     """
     glisse = slide_ms > 0 and start is not None and tuple(start) != (x, y)
     depart_x, depart_y = start if glisse else (x, y)
-
-    overlay = _Overlay(frame.width, frame.height, depart_x, depart_y,
+    surface = _Overlay(frame.width, frame.height, depart_x, depart_y,
                        output_at=(x, y))
-    playback = None
-    try:
-        playback = sound.play_async(wav_path, pan) if wav_path else None
-
-        total = max(0.4, float(duration))
-        fade_in = min(0.22, total / 4)
-        fade_out = min(0.5, total / 3)
-        ceiling = max(0.0, min(1.0, opacity))
-        glissement = slide_ms / 1000.0
-        debut = time.monotonic()
-        montre = None
-
-        while True:
-            elapsed = time.monotonic() - debut
-            if elapsed >= total:
-                break
-            if glisse and elapsed <= glissement:
-                avance = screens.ease_out(elapsed / glissement)
-                overlay.move(depart_x + (x - depart_x) * avance,
-                             depart_y + (y - depart_y) * avance)
-                factor = 1.0
-            elif not glisse and elapsed < fade_in:
-                factor = elapsed / fade_in
-            elif elapsed > total - fade_out:
-                factor = max(0.0, (total - elapsed) / fade_out)
-            else:
-                factor = 1.0
-
-            level = round(factor * ceiling * 255)
-            if level != montre or (glisse and elapsed <= glissement):
-                overlay.draw(frame.faded(level / 255))
-                montre = level
-            time.sleep(TICK)
-    except Exception:
-        pass
-    finally:
-        sound.release(playback)
-        overlay.close()
+    overlay.run(surface, frame, x, y, duration, opacity, wav_path, pan,
+                start, slide_ms)
