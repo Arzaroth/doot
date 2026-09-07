@@ -25,6 +25,16 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 - `--screens` et `--status` décrivent les écrans tels que les verra le backend
   qui affichera vraiment, et non un autre espace de coordonnées.
 
+### Corrigé
+- Le son revient quand le doot est spatialisé. mpv n'atteint le filtre `pan` de
+  libavfilter que par `--af=lavfi=[...]` ; écrit `--af=pan=...`, son analyseur
+  d'options bute sur les barres verticales, refuse de démarrer et le doot est
+  muet. Comme le panoramique s'applique dès que le squelette n'est pas au centre
+  du bureau, presque tous les doots l'étaient sur une configuration multi-écrans.
+- Un lecteur qui refuse la syntaxe du filtre est rejoué sans panoramique, au
+  lieu de laisser un silence. Le module promettait déjà « non panoramisé plutôt
+  que muet », mais rien ne tenait la promesse quand le refus venait du lecteur.
+
 ## [1.4.2] - 2026-09-07
 
 ### Corrigé
