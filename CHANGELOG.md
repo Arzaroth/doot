@@ -12,18 +12,30 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.4.1] - 2026-09-07
+
 ### Ajouté
 - Le `PKGBUILD` joue la suite de tests pendant la construction du paquet Arch,
   avec `python-pillow` en `checkdepends` pour que les tests de conformité PNG
-  ne se contentent pas de sauter.
+  ne se contentent pas de sauter — sans lui, ils sauteraient en silence et la
+  construction resterait verte.
 - `optdepends` mentionne `mpv` et `ffmpeg` pour les sons compressés et la
   spatialisation, et `xorg-xrandr` pour la détection des écrans multiples.
+- La CI vérifie la syntaxe du `PKGBUILD`, qui n'était couvert par rien.
 
 ### Corrigé
-- Le `PKGBUILD` vérifie l'intégrité de l'archive téléchargée au lieu de
-  `sha256sums=('SKIP')`.
 - La réécriture du chemin dans l'unité systemd est contrôlée : un `sed` qui ne
   trouvait plus son motif laissait sans un mot une unité pointant dans le vide.
+  La construction échoue désormais.
+- Le README annonçait « Depuis PyPI » puis expliquait d'abord comment installer
+  uv. Les commandes doot passent devant, le prérequis derrière.
+
+### Note
+- `sha256sums` reste à `SKIP`, et c'est contraint et non négligent : ce fichier
+  vit **dans** l'archive qu'il décrit, donc y inscrire la somme de cette archive
+  la modifierait, et modifierait sa somme. Le point fixe est inatteignable. Un
+  `PKGBUILD` de l'AUR n'a pas ce problème, vivant à côté des sources. La raison
+  est écrite dans le fichier pour que la question ne se rouvre pas.
 
 ## [1.4.0] - 2026-09-06
 
@@ -284,7 +296,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.4.0...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/boubou666/doot/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/boubou666/doot/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/boubou666/doot/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/boubou666/doot/compare/v1.2.0...v1.2.1

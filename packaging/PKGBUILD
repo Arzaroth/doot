@@ -6,12 +6,11 @@
 # Puis, une fois par utilisateur, pour le demarrage automatique :
 #   systemctl --user enable --now doot.service
 #
-# A chaque version : mettre pkgver a jour, puis `updpkgsums` pour regenerer la
-# somme de controle. Si on l'oublie, makepkg refuse l'archive au lieu de la
-# prendre les yeux fermes, ce qui est le comportement voulu.
+# A chaque version : mettre pkgver a jour. Il n'y a rien d'autre a regenerer,
+# voir la note sur sha256sums plus bas.
 
 pkgname=doot
-pkgver=1.4.0
+pkgver=1.4.1
 pkgrel=1
 pkgdesc="Un squelette trompettiste qui surgit au hasard sur ton ecran, du 1er septembre au 31 octobre"
 arch=('any')
@@ -29,7 +28,18 @@ optdepends=(
 makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
 checkdepends=('python-pillow')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('28dbd1e1ffc5d0087f347a902a56a5f93f21dccc22164bf1619f7b0403fd0f50')
+
+# SKIP, et ce n'est pas de la negligence : ce fichier vit DANS l'archive qu'il
+# decrit. Y inscrire la somme de cette archive changerait l'archive, donc sa
+# somme -- le point fixe est inatteignable. Un PKGBUILD de l'AUR n'a pas ce
+# probleme puisqu'il vit a cote des sources, pas dedans.
+#
+# L'integrite ne repose donc pas sur cette ligne mais sur le transport : GitHub
+# sert l'archive en HTTPS, et l'etiquette designe un commit dont le condensat
+# est fixe dans l'historique git. A savoir : les etiquettes de ce depot sont
+# annotees mais non signees en GPG. Qui veut davantage construit depuis un
+# clone dont il a verifie l'historique.
+sha256sums=('SKIP')
 
 build() {
     cd "$srcdir/$pkgname-$pkgver"
