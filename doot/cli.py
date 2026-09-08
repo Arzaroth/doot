@@ -180,8 +180,8 @@ def display_options(args, step: dict | None = None) -> dict:
             options["screen"] = step["screen"]
         if step["side"] is not None:
             options["side"] = step["side"]
-            options["slide"] = True
-            options["slide_chance"] = 1.0
+            if options["slide"]:
+                options["slide_chance"] = 1.0
     return options
 
 

@@ -337,11 +337,12 @@ class SalvesChoreographiees(CliTestCase):
             self.assertEqual(call["side"], "right")
 
     def test_no_slide_garde_la_formation_des_ecrans(self):
-        self.run_cli("--once", "--no-sound", "--no-slide", "--burst-min", "2",
-                     "--burst-max", "2", "--burst-delay", "0", "--formation", "canon")
+        self.run_cli("--once", "--no-sound", "--no-slide", "--side", "left",
+                     "--burst-min", "2", "--burst-max", "2", "--burst-delay", "0",
+                     "--formation", "canon")
 
         self.assertEqual([call["screen"] for call in self.shown], ["0", "1"])
-        self.assertEqual([call["side"] for call in self.shown], [None, None])
+        self.assertEqual([call["side"] for call in self.shown], ["left", "left"])
         self.assertEqual([call["slide"] for call in self.shown], [False, False])
 
 
