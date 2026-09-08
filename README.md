@@ -128,7 +128,7 @@ Le script copie le code dans `~/.local/share/doot/app`, crée la commande
 LaunchAgent sur macOS.
 
 Options : `./install.sh --no-autostart`, `--min 300`, `--max 1800`,
-`--burst-min 2 --burst-max 5` (voir [Les salves](#les-salves)).
+`--burst-min 2 --burst-max 5 --formation canon` (voir [Les salves](#les-salves)).
 
 **Prérequis système** (`install.sh` te le dira si quelque chose manque) :
 
@@ -234,6 +234,7 @@ doot --art                   # imprime le squelette dans le terminal
 | `--min` / `--max` | `600` / `3600` | bornes du délai aléatoire entre deux doot, en secondes |
 | `--burst-min` / `--burst-max` | `1` / `1` | bornes du nombre de doots enchaînés à chaque déclenchement |
 | `--burst-delay` | `0.6` | pause entre deux doots d'une même salve, en secondes |
+| `--formation` | `random` | formation d'une salve : `random` ou `canon` (bords et écrans en séquence) |
 | `--duration` | durée du son | durée d'affichage, en secondes (au moins 2.8) |
 | `--image` | — | un PNG/GIF précis à afficher |
 | `--no-image` | — | force l'ASCII art même si une image est disponible |
@@ -299,12 +300,20 @@ doot --burst-min 2 --burst-max 5              # de 2 à 5 doots d'affilée
 doot --burst-min 3 --burst-max 3              # toujours 3
 doot --burst-min 2 --burst-max 4 --burst-delay 1.5   # plus espacés
 doot --once --ignore-season --burst-min 4 --burst-max 4   # pour voir tout de suite
+doot --once --ignore-season --burst-min 4 --burst-max 4 --formation canon
 ```
 
-Chaque doot de la salve est tiré indépendamment : son animation (sur place, en
-tournant, ou par un bord — et lequel), sa position, son écran, son image et son
-son. Une salve de quatre, ce sont quatre squelettes différents qui arrivent
-chacun à leur façon, pas la même apparition répétée.
+Par défaut, chaque doot de la salve est tiré indépendamment : son animation
+(sur place, en tournant, ou par un bord — et lequel), sa position, son écran,
+son image et son son. Une salve de quatre, ce sont quatre squelettes différents
+qui arrivent chacun à leur façon, pas la même apparition répétée.
+
+`--formation canon` transforme la salve en petite parade : les bords suivent
+le cycle gauche → haut → droite → bas et les écrans disponibles sont parcourus
+dans l'ordre. Les doots restent séquentiels et `--burst-delay` donne le tempo.
+Avec un seul écran, le canon garde son tour des bords ; `--screen` ou `--side`
+peut fixer respectivement l'écran ou le bord, et `--no-slide` garde uniquement
+la chorégraphie des écrans.
 
 ### Les garder au démarrage
 
@@ -313,11 +322,11 @@ l'ouverture de session, lui, tient sa ligne de commande des installeurs — il
 faut donc la leur demander :
 
 ```bash
-./install.sh --burst-min 2 --burst-max 5                       # Linux, macOS
+./install.sh --burst-min 2 --burst-max 5 --formation canon    # Linux, macOS
 ```
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -BurstMin 2 -BurstMax 5
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -BurstMin 2 -BurstMax 5 -Formation canon
 ```
 
 Le réglage part dans `install.json`, la fiche que relit `doot --update` : il

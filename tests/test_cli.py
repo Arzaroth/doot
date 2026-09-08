@@ -299,6 +299,52 @@ class Salves(CliTestCase):
         self.assertEqual(rng.vus, (2, 7))
 
 
+class SalvesChoreographiees(CliTestCase):
+    """Le mode canon organise les destinations sans changer le mode par defaut."""
+
+    def setUp(self):
+        super().setUp()
+        patch = mock.patch.object(season, "in_season", lambda now=None: True)
+        patch.start()
+        self.addCleanup(patch.stop)
+        patch = mock.patch.object(window, "active_monitors", return_value=[object(), object()])
+        patch.start()
+        self.addCleanup(patch.stop)
+        patch = mock.patch.object(cli.time, "sleep")
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_canon_alterne_les_bords_et_les_ecrans(self):
+        self.run_cli("--once", "--no-sound", "--burst-min", "4", "--burst-max", "4",
+                     "--burst-delay", "0", "--formation", "canon")
+
+        self.assertEqual([call["screen"] for call in self.shown], ["0", "1", "0", "1"])
+        self.assertEqual(
+            [call["side"] for call in self.shown],
+            ["left", "top", "right", "bottom"],
+        )
+        for call in self.shown:
+            self.assertTrue(call["slide"])
+            self.assertEqual(call["slide_chance"], 1.0)
+
+    def test_choix_explicit_reste_fixe(self):
+        self.run_cli("--once", "--no-sound", "--burst-min", "3", "--burst-max", "3",
+                     "--burst-delay", "0", "--formation", "canon",
+                     "--screen", "primary", "--side", "right")
+
+        for call in self.shown:
+            self.assertEqual(call["screen"], "primary")
+            self.assertEqual(call["side"], "right")
+
+    def test_no_slide_garde_la_formation_des_ecrans(self):
+        self.run_cli("--once", "--no-sound", "--no-slide", "--burst-min", "2",
+                     "--burst-max", "2", "--burst-delay", "0", "--formation", "canon")
+
+        self.assertEqual([call["screen"] for call in self.shown], ["0", "1"])
+        self.assertEqual([call["side"] for call in self.shown], [None, None])
+        self.assertEqual([call["slide"] for call in self.shown], [False, False])
+
+
 class CommandesInformatives(CliTestCase):
     """Elles doivent repondre sans affichage et sans effet de bord."""
 

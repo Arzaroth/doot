@@ -12,6 +12,13 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ajouté
+- `--formation canon` chorégraphie les salves : les apparitions alternent les
+  bords dans le sens gauche, haut, droite, bas et parcourent les écrans
+  disponibles dans l'ordre. `random` conserve le tirage indépendant par défaut.
+  La formation est enregistrée par les installeurs et restaurée lors des mises
+  à jour.
+
 ## [1.6.0] - 2026-09-07
 
 ### Ajouté
