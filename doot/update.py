@@ -201,12 +201,19 @@ def salve_reglee(fiche: dict) -> tuple[str, str, str] | None:
     return str(bas), str(haut), str(delai)
 
 
+def formation_reglee(fiche: dict) -> str | None:
+    """Renvoie la formation a transmettre, si l'installation en demande une."""
+    formation = fiche.get("formation", "random")
+    return formation if formation in ("random", "canon") and formation != "random" else None
+
+
 def run_installer(source: Path, fiche: dict, verbose=print) -> None:
     """Rejoue l'installeur de la plateforme avec les options d'origine."""
     minimum = str(fiche.get("min", 600))
     maximum = str(fiche.get("max", 3600))
     autostart = fiche.get("autostart", True)
     salve = salve_reglee(fiche)
+    formation = formation_reglee(fiche)
 
     if sys.platform == "win32":
         script = source / "install.ps1"
@@ -217,6 +224,8 @@ def run_installer(source: Path, fiche: dict, verbose=print) -> None:
         if salve:
             commande += ["-BurstMin", salve[0], "-BurstMax", salve[1],
                          "-BurstDelay", salve[2]]
+        if formation:
+            commande += ["-Formation", formation]
         if not autostart:
             commande.append("-NoAutostart")
     else:
@@ -225,6 +234,8 @@ def run_installer(source: Path, fiche: dict, verbose=print) -> None:
         if salve:
             commande += ["--burst-min", salve[0], "--burst-max", salve[1],
                          "--burst-delay", salve[2]]
+        if formation:
+            commande += ["--formation", formation]
         if not autostart:
             commande.append("--no-autostart")
 
@@ -271,10 +282,13 @@ def start_daemon(fiche: dict) -> bool:
     minimum = str(fiche.get("min", 600))
     maximum = str(fiche.get("max", 3600))
     salve = salve_reglee(fiche)
+    formation = formation_reglee(fiche)
     options = ["--min", minimum, "--max", maximum]
     if salve:
         options += ["--burst-min", salve[0], "--burst-max", salve[1],
                     "--burst-delay", salve[2]]
+    if formation:
+        options += ["--formation", formation]
     options.append("--quiet")
 
     try:

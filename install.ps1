@@ -7,6 +7,7 @@
     powershell -ExecutionPolicy Bypass -File .\install.ps1 -NoAutostart
     powershell -ExecutionPolicy Bypass -File .\install.ps1 -MinSeconds 300 -MaxSeconds 1800
     powershell -ExecutionPolicy Bypass -File .\install.ps1 -BurstMin 2 -BurstMax 5
+    powershell -ExecutionPolicy Bypass -File .\install.ps1 -BurstMin 2 -BurstMax 5 -Formation canon
 #>
 [CmdletBinding()]
 param(
@@ -15,6 +16,8 @@ param(
     [int]    $BurstMin   = 1,
     [int]    $BurstMax   = 1,
     [double] $BurstDelay = 0.6,
+    [ValidateSet('random', 'canon')]
+    [string] $Formation  = 'random',
     [switch] $NoAutostart
 )
 
@@ -36,7 +39,12 @@ if ($BurstMax -gt 1) {
                    '--burst-max', "$BurstMax",
                    '--burst-delay', "$BurstDelay")
 }
-$salveTexte = if ($salveArgs) { ' ' + ($salveArgs -join ' ') } else { '' }
+$formationArgs = @()
+if ($Formation -ne 'random') {
+    $formationArgs = @('--formation', $Formation)
+}
+$autostartArgs = @($salveArgs) + @($formationArgs)
+$salveTexte = if ($autostartArgs) { ' ' + ($autostartArgs -join ' ') } else { '' }
 
 Write-Head 'doot - installation'
 
@@ -204,6 +212,7 @@ if ((Test-Path (Join-Path $Src '.git')) -and (Get-Command git -ErrorAction Silen
     burst_min    = $BurstMin
     burst_max    = $BurstMax
     burst_delay  = $BurstDelay
+    formation    = $Formation
     autostart    = (-not $NoAutostart.IsPresent)
     app_dir      = $AppDir
     bin_dir      = $BinDir
@@ -217,7 +226,7 @@ Write-Item "fiche       : $RecordDir\install.json"
 if ($daemonTournait) {
     $env:PYTHONPATH = "$AppDir;$env:PYTHONPATH"
     Start-Process -FilePath $pythonw `
-        -ArgumentList (@("-m", "doot", "--min", $MinSeconds, "--max", $MaxSeconds) + $salveArgs + @("--quiet")) `
+        -ArgumentList (@("-m", "doot", "--min", $MinSeconds, "--max", $MaxSeconds) + $autostartArgs + @("--quiet")) `
         -WorkingDirectory $AppDir -WindowStyle Hidden
     Write-Item 'daemon      : redemarre avec le nouveau code'
 }

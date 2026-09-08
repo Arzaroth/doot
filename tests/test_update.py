@@ -229,6 +229,12 @@ class Installeur(UpdateTestCase):
         self.assertIn(drapeau, commande)
         self.assertEqual(commande[commande.index(drapeau) + 1], "5")
 
+    def test_la_formation_est_reprise(self):
+        commande = self.commande_pour({"min": 1, "max": 2, "formation": "canon"})
+        drapeau = "-Formation" if sys.platform == "win32" else "--formation"
+        self.assertIn(drapeau, commande)
+        self.assertEqual(commande[commande.index(drapeau) + 1], "canon")
+
     def test_fiche_d_avant_les_salves_ne_change_rien(self):
         """Le cas de toutes les installations existantes."""
         commande = self.commande_pour({"min": 1, "max": 2, "autostart": True})
@@ -282,6 +288,22 @@ class Salve(UpdateTestCase):
         self.assertIsNone(update.salve_reglee({"burst_max": "oups"}))
         self.assertIsNone(update.salve_reglee({"burst_max": None}))
         self.assertIsNone(update.salve_reglee({"burst_max": 5, "burst_delay": "?"}))
+
+
+class Formation(UpdateTestCase):
+    """Ce que la fiche d'installation dit de la choregraphie."""
+
+    def test_fiche_muette_ne_demande_rien(self):
+        self.assertIsNone(update.formation_reglee({}))
+
+    def test_canon_est_repris(self):
+        self.assertEqual(update.formation_reglee({"formation": "canon"}), "canon")
+
+    def test_random_reste_le_defaut_silencieux(self):
+        self.assertIsNone(update.formation_reglee({"formation": "random"}))
+
+    def test_formation_inconnue_est_ignoree(self):
+        self.assertIsNone(update.formation_reglee({"formation": "parade"}))
 
 
 class InstallationSysteme(UpdateTestCase):

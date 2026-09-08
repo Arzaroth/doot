@@ -21,6 +21,7 @@ DEFAULT_SPIN_CHANCE = 0.25
 DEFAULT_SPIN_MS = 700
 DEFAULT_BURST_DELAY = 0.6
 OUT_OF_SEASON_POLL = 3600     # on reverifie la date toutes les heures
+FORMATION_SIDES = ("left", "top", "right", "bottom")
 
 
 # --------------------------------------------------------------- chemins -----
@@ -144,7 +145,7 @@ def resolve_media(args) -> tuple:
     return wav, picture, duration
 
 
-def display_options(args) -> dict:
+def display_options(args, step: dict | None = None) -> dict:
     """Les reglages d'affichage, tels que `window.show` les attend.
 
     Un seul endroit ou traduire les options, hors de la boucle de la salve :
@@ -155,7 +156,7 @@ def display_options(args) -> dict:
     bord : il vaut donc tous les doots, et sur place, sinon la demande
     resterait sans effet la plupart du temps.
     """
-    return {
+    options = {
         "font_size": args.font_size,
         "center": args.center,
         "opacity": args.opacity,
@@ -170,6 +171,52 @@ def display_options(args) -> dict:
         "spin_chance": 1.0 if args.spin else args.spin_chance,
         "spin_ms": args.spin_ms,
     }
+
+    # Une formation ne remplace que les choix laisses au hasard par
+    # l'utilisateur. Les options explicites (`--screen`, `--side` et
+    # `--no-slide`) restent donc souveraines.
+    if step is not None:
+        if step["screen"] is not None:
+            options["screen"] = step["screen"]
+        if step["side"] is not None:
+            options["side"] = step["side"]
+            if options["slide"]:
+                options["slide_chance"] = 1.0
+    return options
+
+
+def formation_plan(args, total: int) -> list[dict | None]:
+    """Prepare les destinations d'une salve avant de l'afficher.
+
+    La formation `random` conserve exactement le tirage historique : chaque
+    doot laisse la fenetre choisir son ecran et son bord. En mode `canon`, les
+    bords suivent un tour gauche -> haut -> droite -> bas et les ecrans sont
+    parcourus dans l'ordre detecte. Un choix explicite de l'utilisateur reste
+    fixe ; cela permet par exemple un canon sur un seul ecran.
+    """
+    if getattr(args, "formation", "random") != "canon":
+        return [None] * total
+
+    from . import window
+
+    try:
+        screen_count = len(window.active_monitors())
+    except Exception:
+        # La fenetre saura elle-meme se rabattre sur son ecran de secours.
+        screen_count = 1
+    screen_count = max(1, screen_count)
+
+    screen_locked = args.screen not in (None, "", "random")
+    side_locked = args.side not in (None, "", "random")
+    can_slide = not args.no_slide and not args.spin
+    plan = []
+    for index in range(total):
+        plan.append({
+            "screen": args.screen if screen_locked else str(index % screen_count),
+            "side": args.side if side_locked or not can_slide
+                     else FORMATION_SIDES[index % len(FORMATION_SIDES)],
+        })
+    return plan
 
 
 def burst_size(args, rng=random) -> int:
@@ -195,6 +242,7 @@ def emit_doots(args, journal: bool = False) -> int:
     from . import window
 
     total = burst_size(args)
+    plan = formation_plan(args, total)
     joues = 0
     for index in range(1, total + 1):
         if index > 1:
@@ -206,7 +254,7 @@ def emit_doots(args, journal: bool = False) -> int:
                 break
         wav, picture, duration = resolve_media(args)
         window.show(wav_path=wav, duration=duration, image_path=picture,
-                    **display_options(args))
+                    **display_options(args, plan[index - 1]))
         joues += 1
         if journal:
             log("doot !" if total == 1 else f"doot {index}/{total} !", quiet=args.quiet)
@@ -231,8 +279,9 @@ def do_daemon(args) -> int:
         return 1
 
     salve = "" if args.burst_max <= 1 else f" - salve {args.burst_min}-{args.burst_max} doots"
+    formation = "" if args.formation == "random" else f" - formation {args.formation}"
     log(
-        f"demarrage (pid {os.getpid()}) - intervalle {args.min}-{args.max}s{salve} - "
+        f"demarrage (pid {os.getpid()}) - intervalle {args.min}-{args.max}s{salve}{formation} - "
         f"saison {season.SEASON_LABEL}",
         quiet=args.quiet,
     )
@@ -305,6 +354,8 @@ def do_status(args) -> int:
     if args.burst_max > 1:
         print(f"  salve       : {args.burst_min} a {args.burst_max} doots par "
               f"declenchement, {args.burst_delay}s entre chacun")
+    if args.formation != "random":
+        print(f"  formation   : {args.formation}")
 
     print(f"  journal     : {p['log']}")
     if sys.platform == "win32":
@@ -421,6 +472,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--burst-delay", type=float, default=DEFAULT_BURST_DELAY,
                         metavar="SECONDES",
                         help=f"pause entre deux doots d'une meme salve (defaut {DEFAULT_BURST_DELAY})")
+    parser.add_argument("--formation", choices=("random", "canon"), default="random",
+                        help="formation d'une salve : random (defaut) ou canon "
+                             "(bords et ecrans en sequence)")
     parser.add_argument("--duration", type=float, default=None,
                         help=f"duree d'affichage en secondes (defaut : la duree du son, au moins {DEFAULT_DURATION})")
     parser.add_argument("--image", default=None, metavar="FICHIER",
