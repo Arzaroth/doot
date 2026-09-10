@@ -375,8 +375,6 @@ class FauxKernel32:
     WAIT_TIMEOUT = 0x00000102
 
     def __init__(self, handle=0x1234, attente=WAIT_TIMEOUT):
-        self._handle = handle
-        self._attente = attente
         self.fermes = []
         self.OpenProcess = mock.Mock(return_value=handle)
         self.WaitForSingleObject = mock.Mock(return_value=attente)
