@@ -8,6 +8,7 @@ affichage.
 
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from datetime import datetime
@@ -365,6 +366,88 @@ class CommandesInformatives(CliTestCase):
 
     def test_stop_sans_daemon(self):
         self.assertEqual(self.run_cli("--stop"), 1)
+
+
+class FauxKernel32:
+    """Imite les trois appels Win32 utilises par `_win_process_alive`."""
+
+    WAIT_OBJECT_0 = 0x00000000
+    WAIT_TIMEOUT = 0x00000102
+
+    def __init__(self, handle=0x1234, attente=WAIT_TIMEOUT):
+        self.fermes = []
+        self.OpenProcess = mock.Mock(return_value=handle)
+        self.WaitForSingleObject = mock.Mock(return_value=attente)
+        self.CloseHandle = mock.Mock(side_effect=self.fermes.append)
+
+
+class ProcessusVivantSousWindows(unittest.TestCase):
+    """Un PID perime ne doit jamais passer pour un daemon qui tourne.
+
+    La machine coupee en pleine saison tuait le daemon sans qu'il efface son
+    `doot.pid`. `OpenProcess` reussissant encore sur le processus mort, doot
+    se croyait deja lance et se retirait a chaque ouverture de session : plus
+    aucun doot, jusqu'a effacer le fichier a la main.
+    """
+
+    def alive(self, **kwargs):
+        faux = FauxKernel32(**kwargs)
+        with mock.patch.object(cli, "_kernel32", lambda: faux):
+            return cli._win_process_alive(4242), faux
+
+    def test_objet_non_signale_le_processus_tourne(self):
+        vivant, faux = self.alive(attente=FauxKernel32.WAIT_TIMEOUT)
+        self.assertTrue(vivant)
+        faux.OpenProcess.assert_called_once()
+
+    def test_objet_signale_le_processus_est_mort(self):
+        vivant, _ = self.alive(attente=FauxKernel32.WAIT_OBJECT_0)
+        self.assertFalse(vivant, "un processus termine a ete pris pour vivant")
+
+    def test_open_process_refuse_le_processus_est_mort(self):
+        vivant, faux = self.alive(handle=0)
+        self.assertFalse(vivant)
+        faux.WaitForSingleObject.assert_not_called()
+        self.assertEqual(faux.fermes, [], "rien a fermer si rien n'a ete ouvert")
+
+    def test_le_handle_est_toujours_rendu(self):
+        for attente in (FauxKernel32.WAIT_TIMEOUT, FauxKernel32.WAIT_OBJECT_0):
+            with self.subTest(attente=attente):
+                _, faux = self.alive(handle=0x1234, attente=attente)
+                self.assertEqual(faux.fermes, [0x1234])
+
+
+class PidPerime(CliTestCase):
+    """Le fichier laisse par un daemon mort ne doit bloquer personne."""
+
+    def mort(self):
+        return mock.patch.object(cli, "_process_alive", lambda pid: False)
+
+    def vivant(self):
+        return mock.patch.object(cli, "_process_alive", lambda pid: True)
+
+    def test_pid_perime_ne_compte_pas_comme_daemon(self):
+        self.paths["pid"].write_text("12220")
+        with self.mort():
+            self.assertIsNone(cli.running_pid())
+
+    def test_pid_perime_laisse_la_place(self):
+        self.paths["pid"].write_text("12220")
+        with self.mort():
+            self.assertTrue(cli.claim_pid_file(), "le demarrage a ete refuse a tort")
+        self.assertEqual(self.paths["pid"].read_text().strip(), str(os.getpid()))
+
+    def test_daemon_vivant_garde_sa_place(self):
+        self.paths["pid"].write_text("12220")
+        with self.vivant():
+            self.assertEqual(cli.running_pid(), 12220)
+            self.assertFalse(cli.claim_pid_file())
+        self.assertEqual(self.paths["pid"].read_text().strip(), "12220")
+
+    def test_fichier_illisible_ne_bloque_pas(self):
+        self.paths["pid"].write_text("pas un nombre")
+        self.assertIsNone(cli.running_pid())
+        self.assertTrue(cli.claim_pid_file())
 
 
 if __name__ == "__main__":
