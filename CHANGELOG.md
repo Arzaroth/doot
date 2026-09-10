@@ -12,6 +12,8 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.7.0] - 2026-09-10
+
 ### Ajouté
 - `--formation canon` chorégraphie les salves : les apparitions alternent les
   bords dans le sens gauche, haut, droite, bas et parcourent les écrans
@@ -421,7 +423,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.6.0...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/boubou666/doot/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/boubou666/doot/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/boubou666/doot/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/boubou666/doot/compare/v1.4.1...v1.4.2
