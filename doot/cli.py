@@ -63,16 +63,45 @@ def log(message: str, quiet: bool = False) -> None:
 
 # ------------------------------------------------------- instance unique -----
 
+def _kernel32():
+    """Isole l'acces a kernel32 : les tests le remplacent par un faux."""
+    return ctypes.windll.kernel32
+
+
+def _win_process_alive(pid: int) -> bool:
+    """Le processus `pid` tourne-t-il encore, sous Windows ?
+
+    Un `OpenProcess` qui reussit ne prouve rien : l'objet noyau du processus
+    survit a sa mort tant qu'un handle traine quelque part, et la fonction
+    repond alors oui pour un processus termine depuis longtemps. Il faut
+    interroger l'objet lui-meme : il est signale des que le processus est
+    mort, donc seule l'attente qui expire (WAIT_TIMEOUT) prouve qu'il tourne.
+    """
+    SYNCHRONIZE = 0x00100000
+    WAIT_TIMEOUT = 0x00000102
+
+    kernel32 = _kernel32()
+    # Un HANDLE fait 64 bits sur x64 ; sans ces declarations ctypes le
+    # ramenerait a un int et le rendrait a CloseHandle deja tronque.
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    kernel32.OpenProcess.argtypes = (ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32)
+    kernel32.WaitForSingleObject.argtypes = (ctypes.c_void_p, ctypes.c_uint32)
+    kernel32.CloseHandle.argtypes = (ctypes.c_void_p,)
+
+    handle = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
+    if not handle:
+        return False
+    try:
+        return kernel32.WaitForSingleObject(handle, 0) == WAIT_TIMEOUT
+    finally:
+        kernel32.CloseHandle(handle)
+
+
 def _process_alive(pid: int) -> bool:
     if pid <= 0:
         return False
     if sys.platform == "win32":
-        SYNCHRONIZE = 0x00100000
-        handle = ctypes.windll.kernel32.OpenProcess(SYNCHRONIZE, False, pid)
-        if not handle:
-            return False
-        ctypes.windll.kernel32.CloseHandle(handle)
-        return True
+        return _win_process_alive(pid)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

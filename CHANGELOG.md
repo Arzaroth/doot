@@ -19,6 +19,18 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
   La formation est enregistrée par les installeurs et restaurée lors des mises
   à jour.
 
+### Corrigé
+- **Sous Windows, un PID périmé condamnait doot au silence.** Quand la machine
+  s'arrête, le daemon est tué sans pouvoir effacer son `doot.pid`. Le test de
+  vie se contentait d'un `OpenProcess` réussi — or l'objet noyau d'un processus
+  survit à sa mort tant qu'un handle traîne quelque part, et l'appel réussit
+  donc encore. doot se croyait déjà lancé et se retirait à chaque ouverture de
+  session, définitivement, pendant que `--status` annonçait un daemon « actif »
+  qui n'existait plus. Le handle est désormais interrogé avec
+  `WaitForSingleObject` : signalé, le processus est mort et la place est libre.
+  Les handles sont au passage déclarés sur 64 bits, pour ne plus être rendus
+  tronqués à `CloseHandle`.
+
 ## [1.6.0] - 2026-09-07
 
 ### Ajouté
