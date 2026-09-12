@@ -243,8 +243,13 @@ EOF
         # plasma-workspace.target, sans les ordonner face a
         # graphical-session.target, d'ou l'accroche specifique quand elle
         # existe.
+        # is-active et pas list-unit-files : jusqu'a systemd 245 inclus,
+        # list-unit-files renvoie 0 meme sans correspondance, donc le test
+        # serait toujours vrai et on ecrirait une cible inexistante. is-active
+        # repond en plus a la bonne question : non pas si la cible est sur le
+        # disque, mais si elle a demarre cette session.
         CIBLE="graphical-session.target"
-        if systemctl --user list-unit-files plasma-workspace.target >/dev/null 2>&1; then
+        if systemctl --user is-active --quiet plasma-workspace.target; then
             CIBLE="plasma-workspace.target"
         fi
 

@@ -450,10 +450,6 @@ class PidPerime(CliTestCase):
         self.assertTrue(cli.claim_pid_file())
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class AucunAffichage(CliTestCase):
     """Le daemon sort au lieu de tourner aveugle jusqu'a la deconnexion.
 
@@ -522,3 +518,7 @@ class AucunAffichage(CliTestCase):
             self.run_cli("--ignore-season", "--quiet")
         journal = self.paths["log"].read_text(encoding="utf-8")
         self.assertIn("aucun affichage joignable", journal)
+
+
+if __name__ == "__main__":
+    unittest.main()
