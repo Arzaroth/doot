@@ -20,6 +20,14 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
   la♭ majeur à 113 BPM ; rien n'est synthétisé. À chaque coup le squelette
   hoche la tête (7°, 6 % plus grand, autour du poing), sur les trois overlays.
 
+### Corrigé
+
+- `install.ps1` échouait sous Windows PowerShell 5.1 sur `SyntaxError: '('
+  was never closed` : le script Python qui installe desktop-overlay était
+  passé à `python -c` en un argument, et PowerShell 5.1 n'échappe pas les
+  guillemets qu'il contient. Il passe maintenant par un fichier temporaire.
+  pwsh 7 n'avait pas ce défaut, ce qui l'a caché à la CI depuis la 1.8.0.
+
 ### Modifié
 
 - La copie de la recette AUR et son `.SRCINFO` ciblent désormais l'archive
