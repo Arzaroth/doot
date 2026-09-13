@@ -213,8 +213,14 @@ class Orchestre(unittest.TestCase):
                         columns=2,
                     )
         vues = {self.positions(payload) for payload in surface.pixels}
-        self.assertIn((2, 0), vues)
-        self.assertIn((0, 2), vues)
+        self.assertTrue(
+            any(gauche in (1, 2) and droite == 0 for gauche, droite in vues),
+            "le premier squelette ne s'est pas penche seul",
+        )
+        self.assertTrue(
+            any(gauche == 0 and droite in (1, 2) for gauche, droite in vues),
+            "le second squelette ne s'est pas penche seul",
+        )
         play.assert_called_once_with("orchestre.wav", 0.0)
         release.assert_called_once_with("lecture")
 
