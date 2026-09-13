@@ -173,8 +173,20 @@ if actual != expected:
 with zipfile.ZipFile(io.BytesIO(wheel)) as archive:
     archive.extractall(target)
 "@
-& $python -c $EngineInstaller $EngineUrl $EngineSha256 $AppDir
-if ($LASTEXITCODE -ne 0) {
+# Par un fichier, pas par `-c` : Windows PowerShell 5.1 n'echappe pas les
+# guillemets d'un argument qu'il passe a un executable natif, et coupait le
+# script au premier `"` du message d'erreur ("'(' was never closed", ligne
+# 12). pwsh 7 le fait bien, ce qui a cache le bug a la CI, qui ne fait que
+# parser ce fichier.
+$EngineScript = Join-Path ([IO.Path]::GetTempPath()) "doot-moteur-$PID.py"
+Set-Content -Path $EngineScript -Value $EngineInstaller -Encoding ascii
+try {
+    & $python $EngineScript $EngineUrl $EngineSha256 $AppDir
+    $engineExit = $LASTEXITCODE
+} finally {
+    Remove-Item $EngineScript -Force -ErrorAction SilentlyContinue
+}
+if ($engineExit -ne 0) {
     Write-Item "Echec de l'installation de desktop-overlay $EngineVersion."
     exit 1
 }
