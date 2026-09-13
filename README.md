@@ -435,14 +435,15 @@ du morse.
 Cinq mélodies sont fournies :
 
 - `rickroll`, le refrain de *Never Gonna Give You Up* en la♭ majeur comme le
-  disque ;
+  disque, avec sa synthé-basse syncopée en seconde voix ;
 - `spooky-scary-skeletons` — le riff d'intro, les couplets et le pont d'Andrew
   Gold, en si mineur, relevés sur un arrangement piano
   ([Online Sequencer #32991](https://onlinesequencer.net/32991)) : la voix du
-  dessus de la main droite, instant par instant, ralentie à 135 BPM parce qu'à
-  la vitesse du disque les doots se marchent dessus ;
-- `careless-whisper`, le riff de sax de George Michael, relevé sur le canal
-  sax d'un MIDI (quantifié à la double-croche, 76 BPM), une quarte plus haut
+  dessus de la main droite et les fondamentales des accords en seconde voix,
+  ralenties à 135 BPM parce qu'à la vitesse du disque les doots se marchent
+  dessus ;
+- `careless-whisper`, le riff de sax de George Michael et la basse électrique
+  du même MIDI (quantifiés à la double-croche, 76 BPM), une quarte plus haut
   que le disque : le si♭3 du riff n'existe pas en RTTTL, et sol mineur tombe
   pile dans la fenêtre où le doot sonne bien. `--transpose -5` pour la
   tonalité d'origine ;

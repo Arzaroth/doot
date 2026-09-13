@@ -207,24 +207,40 @@ class Accordage(unittest.TestCase):
         # Le rickroll tient dans une octave et demie de lecture ; les autres
         # descendent plus bas (un riff de basse) ou montent plus haut (un
         # theme), mais jamais a l'octave au-dessus du doot.
-        for fichier, bas, haut in ((RICKROLL, 0.6, 1.5), (SPOOKY, 0.45, 1.7), (CARELESS, 0.45, 1.5),
+        for fichier, bas, haut in ((RICKROLL, 0.5, 1.5), (SPOOKY, 0.4, 1.7), (CARELESS, 0.4, 1.5),
                                    (MEGALOVANIA, 0.35, 1.9), (HALLOWEEN, 0.55, 1.8)):
-            vitesses = [melodie.rate(s) for _, _, s in melodie.notes(melodie.load(fichier))]
+            morceau = melodie.load(fichier)
+            vitesses = [
+                melodie.rate(s) for voix in range(len(morceau.voices))
+                for _, _, s in melodie.notes(morceau, voice=voix)
+            ]
             self.assertGreater(min(vitesses), bas, fichier.name)
             self.assertLess(max(vitesses), haut, fichier.name)
 
 
 class Partition(unittest.TestCase):
 
-    def test_le_refrain_fait_huit_mesures(self):
+    def test_le_refrain_et_la_basse_font_huit_mesures(self):
         m = melodie.load(RICKROLL)
-        self.assertEqual(sum(temps for _, temps in m.notes), 32)
-        self.assertEqual(len(m.pitches()), 54)
+        self.assertEqual([sum(temps for _, temps in voix) for voix in m.voices],
+                         [32, 32])
+        self.assertEqual([sum(midi is not None for midi, _ in voix) for voix in m.voices],
+                         [54, 72])
 
-    def test_spooky_fait_vingt_mesures(self):
+    def test_spooky_et_sa_basse_font_vingt_mesures(self):
         # Le riff d'intro (4 mesures) puis trois couplets et le pont (16).
         m = melodie.load(SPOOKY)
-        self.assertEqual(sum(temps for _, temps in m.notes), 80)
+        self.assertEqual([sum(temps for _, temps in voix) for voix in m.voices],
+                         [80, 80])
+        self.assertEqual([sum(midi is not None for midi, _ in voix) for voix in m.voices],
+                         [151, 64])
+
+    def test_careless_et_sa_basse_finissent_ensemble(self):
+        m = melodie.load(CARELESS)
+        self.assertEqual([sum(temps for _, temps in voix) for voix in m.voices],
+                         [30.25, 30.25])
+        self.assertEqual([sum(midi is not None for midi, _ in voix) for voix in m.voices],
+                         [52, 23])
 
     def test_megalovania_a_deux_voix_de_meme_duree(self):
         m = melodie.load(MEGALOVANIA)
