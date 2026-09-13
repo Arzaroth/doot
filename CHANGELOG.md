@@ -12,6 +12,11 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Modifié
+
+- La copie de la recette AUR et son `.SRCINFO` ciblent désormais l'archive
+  vérifiée de la version 1.10.0.
+
 ## [1.10.0] - 2026-09-13
 
 ### Ajouté
