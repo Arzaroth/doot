@@ -12,6 +12,8 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.11.0] - 2026-09-13
+
 ### Ajouté
 
 - `careless-whisper` : le riff de sax de George Michael en doots, relevé sur
@@ -526,7 +528,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.10.0...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/boubou666/doot/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/boubou666/doot/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/boubou666/doot/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/boubou666/doot/compare/v1.7.2...v1.8.0
