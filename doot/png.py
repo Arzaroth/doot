@@ -10,6 +10,7 @@ exactement ce qu'attend XPutImage sur un visual ARGB 32 bits.
 
 from __future__ import annotations
 
+import math
 import struct
 import zlib
 from pathlib import Path
@@ -108,6 +109,46 @@ class Frame:
             ecrit = ((y + marge_y) * cote + marge_x) * 4
             out[ecrit:ecrit + ligne] = self.data[lu:lu + ligne]
         return Frame(cote, cote, bytes(out))
+
+    def swung(self, angle: float, scale: float, pivot: tuple[float, float],
+              width: int, height: int, origin: tuple[float, float]) -> "Frame":
+        """L'image penchee de `angle` degres et grossie de `scale` autour de
+        `pivot`, posee sur une toile de `width` x `height` ou le pivot tombe
+        en `origin`.
+
+        Sert au hochement de tete : le squelette pivote autour du poing qui
+        tient la trompette, pas autour de son centre. La toile est celle de
+        `bob_frames`, commune a toutes les etapes, pour que la surface a
+        l'ecran ne change ni de taille ni de place entre deux.
+
+        Plus proche voisin, comme l'agrandissement de `_resample` : une image
+        qui bouge pendant 180 ms n'a pas besoin de mieux, et le pur Python n'a
+        pas le temps de mieux.
+        """
+        radians = math.radians(angle)
+        cos_a, sin_a = math.cos(radians), math.sin(radians)
+        # Un pas vers la droite sur la toile, exprime dans l'image d'origine :
+        # la rotation inverse, divisee par l'echelle.
+        pas_x, pas_y = cos_a / scale, -sin_a / scale
+        pivot_x, pivot_y = pivot
+        origine_x, origine_y = origin
+        largeur, hauteur = self.width, self.height
+        source = self.data
+        out = bytearray(width * height * 4)
+        for y in range(height):
+            dy = y + 0.5 - origine_y
+            # Point de depart de la ligne, au bord gauche de la toile.
+            sx = pivot_x + (-origine_x + 0.5) * pas_x + dy * sin_a / scale
+            sy = pivot_y + (-origine_x + 0.5) * pas_y + dy * cos_a / scale
+            ecrit = y * width * 4
+            for _ in range(width):
+                if 0 <= sx < largeur and 0 <= sy < hauteur:
+                    lu = (int(sy) * largeur + int(sx)) * 4
+                    out[ecrit:ecrit + 4] = source[lu:lu + 4]
+                ecrit += 4
+                sx += pas_x
+                sy += pas_y
+        return Frame(width, height, bytes(out))
 
     def faded(self, factor: float) -> bytes:
         """Le meme rendu a `factor` d'opacite.
@@ -428,6 +469,40 @@ def spin_frames(frame: Frame) -> list:
     """
     carre = frame.squared()
     return [carre.rotated(quarts) for quarts in range(4)]
+
+
+BOB_PIVOT = (0.40, 0.90)          # le poing sur la trompette, en fractions de l'image
+BOB_STEPS = ((0.0, 1.0), (-3.5, 1.03), (-7.0, 1.06))   # (degres, echelle) par etape
+
+
+def bob_frames(frame: Frame) -> list:
+    """Les trois etapes du hochement : droite, a mi-chemin, penchee.
+
+    Le squelette se penche vers la gauche en grossissant un peu, autour de son
+    poing, puis revient : c'est le mouvement d'un trompettiste qui donne un
+    coup. Les trois images partagent une meme toile, assez grande pour
+    l'etape la plus penchee ; l'indice 0 est l'image droite, celle dont la
+    position de repos est calculee.
+    """
+    # Pivot entier : l'etape droite est alors une copie exacte de l'image,
+    # juste posee plus loin sur la toile.
+    pivot_x = round(frame.width * BOB_PIVOT[0])
+    pivot_y = round(frame.height * BOB_PIVOT[1])
+    coins = ((0, 0), (frame.width, 0), (0, frame.height), (frame.width, frame.height))
+    xs, ys = [], []
+    for angle, scale in BOB_STEPS:
+        radians = math.radians(angle)
+        cos_a, sin_a = math.cos(radians), math.sin(radians)
+        for x, y in coins:
+            dx, dy = (x - pivot_x) * scale, (y - pivot_y) * scale
+            xs.append(dx * cos_a - dy * sin_a)
+            ys.append(dx * sin_a + dy * cos_a)
+    gauche, haut = math.floor(min(xs)), math.floor(min(ys))
+    width = math.ceil(max(xs)) - gauche
+    height = math.ceil(max(ys)) - haut
+    origin = (-gauche, -haut)
+    return [frame.swung(angle, scale, (pivot_x, pivot_y), width, height, origin)
+            for angle, scale in BOB_STEPS]
 
 
 def frame(path: Path, scale: float = 1.0) -> Frame:

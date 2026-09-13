@@ -20,12 +20,13 @@ import os
 import random
 import sys
 import tempfile
+import time
 from fractions import Fraction
 from pathlib import Path
 
 from desktop_overlay import window as overlay_window
 
-from . import art, png, screens, sound, wayland, x11
+from . import art, overlay, png, screens, sound, wayland, x11
 
 TRANSPARENT_KEY = "#ff00ff"
 FALLBACK_BG = "#0b0b12"
@@ -168,6 +169,17 @@ def _spin_photos(tk, image_path: Path, scale: float) -> list:
     return photos
 
 
+def _bob_photos(tk, image_path: Path, scale: float) -> list:
+    """Les trois etapes du hochement, en PhotoImage, sur leur toile commune."""
+    dossier = Path(tempfile.gettempdir())
+    photos = []
+    for etape, frame in enumerate(png.bob_frames(png.frame(image_path, scale))):
+        tampon = dossier / f"doot-hoche-{os.getpid()}-{etape}.png"
+        png.write_png(tampon, frame)
+        photos.append(tk.PhotoImage(file=str(tampon)))
+    return photos
+
+
 def _auto_scale(width: int, height: int, screen_w: int, screen_h: int) -> float:
     """Reduit l'image si elle mange plus de 40 % de l'ecran."""
     limit_h = screen_h * 0.40
@@ -192,7 +204,7 @@ def active_monitors() -> list:
 
 def _show_argb(wav_path, duration, center, opacity, image_path, scale, screen,
                spatialise, slide=True, side=None, slide_ms=420, spin=False,
-               spin_ms=700) -> bool:
+               spin_ms=700, beats=None) -> bool:
     """Tente les overlays sans tkinter ; faux si tkinter doit prendre le relais.
 
     Wayland passe en premier : layer-shell sait poser la surface sur la sortie
@@ -208,14 +220,14 @@ def _show_argb(wav_path, duration, center, opacity, image_path, scale, screen,
     for backend, enumere in ((wayland, wayland.monitors), (x11, screens.monitors)):
         if _tente_overlay(backend, enumere, wav_path, duration, center, opacity,
                           image_path, scale, screen, spatialise, slide, side,
-                          slide_ms, spin, spin_ms):
+                          slide_ms, spin, spin_ms, beats):
             return True
     return False
 
 
 def _tente_overlay(backend, enumere, wav_path, duration, center, opacity,
                    image_path, scale, screen, spatialise, slide, side,
-                   slide_ms, spin, spin_ms) -> bool:
+                   slide_ms, spin, spin_ms, beats=None) -> bool:
     if not backend.available():
         return False
 
@@ -241,6 +253,10 @@ def _tente_overlay(backend, enumere, wav_path, duration, center, opacity,
         if spins:
             frame = spins[0]  # le carre : toutes les etapes ont sa taille
 
+        bobs = png.bob_frames(frame) if beats else None
+        if bobs:
+            frame = bobs[0]  # la toile : idem, et l'image droite y est posee
+
         if slide:
             depart_x, depart_y, repos_x, repos_y = monitor.entry(
                 frame.width, frame.height, entree, random, center=center
@@ -256,7 +272,8 @@ def _tente_overlay(backend, enumere, wav_path, duration, center, opacity,
     try:
         backend.play(frame, repos_x, repos_y, duration, opacity, wav_path, pan,
                      start=(depart_x, depart_y), slide_ms=slide_ms if slide else 0,
-                     spins=spins, spin_ms=spin_ms if spins else 0)
+                     spins=spins, spin_ms=spin_ms if spins else 0,
+                     beats=beats, bobs=bobs)
     except Exception:
         # overlay.run ne laisse remonter qu'avant affichage : arriver ici veut
         # dire que rien n'est a l'ecran, donc le repli ne fera pas de double.
@@ -281,6 +298,7 @@ def show(
     spin: bool = True,
     spin_chance: float = 0.25,
     spin_ms: int = 700,
+    beats: list | None = None,
 ) -> None:
     """Affiche un doot et rend la main quand il a disparu.
 
@@ -299,13 +317,22 @@ def show(
     place. `spin_chance` dit a quelle frequence il a lieu, `spin_ms` en regle
     la duree. Il demande une image PNG : les GIF animes et l'ASCII art restent
     droits.
+
+    `beats` : des instants en secondes depuis l'apparition, a chacun desquels
+    le squelette donne un coup de trompette et hoche la tete. Un concert se
+    donne sur place et debout : ni glissement ni tour complet. Une image PNG
+    se penche autour du poing ; l'ASCII art fait voler ses lettres ; un GIF
+    garde sa propre animation.
     """
+    if beats:
+        slide = False
+        spin = False
     slide = decide_slide(slide, side, slide_chance)
     # Un tour de duree nulle n'est pas un tour : il ne ferait que payer les
     # quatre orientations pour ne rien montrer.
     spin = decide_spin(spin, spin_chance, slide) and spin_ms > 0
     if _show_argb(wav_path, duration, center, opacity, image_path, scale, screen,
-                  spatialise, slide, side, slide_ms, spin, spin_ms):
+                  spatialise, slide, side, slide_ms, spin, spin_ms, beats):
         return
 
     tk, tkfont = _import_tk()
@@ -330,6 +357,7 @@ def show(
 
     frames: list = []
     spins: list = []
+    bobs: list = []
     if image_path is not None:
         try:
             probe = tk.PhotoImage(file=str(image_path)) if image_path.suffix.lower() != ".gif" \
@@ -347,6 +375,9 @@ def show(
             if spin and image_path.suffix.lower() == ".png":
                 spins = _spin_photos(tk, image_path, wanted)
                 frames = [spins[0]]
+            elif beats and image_path.suffix.lower() == ".png":
+                bobs = _bob_photos(tk, image_path, wanted)
+                frames = [bobs[0]]
             elif tours and image_path.suffix.lower() == ".png":
                 frames = [_rotated_photo(tk, image_path, wanted, tours)]
             else:
@@ -356,12 +387,13 @@ def show(
             # Image illisible : on retombe sur l'ASCII, qui ne tourne pas.
             frames = []
             spins = []
+            bobs = []
 
     widget_kwargs = dict(bg=background, borderwidth=0, highlightthickness=0)
     if frames:
         label = tk.Label(root, image=frames[0], **widget_kwargs)
         # garde une reference, sinon Tk libere les images
-        label.image = frames + spins
+        label.image = frames + spins + bobs
     else:
         label = tk.Label(
             root,
@@ -408,7 +440,11 @@ def show(
     fade_in_ms = min(220, total_ms // 4)
     fade_out_ms = min(500, total_ms // 3)
     tick_ms = 40
-    state = {"elapsed": 0, "step": 0, "quart": 0}
+    state = {"elapsed": 0, "step": 0, "quart": 0, "etape": 0}
+    # `elapsed` compte les pas de 40 ms, et chaque pas dure un peu plus : sur
+    # un refrain de 18 s la derive se voit. Les coups de trompette se calent
+    # donc sur l'horloge, comme le son qui vient de partir.
+    depart = time.monotonic()
 
     def set_alpha(value: float) -> None:
         try:
@@ -447,12 +483,24 @@ def show(
                 state["quart"] = quart
                 label.configure(image=spins[quart])
 
+        # Le hochement : penche puis droit a chaque coup de trompette.
+        penche = overlay.bob_at(time.monotonic() - depart, beats) if beats else 0
+        if bobs and penche != state["etape"]:
+            state["etape"] = penche
+            label.configure(image=bobs[penche])
+
         if frames:
             if len(frames) > 1:
                 wanted = (elapsed // GIF_FRAME_MS) % len(frames)
                 if wanted != state["step"]:
                     state["step"] = wanted
                     label.configure(image=frames[wanted])
+        elif beats:
+            # Les lettres s'envolent a chaque coup, puis le squelette se tait.
+            wanted = len(art.DOOT_FRAMES) - 1 if penche else 0
+            if wanted != state["step"]:
+                state["step"] = wanted
+                label.configure(text=art.frame(wanted, mirrored=retourne))
         else:
             wanted = min(len(art.DOOT_FRAMES) - 1, elapsed // art.FRAME_MS)
             if wanted != state["step"]:
