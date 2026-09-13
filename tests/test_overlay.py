@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import itertools
 import unittest
+from unittest import mock
 
 from doot import overlay, png
 
@@ -126,7 +127,11 @@ class Hochement(unittest.TestCase):
     def dessine(self, beats, **kwargs):
         surface = FausseSurface()
         etapes = self.etapes()
-        overlay.run(surface, etapes[0], 0, 0, 1.0, beats=beats, bobs=etapes, **kwargs)
+        # Un hochement large devant le pas de 40 ms de la boucle, comme le
+        # tour : a 180 ms l'etape penchee ne dure que 63 ms, et un runner qui
+        # bafouille l'a deja sautee.
+        with mock.patch.object(overlay, "BOB", 0.8):
+            overlay.run(surface, etapes[0], 0, 0, 1.6, beats=beats, bobs=etapes, **kwargs)
         vus = []
         for pixels in surface.pixels:
             rangs = {i % 4 for i, octet in enumerate(pixels) if octet}
