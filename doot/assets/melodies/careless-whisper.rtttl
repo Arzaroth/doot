@@ -1,1 +1,5 @@
+# George Michael. Voix 1 : sax ; voix 2 : basse electrique du meme MIDI.
+# La basse est relevee de deux octaves, comme celle de Megalovania : memes
+# intervalles, mais dans la fenetre ou le doot garde son timbre.
 CarelessWhisper:d=16,o=5,b=76:16f5,16f#5,8g5,16g5,8d5,8a#4,8.a5,16g5,8d5,8.a#4,8f5,16d#5,8a#4,8g4,8.f5,16d#5,4a#4,16p,8d#5,16d5,8a#4,8g4,2d#4,16p,8d4,8d#4,8f4,8g4,8a4,8a#4,8c5,16d5,32f5,32f#5,8g5,16g5,8d5,8a#4,8.a5,16g5,8d5,8.a#4,8f5,16d#5,8a#4,8g4,8.f5,16d#5,4a#4,16p,8d#5,16d5,8a#4,8g4,1d#4
+CarelessWhisperBass:d=8,o=4,b=76:8p,4.g,8g,2g,4.c,8c,2c,4.d#,8d#,2d#,4.d,8d,2d,4.g,8g,2g,4.c,8c,2c,4.d#,8d#,2d#,4.d,16d

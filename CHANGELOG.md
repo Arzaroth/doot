@@ -12,6 +12,13 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Modifié
+
+- `careless-whisper`, `rickroll` et `spooky-scary-skeletons` gagnent une
+  basse en seconde voix et affichent désormais deux squelettes. Les trois
+  accompagnements finissent exactement avec leur mélodie et conservent son
+  accordage.
+
 ## [1.12.0] - 2026-09-13
 
 ### Ajouté

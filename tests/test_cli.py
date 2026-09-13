@@ -113,6 +113,10 @@ class Play(CliTestCase):
         self.assertEqual(len(self.shown), 1)
         montre = self.shown[0]
         self.assertEqual(montre["beats"], melodie.onsets(morceau))
+        self.assertEqual(
+            montre["voices"],
+            [melodie.onsets(morceau, voice=index) for index in range(2)],
+        )
         self.assertEqual(montre["duration"], melodie.duration(morceau))
         self.assertEqual(montre["wav_path"], self.paths["data"] / "melodie.wav")
         self.assertTrue(montre["wav_path"].is_file())
@@ -207,7 +211,7 @@ class PlayPolyphonique(CliTestCase):
         self.assertEqual(self.shown[0]["beats"], self.shown[0]["voices"][0])
 
     def test_une_seule_voix_garde_l_api_historique(self):
-        self.run_cli("--play", "rickroll", "--no-sound")
+        self.run_cli("--play", "this-is-halloween", "--no-sound")
         self.assertNotIn("voices", self.shown[0])
 
 
