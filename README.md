@@ -81,11 +81,10 @@ apparitions de 2 à 8 heures, et `--no-sound` le rend muet.
 
 ### Depuis GitHub, sur les trois systèmes
 
-Les versions qui utilisent le moteur partagé sont distribuées par les
-[releases GitHub](https://github.com/boubou666/doot/releases). Les scripts
-ci-dessous installent l'application et le wheel vérifié du moteur, puis
-configurent le démarrage automatique. Les anciennes versions déjà publiées sur
-PyPI restent disponibles, mais ne reçoivent pas cette intégration.
+Les versions sont distribuées uniquement par les
+[releases GitHub](https://github.com/boubou666/doot/releases). Les canaux PyPI
+et AUR ne sont plus maintenus. Les scripts ci-dessous installent l'application
+et le wheel vérifié du moteur, puis configurent le démarrage automatique.
 
 ### Linux (dont Arch) et macOS
 
@@ -128,13 +127,10 @@ makepkg -si
 systemctl --user enable --now doot.service
 ```
 
-**Et sur l'AUR ?** Pas encore : le paquet n'y est pas publié, donc `yay -S` ne
-trouvera rien pour l'instant. Le `PKGBUILD` prêt à l'être vit dans
-`packaging/aur/`, sous le nom **`spooky-doot`** — `doot` y est déjà pris par un
-gestionnaire de dotfiles, exactement comme sur PyPI par un lanceur de tâches. Il
-déclare `conflicts=('doot')` : les deux paquets installent `/usr/bin/doot` et ne
-peuvent donc pas cohabiter. En attendant la publication, le `makepkg -si`
-ci-dessus reste la voie.
+Le projet n'est plus publié sur l'AUR. Le `PKGBUILD` de `packaging/` reste une
+commodité pour construire localement depuis une release GitHub ; il n'est pas
+synchronisé vers un dépôt de paquets. Pour les mises à jour automatiques, utilise
+plutôt `install.sh` puis `doot --update`.
 
 ### Windows
 

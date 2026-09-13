@@ -12,6 +12,8 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.12.0] - 2026-09-13
+
 ### Ajouté
 
 - Une mélodie peut avoir autant de voix parallèles que de lignes RTTTL. Elles
@@ -33,8 +35,11 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 - Le lecteur RTTTL accepte les octaves 1 à 8 (la norme s'arrête à 4–7), pour
   les notes de basse d'un riff.
 
-- La copie de la recette AUR et son `.SRCINFO` ciblent désormais l'archive
-  vérifiée de la version 1.11.0.
+### Supprimé
+
+- Les canaux de distribution PyPI et AUR sont abandonnés. GitHub Releases devient
+  l'unique source publiée ; la recette AUR et son `.SRCINFO` quittent le dépôt.
+  Le `PKGBUILD` local reste disponible pour une construction manuelle sous Arch.
 
 ## [1.11.0] - 2026-09-13
 
@@ -552,7 +557,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.11.0...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.12.0...HEAD
+[1.12.0]: https://github.com/boubou666/doot/compare/v1.11.0...v1.12.0
 [1.11.0]: https://github.com/boubou666/doot/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/boubou666/doot/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/boubou666/doot/compare/v1.8.0...v1.9.0

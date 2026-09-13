@@ -73,9 +73,9 @@ jobs:
         # recommande au moment de publier.
         run: uv build --no-sources
 
-      - name: Verifier les metadonnees des paquets
-        # uvx : twine tourne dans son propre environnement ephemere, rien ne
-        # s'installe a cote des paquets qu'on vient de construire.
+      - name: Verifier localement les metadonnees des paquets
+        # twine ne publie rien ici : il relit seulement les wheels/sdist qui
+        # seront joints a la release GitHub, unique canal de distribution.
         run: uvx twine check dist/*
 
       - name: Extraire la section du changelog
