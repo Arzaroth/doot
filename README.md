@@ -429,8 +429,11 @@ qu'on accélère — un demi-ton, c'est 2^(1/12) fois plus vite. Rien n'est
 synthétisé, tout le timbre vient de ce seul doot.
 
 Deux mélodies sont fournies : `rickroll`, le refrain de *Never Gonna Give You
-Up* en la♭ majeur comme le disque, et `spooky-scary-skeletons`, les deux
-couplets et le pont d'Andrew Gold.
+Up* en la♭ majeur comme le disque, et `spooky-scary-skeletons` — le riff
+d'intro, les couplets et le pont d'Andrew Gold, en si mineur, relevés sur un
+arrangement piano ([Online Sequencer #32991](https://onlinesequencer.net/32991)) :
+la voix du dessus de la main droite, instant par instant, ralentie à 135 BPM
+parce qu'à la vitesse du disque les doots se marchent dessus.
 
 ### Le format : RTTTL
 

@@ -137,11 +137,14 @@ class Accordage(unittest.TestCase):
         self.assertEqual(melodie.transposition(m), 0)
         self.assertAlmostEqual(melodie.rate(melodie.notes(m)[0][2]), 415.3 / 594.0, places=3)
 
-    def test_les_fournies_restent_dans_une_octave_et_demie_de_lecture(self):
-        for fichier in (RICKROLL, SPOOKY):
+    def test_les_fournies_restent_a_moins_d_une_octave_du_doot(self):
+        # Le rickroll tient dans une octave et demie de lecture ; Spooky Scary
+        # Skeletons descend plus bas (le riff, sous les couplets) et monte
+        # jusqu'au si du pont, mais jamais a l'octave.
+        for fichier, bas, haut in ((RICKROLL, 0.6, 1.5), (SPOOKY, 0.45, 1.7)):
             vitesses = [melodie.rate(s) for _, _, s in melodie.notes(melodie.load(fichier))]
-            self.assertGreater(min(vitesses), 0.6, fichier.name)
-            self.assertLess(max(vitesses), 1.5, fichier.name)
+            self.assertGreater(min(vitesses), bas, fichier.name)
+            self.assertLess(max(vitesses), haut, fichier.name)
 
 
 class Partition(unittest.TestCase):
@@ -151,9 +154,10 @@ class Partition(unittest.TestCase):
         self.assertEqual(sum(temps for _, temps in m.notes), 32)
         self.assertEqual(len(m.pitches()), 54)
 
-    def test_spooky_fait_seize_mesures(self):
+    def test_spooky_fait_vingt_mesures(self):
+        # Le riff d'intro (4 mesures) puis trois couplets et le pont (16).
         m = melodie.load(SPOOKY)
-        self.assertEqual(sum(temps for _, temps in m.notes), 64)
+        self.assertEqual(sum(temps for _, temps in m.notes), 80)
 
     def test_les_coups_se_suivent_apres_la_tete(self):
         coups = melodie.onsets(melodie.load(RICKROLL))

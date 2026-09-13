@@ -19,8 +19,8 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
   mélodies fournies ou déposées dans `<data>/melodies/`, ou un chemin.
   `doot --melodies` les liste, `--transpose N` décale de N demi-tons. Chaque
   mélodie est ramenée par octaves entières au plus près du ré5 du doot.
-- `spooky-scary-skeletons`, les deux couplets et le pont d'Andrew Gold, en
-  doots.
+- `spooky-scary-skeletons` : le riff d'intro, les couplets et le pont d'Andrew
+  Gold en doots, relevés sur un arrangement piano, à 135 BPM.
 
 ### Modifié
 
