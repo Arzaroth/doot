@@ -449,7 +449,8 @@ Cinq mélodies sont fournies :
   pile dans la fenêtre où le doot sonne bien. `--transpose -5` pour la
   tonalité d'origine ;
 - `megalovania` (Undertale — un squelette, forcément) : le riff quatre fois,
-  puis les deux thèmes, relevés sur [Online Sequencer #973167](https://onlinesequencer.net/973167) ;
+  puis les deux thèmes **avec leur basse en seconde voix**, relevés sur
+  [Online Sequencer #973167](https://onlinesequencer.net/973167) ;
 - `this-is-halloween` (L'Étrange Noël de Monsieur Jack) : l'ostinato d'intro,
   le couplet et « This is Halloween » deux fois, relevés sur
   [Online Sequencer #3005280](https://onlinesequencer.net/3005280).
@@ -462,8 +463,17 @@ collent tels quels dans un fichier `.rtttl` du dossier `melodies/` (`doot
 --paths`), et `doot --play nom-du-fichier` les joue. Un fichier à toi qui porte
 le nom d'une mélodie fournie la remplace, comme un son ou une image.
 
+Une ligne est une voix. Pour jouer plusieurs notes en parallèle, mets autant
+de sonneries RTTTL complètes que tu veux, une par ligne, toutes au même tempo.
+Les voix sont additionnées et chacune est ramenée à `1 / nombre_de_voix` : le
+mix ne sature pas, quel que soit le nombre de voix. La première
+voix reste la principale et commande seule le hochement du squelette dans cette
+version. Les lignes vides et celles qui commencent par `#` sont ignorées.
+
 ```
-SpookyScarySkeletons:d=8,o=5,b=130:f,f,e,e,a4,c,4a4,a4,f,f,e,e,4.a4,...
+# Melodie et basse, ensemble a 120 BPM
+Melodie:d=8,o=5,b=120:c,d,e,g
+Basse:d=4,o=4,b=120:c,g
 ```
 
 - `d` : durée par défaut (`1` ronde, `2` blanche, `4` noire, `8` croche, `16`, `32`)
@@ -477,8 +487,8 @@ SpookyScarySkeletons:d=8,o=5,b=130:f,f,e,e,a4,c,4a4,a4,f,f,e,e,4.a4,...
 Une mélodie écrite trop haut ou trop bas ferait un écureuil ou un tuba : elle est
 **ramenée par octaves entières** au plus près du ré5 du doot (le milieu de son
 ambitus), ce qui ne change pas sa tonalité. `--transpose N` décale ensuite de N
-demi-tons. Les deux mélodies fournies tiennent entre 0,7 et 1,5 fois la vitesse
-normale du coup, assez peu pour que le squelette reste un squelette.
+demi-tons. Les mélodies fournies restent dans une plage où le squelette garde
+sa voix de squelette.
 
 ### Le hochement
 

@@ -80,6 +80,58 @@ class LectureRtttl(unittest.TestCase):
             self.assertTrue(str(cm.exception).startswith("casse.rtttl : "))
 
 
+class Polyphonie(unittest.TestCase):
+
+    def test_deux_lignes_font_deux_voix(self):
+        m = melodie.parse("Melodie:d=4,o=5,b=120:c,d\nBasse:d=2,o=4,b=120:c,g")
+        self.assertEqual(m.name, "Melodie")
+        self.assertEqual(m.tempo, 120)
+        self.assertEqual(m.voices, [
+            [(72, 1.0), (74, 1.0)],
+            [(60, 2.0), (67, 2.0)],
+        ])
+        self.assertEqual(m.notes, m.voices[0])
+        self.assertEqual(m.pitches(), [72, 74, 60, 67])
+
+    def test_commentaires_et_lignes_vides_sont_ignores(self):
+        m = melodie.parse("# source\n\nUne::c\n  # basse\nDeux::g4")
+        self.assertEqual(len(m.voices), 2)
+
+    def test_une_seule_ligne_reste_compatible(self):
+        m = melodie.parse("Une::c,d")
+        self.assertEqual(m.voices, [[(72, 1.0), (74, 1.0)]])
+        self.assertEqual(m.notes, [(72, 1.0), (74, 1.0)])
+
+    def test_les_voix_doivent_avoir_le_meme_tempo(self):
+        with self.assertRaises(melodie.MelodieError) as cm:
+            melodie.parse("Une:b=120:c\nDeux:b=90:g")
+        self.assertIn("voix 2 : tempo b=90", str(cm.exception))
+
+    def test_une_erreur_nomme_sa_voix(self):
+        with self.assertRaises(melodie.MelodieError) as cm:
+            melodie.parse("Une::c\nDeux::?")
+        self.assertIn("voix 2 : note incomprise", str(cm.exception))
+
+    def test_un_fichier_sans_sonnerie_est_refuse(self):
+        with self.assertRaises(melodie.MelodieError) as cm:
+            melodie.parse("# rien ici\n\n")
+        self.assertIn("aucune sonnerie", str(cm.exception))
+
+    def test_le_nombre_de_voix_n_est_pas_plafonne(self):
+        texte = "\n".join(f"Voix{n}:b=120:c" for n in range(50))
+        self.assertEqual(len(melodie.parse(texte).voices), 50)
+
+    def test_la_duree_est_celle_de_la_voix_la_plus_longue(self):
+        m = melodie.parse("Courte:d=4,b=60:c\nLongue:d=4,b=60:c,c,c")
+        self.assertAlmostEqual(melodie.duration(m), melodie.LEAD + 3 + melodie.TAIL)
+
+    def test_les_coups_du_squelette_suivent_la_voix_principale(self):
+        m = melodie.parse("Une:d=4,b=60:c,p,d\nDeux:d=8,b=60:c,c,c,c,c,c")
+        self.assertEqual(melodie.onsets(m), [melodie.LEAD, melodie.LEAD + 2])
+        self.assertEqual(melodie.onsets(m, voice=1),
+                         [melodie.LEAD + n * 0.5 for n in range(6)])
+
+
 class Catalogue(unittest.TestCase):
 
     def setUp(self):
@@ -174,6 +226,14 @@ class Partition(unittest.TestCase):
         m = melodie.load(SPOOKY)
         self.assertEqual(sum(temps for _, temps in m.notes), 80)
 
+    def test_megalovania_a_deux_voix_de_meme_duree(self):
+        m = melodie.load(MEGALOVANIA)
+        self.assertEqual(len(m.voices), 2)
+        self.assertEqual([sum(temps for _, temps in voix) for voix in m.voices],
+                         [64, 64])
+        self.assertEqual([sum(midi is not None for midi, _ in voix) for voix in m.voices],
+                         [144, 97])
+
     def test_les_coups_se_suivent_apres_la_tete(self):
         coups = melodie.onsets(melodie.load(RICKROLL))
         self.assertEqual(coups[0], melodie.LEAD)
@@ -234,6 +294,53 @@ class Tenue(unittest.TestCase):
         debut = melodie.LEAD + 3.0
         tranche = samples[int(debut * rate):int((debut + 0.2) * rate)]
         self.assertGreater(max(abs(v) for v in tranche), 3000)
+
+
+class RenduPolyphonique(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls._dir = tempfile.TemporaryDirectory()
+        root = Path(cls._dir.name)
+        cls.c = cls.lit(melodie.render(root / "c.wav", melodie.parse("C:d=4,o=5,b=120:c")))
+        cls.e = cls.lit(melodie.render(root / "e.wav", melodie.parse("E:d=4,o=5,b=120:e")))
+        cls.duo = cls.lit(melodie.render(
+            root / "duo.wav", melodie.parse("C:d=4,o=5,b=120:c\nE:d=4,o=5,b=120:e")))
+        cls.unisson = cls.lit(melodie.render(
+            root / "unisson.wav", melodie.parse("C:d=4,o=5,b=120:c\nC:d=4,o=5,b=120:c")))
+
+    @staticmethod
+    def lit(path):
+        with wave.open(str(path), "rb") as handle:
+            samples = array.array("h", handle.readframes(handle.getnframes()))
+            return handle.getframerate(), samples
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._dir.cleanup()
+
+    def test_le_mix_est_la_somme_des_voix_divisee_par_leur_nombre(self):
+        rate, c = self.c
+        self.assertEqual(rate, self.e[0])
+        self.assertEqual(rate, self.duo[0])
+        e, duo = self.e[1], self.duo[1]
+        debut = int(melodie.LEAD * rate)
+        fin = debut + int(0.2 * rate)
+        attendu = [int(a * 0.5) + int(b * 0.5) for a, b in zip(c[debut:fin], e[debut:fin])]
+        self.assertEqual(list(duo[debut:fin]), attendu)
+
+    def test_deux_voix_a_l_unisson_gardent_le_niveau_d_une_seule(self):
+        _, seule = self.c
+        _, deux = self.unisson
+        # L'arrondi vers zero peut laisser une unite d'ecart sur les impairs.
+        self.assertLessEqual(max(abs(a - b) for a, b in zip(seule, deux)), 1)
+
+    def test_le_mix_reste_mono_16_bits(self):
+        rate, samples = self.duo
+        self.assertEqual(rate, 48000)
+        self.assertTrue(samples)
+        self.assertLessEqual(max(samples), 32767)
+        self.assertGreaterEqual(min(samples), -32768)
 
 
 class Rendu(unittest.TestCase):

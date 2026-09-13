@@ -180,6 +180,8 @@ class Play(CliTestCase):
         texte = "\n".join(str(appel.args[0]) for appel in sortie.call_args_list if appel.args)
         self.assertIn("rickroll", texte)
         self.assertIn("spooky-scary-skeletons", texte)
+        self.assertIn("megalovania", texte)
+        self.assertIn("2 voix", texte)
 
 
 class OptionsDAffichage(CliTestCase):
