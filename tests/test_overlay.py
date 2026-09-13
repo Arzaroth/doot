@@ -179,5 +179,44 @@ class Hochement(unittest.TestCase):
         self.assertEqual(vus, {3})
 
 
+class Orchestre(unittest.TestCase):
+    """Un seul son, mais un hochement independant pour chaque voix."""
+
+    @staticmethod
+    def etapes():
+        return [png.Frame(1, 1, bytes(
+            120 if octet == etape else 0 for octet in range(4)
+        )) for etape in range(3)]
+
+    @staticmethod
+    def positions(payload):
+        positions = []
+        for start in (0, 4):
+            rangs = [index for index, value in enumerate(payload[start:start + 4]) if value]
+            positions.append(rangs[0] if len(rangs) == 1 else None)
+        return tuple(positions)
+
+    def test_chaque_squelette_suit_sa_voix_et_le_son_part_une_fois(self):
+        surface = FausseSurface()
+        bobs = self.etapes()
+        frame = png.montage([bobs[0], bobs[0]], columns=2)
+        with mock.patch.object(overlay, "BOB", 0.4):
+            with mock.patch.object(
+                overlay.sound, "play_async", return_value="lecture"
+            ) as play:
+                with mock.patch.object(overlay.sound, "release") as release:
+                    overlay.run(
+                        surface, frame, 0, 0, 1.4,
+                        wav_path="orchestre.wav",
+                        bobs=bobs,
+                        voices=[[0.3], [0.8]],
+                        columns=2,
+                    )
+        vues = {self.positions(payload) for payload in surface.pixels}
+        self.assertIn((2, 0), vues)
+        self.assertIn((0, 2), vues)
+        play.assert_called_once_with("orchestre.wav", 0.0)
+        release.assert_called_once_with("lecture")
+
 if __name__ == "__main__":
     unittest.main()

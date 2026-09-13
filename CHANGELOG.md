@@ -15,9 +15,11 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 ### Ajouté
 
 - Une mélodie peut avoir autant de voix parallèles que de lignes RTTTL. Elles
-  partagent le tempo et sont mixées sans saturation ; la première reste la
-  voix principale qui fait hocher l'unique squelette. `doot --melodies`
-  annonce le nombre de voix.
+  partagent le tempo et sont mixées sans saturation. `doot --melodies` annonce
+  le nombre de voix.
+- `doot --play` affiche un squelette par voix, sans plafond : le groupe est
+  rangé en grille dans un seul overlay et chacun hoche uniquement sur ses
+  propres notes, pendant que la piste mixée ne démarre qu'une fois.
 - `megalovania` gagne la basse de son arrangement en seconde voix.
 - `megalovania` (le riff quatre fois puis les deux thèmes) et
   `this-is-halloween` (ostinato, couplet et refrain), relevés sur des

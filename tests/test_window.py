@@ -136,5 +136,39 @@ class TourComplet(unittest.TestCase):
         self.assertEqual(self.part_tournee(1.0, glisse=True), 0.0)
 
 
+class Orchestre(unittest.TestCase):
+    """La grille grossit sans plafond et reste dans les bornes de l'ecran."""
+
+    def test_deux_squelettes_verticaux_se_mettent_cote_a_cote(self):
+        columns, rows, scale = window.ensemble_layout(2, 100, 200, 1920, 1080)
+        self.assertEqual((columns, rows), (2, 1))
+        self.assertEqual(scale, 1.0)
+
+    def test_la_grille_contient_toutes_les_voix(self):
+        for count in (3, 7, 50, 500):
+            columns, rows, scale = window.ensemble_layout(
+                count, 320, 480, 1920, 1080
+            )
+            self.assertGreaterEqual(columns * rows, count)
+            self.assertGreater(columns, 0)
+            self.assertGreater(rows, 0)
+            self.assertGreater(scale, 0)
+
+    def test_un_grand_orchestre_est_reduit_et_tient_a_l_ecran(self):
+        columns, rows, scale = window.ensemble_layout(
+            500, 320, 480, 1920, 1080
+        )
+        group_width = 320 * scale * (columns + 0.05 * (columns - 1))
+        group_height = 480 * scale * (rows + 0.05 * (rows - 1))
+        self.assertLess(scale, 1.0)
+        self.assertLessEqual(group_width, 1920 * 0.86 + 1)
+        self.assertLessEqual(group_height, 1080 * 0.72 + 1)
+
+    def test_une_voix_conserve_l_echelle_historique(self):
+        self.assertEqual(
+            window.ensemble_layout(1, 1000, 800, 1920, 1080),
+            (1, 1, window._auto_scale(1000, 800, 1920, 1080)),
+        )
+
 if __name__ == "__main__":
     unittest.main()

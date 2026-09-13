@@ -25,9 +25,9 @@ collent tels quels dans <data_dir>/melodies/.
   silence.
 
 Plusieurs lignes, plusieurs voix : chaque ligne est une sonnerie complete,
-toutes au meme tempo, jouees ensemble. La premiere est la voix principale,
-celle dont les coups font hocher le squelette. Une ligne qui commence par `#`
-est un commentaire (la source de la transcription, par exemple).
+toutes au meme tempo, jouees ensemble. Chaque voix obtient son squelette et
+ses propres hochements. Une ligne qui commence par `#` est un commentaire (la
+source de la transcription, par exemple).
 
 Une melodie ecrite trop haut ou trop bas pour le doot ferait un ecureuil ou
 un tuba : elle est ramenee, par octaves entieres, au plus pres du re5 du coup
@@ -72,8 +72,8 @@ class Melodie:
     """Une melodie lue.
 
     `voices` : une liste par voix, de (hauteur MIDI ou None, duree en temps).
-    `notes` est la premiere, la voix principale : c'est elle qui fait hocher
-    le squelette, et la seule qu'a une sonnerie ordinaire.
+    `notes` reste la premiere pour la compatibilite avec les sonneries
+    ordinaires et les appels historiques.
     """
 
     name: str
@@ -249,8 +249,8 @@ def notes(melodie: Melodie, transpose: int | None = None, voice: int = 0) -> lis
 def onsets(melodie: Melodie, transpose: int | None = None, voice: int = 0) -> list:
     """Les instants ou une voix donne un coup de trompette.
 
-    La voix principale (0) reste le defaut : avec un seul squelette, c'est elle
-    qui commande son hochement.
+    La voix principale (0) reste le defaut pour les appels historiques ;
+    `doot --play` demande explicitement les coups de chaque voix.
     """
     return [debut for debut, _, _ in notes(melodie, transpose, voice)]
 
