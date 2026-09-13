@@ -28,6 +28,7 @@ class CliTestCase(unittest.TestCase):
             "data": root,
             "sound": root / "sound",
             "image": root / "image",
+            "melodies": root / "melodies",
             "wav": root / "doot.wav",
             "log": root / "doot.log",
             "pid": root / "doot.pid",
@@ -87,8 +88,8 @@ class RefusHorsSaison(CliTestCase):
             self.assertEqual(self.shown, [])
 
 
-class Rickroll(CliTestCase):
-    """`--rickroll` : un seul passage, sur place, avec la partition."""
+class Play(CliTestCase):
+    """`--play` et `--rickroll` : un seul passage, sur place, avec la partition."""
 
     def hors_saison(self):
         return mock.patch.object(season, "in_season", lambda now=None: False)
@@ -102,24 +103,67 @@ class Rickroll(CliTestCase):
         self.assertEqual(code, 3)
         self.assertEqual(self.shown, [])
 
-    def test_en_saison_joue_le_refrain(self):
-        from doot import rickroll
+    def test_rickroll_est_un_raccourci_de_play(self):
+        from doot import melodie
 
+        morceau = melodie.load(melodie.MELODIES_DIR / "rickroll.rtttl")
         with self.en_saison():
             code = self.run_cli("--rickroll")
         self.assertEqual(code, 0)
         self.assertEqual(len(self.shown), 1)
         montre = self.shown[0]
-        self.assertEqual(montre["beats"], rickroll.onsets())
-        self.assertEqual(montre["duration"], rickroll.duration())
-        self.assertEqual(montre["wav_path"], self.paths["data"] / "rickroll.wav")
+        self.assertEqual(montre["beats"], melodie.onsets(morceau))
+        self.assertEqual(montre["duration"], melodie.duration(morceau))
+        self.assertEqual(montre["wav_path"], self.paths["data"] / "melodie.wav")
         self.assertTrue(montre["wav_path"].is_file())
 
-    def test_no_sound_ne_rend_pas_le_refrain(self):
+    def test_play_par_nom_fourni(self):
+        from doot import melodie
+
+        morceau = melodie.load(melodie.MELODIES_DIR / "spooky-scary-skeletons.rtttl")
+        with self.en_saison():
+            code = self.run_cli("--play", "spooky-scary-skeletons", "--no-sound")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.shown[0]["beats"], melodie.onsets(morceau))
+
+    def test_play_par_fichier_perso(self):
+        from doot import melodie
+
+        self.paths["melodies"].mkdir()
+        mien = self.paths["melodies"] / "gamme.rtttl"
+        mien.write_text("Gamme:d=4,o=5,b=120:c,d,e", encoding="utf-8")
+        with self.en_saison():
+            code = self.run_cli("--play", "gamme", "--no-sound")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.shown[0]["beats"], melodie.onsets(melodie.load(mien)))
+
+    def test_transpose_suit(self):
+        from doot import melodie
+
+        morceau = melodie.load(melodie.MELODIES_DIR / "rickroll.rtttl")
+        with self.en_saison():
+            self.run_cli("--rickroll", "--no-sound", "--transpose", "-2")
+        self.assertEqual(self.shown[0]["beats"], melodie.onsets(morceau, -2))
+
+    def test_melodie_inconnue_sort_en_2_sans_rien_afficher(self):
+        with self.en_saison():
+            code = self.run_cli("--play", "nope", "--no-sound")
+        self.assertEqual(code, 2)
+        self.assertEqual(self.shown, [])
+
+    def test_melodie_illisible_sort_en_2(self):
+        self.paths["melodies"].mkdir()
+        (self.paths["melodies"] / "casse.rtttl").write_text("x::c,?", encoding="utf-8")
+        with self.en_saison():
+            code = self.run_cli("--play", "casse", "--no-sound")
+        self.assertEqual(code, 2)
+        self.assertEqual(self.shown, [])
+
+    def test_no_sound_ne_rend_pas_le_wav(self):
         with self.en_saison():
             self.run_cli("--rickroll", "--no-sound")
         self.assertIsNone(self.shown[0]["wav_path"])
-        self.assertFalse((self.paths["data"] / "rickroll.wav").exists())
+        self.assertFalse((self.paths["data"] / "melodie.wav").exists())
 
     def test_les_reglages_d_affichage_suivent(self):
         with self.en_saison():
@@ -127,6 +171,15 @@ class Rickroll(CliTestCase):
         montre = self.shown[0]
         self.assertEqual(montre["screen"], "primary")
         self.assertEqual(montre["opacity"], 0.5)
+
+    def test_melodies_liste_sans_rien_afficher(self):
+        with mock.patch("builtins.print") as sortie:
+            code = self.run_cli("--melodies")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.shown, [])
+        texte = "\n".join(str(appel.args[0]) for appel in sortie.call_args_list if appel.args)
+        self.assertIn("rickroll", texte)
+        self.assertIn("spooky-scary-skeletons", texte)
 
 
 class OptionsDAffichage(CliTestCase):

@@ -12,8 +12,22 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ajouté
+
+- `doot --play MELODIE` joue n'importe quelle mélodie en doots, depuis un
+  fichier **RTTTL** (le format des sonneries Nokia) : un nom parmi les
+  mélodies fournies ou déposées dans `<data>/melodies/`, ou un chemin.
+  `doot --melodies` les liste, `--transpose N` décale de N demi-tons. Chaque
+  mélodie est ramenée par octaves entières au plus près du ré5 du doot.
+- `spooky-scary-skeletons`, les deux couplets et le pont d'Andrew Gold, en
+  doots.
+
 ### Modifié
 
+- `--rickroll` est désormais un raccourci de `--play rickroll` : la partition
+  sort du code pour `doot/assets/melodies/rickroll.rtttl`, à l'identique. Le
+  module `rickroll.py` devient `melodie.py`, et le WAV rendu s'appelle
+  `melodie.wav`.
 - La copie de la recette AUR et son `.SRCINFO` ciblent désormais l'archive
   vérifiée de la version 1.9.0.
 

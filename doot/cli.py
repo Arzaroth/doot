@@ -42,6 +42,7 @@ def paths() -> dict[str, Path]:
         "data": root,
         "sound": root / "sound",
         "image": root / "image",
+        "melodies": root / "melodies",
         "wav": root / "doot.wav",
         "log": root / "doot.log",
         "pid": root / "doot.pid",
@@ -300,27 +301,39 @@ def do_once(args) -> int:
     return 0
 
 
-def do_rickroll(args) -> int:
-    """Le refrain de Never Gonna Give You Up, en doots, sur place.
+def do_play(args, wanted: str) -> int:
+    """Une melodie en doots, sur place : `--play NOM|FICHIER` et `--rickroll`.
 
     Meme regle de saison que `--once` : hors saison le squelette range sa
-    trompette, rickroll ou pas. Le refrain est rendu a chaque fois, en une
-    fraction de seconde, dans le dossier de donnees : pas de cache a invalider.
+    trompette, quel que soit le morceau. Le WAV est rendu a chaque fois, en
+    une fraction de seconde, dans le dossier de donnees : pas de cache a
+    invalider.
     """
     if not args.ignore_season and not season.in_season():
         print(f"doot : {season.describe()}")
         print(f"Saison : {season.SEASON_LABEL}. (--ignore-season pour forcer un test.)")
         return 3
 
-    from . import rickroll, window
+    from . import melodie, window
 
     p = paths()
+    fichier = melodie.find(wanted, p["melodies"])
+    if fichier is None:
+        print(f"doot : aucune melodie '{wanted}' (doot --melodies pour la liste, "
+              f"ou depose un .rtttl dans {p['melodies']})")
+        return 2
+    try:
+        morceau = melodie.load(fichier)
+    except melodie.MelodieError as exc:
+        print(f"doot : melodie illisible, {exc}")
+        return 2
+
     wav = None
     if not args.no_sound:
         try:
-            wav = rickroll.render(p["data"] / "rickroll.wav")
+            wav = melodie.render(p["data"] / "melodie.wav", morceau, args.transpose)
         except Exception as exc:
-            log(f"refrain indisponible : {exc}", quiet=args.quiet)
+            log(f"melodie indisponible : {exc}", quiet=args.quiet)
 
     picture = None
     if not args.no_image:
@@ -329,8 +342,30 @@ def do_rickroll(args) -> int:
         except Exception as exc:
             log(f"image indisponible : {exc}", quiet=args.quiet)
 
-    window.show(wav_path=wav, duration=rickroll.duration(), image_path=picture,
-                beats=rickroll.onsets(), **display_options(args))
+    window.show(wav_path=wav, duration=melodie.duration(morceau), image_path=picture,
+                beats=melodie.onsets(morceau, args.transpose), **display_options(args))
+    return 0
+
+
+def do_melodies(args) -> int:
+    """Liste les melodies jouables : les tiennes, puis celles fournies."""
+    from . import melodie
+
+    p = paths()
+    groupes = (("perso", melodie.custom(p["melodies"])), ("fournies", melodie.bundled()))
+    for titre, fichiers in groupes:
+        print(f"{titre} ({p['melodies'] if titre == 'perso' else melodie.MELODIES_DIR})")
+        if not fichiers:
+            print("  (aucune)")
+        for fichier in fichiers:
+            try:
+                morceau = melodie.load(fichier)
+                detail = (f"{morceau.name} - {len(morceau.pitches())} notes, "
+                          f"{morceau.tempo:.0f} BPM, {melodie.duration(morceau):.0f} s")
+            except melodie.MelodieError as exc:
+                detail = f"illisible : {exc}"
+            print(f"  {fichier.stem:<28} {detail}")
+    print("\nJouer : doot --play NOM   (ou un chemin vers un .rtttl)")
     return 0
 
 
@@ -432,6 +467,11 @@ def do_status(args) -> int:
     else:
         print("  image       : ASCII art (depose un PNG/GIF dans le dossier ci-dessous)")
     print(f"  images      : {p['image']}  ({len(pictures)} fichier(s))")
+
+    from . import melodie
+
+    print(f"  melodies    : {len(melodie.bundled())} fournie(s), "
+          f"{len(melodie.custom(p['melodies']))} perso dans {p['melodies']}")
 
     from . import screens, window
 
@@ -537,9 +577,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"doot {__version__}")
 
     parser.add_argument("--once", action="store_true", help="affiche un doot tout de suite puis quitte")
+    parser.add_argument("--play", default=None, metavar="MELODIE",
+                        help="le squelette joue une melodie en doots, puis quitte : "
+                             "un nom (voir --melodies) ou un fichier .rtttl")
     parser.add_argument("--rickroll", action="store_true",
-                        help="le squelette joue le refrain de Never Gonna Give You Up, "
-                             "en doots, puis quitte")
+                        help="raccourci de --play rickroll")
+    parser.add_argument("--melodies", action="store_true", help="liste les melodies jouables")
+    parser.add_argument("--transpose", type=int, default=0, metavar="DEMI-TONS",
+                        help="decale la melodie de N demi-tons, en plus du recentrage "
+                             "automatique sur la hauteur du doot (defaut 0)")
     parser.add_argument("--status", action="store_true", help="affiche l'etat (saison, daemon, audio)")
     parser.add_argument("--stop", action="store_true", help="arrete le daemon en cours")
     parser.add_argument("--paths", action="store_true", help="affiche les chemins utilises")
@@ -635,6 +681,7 @@ def main(argv: list[str] | None = None) -> int:
     p["data"].mkdir(parents=True, exist_ok=True)
     p["sound"].mkdir(parents=True, exist_ok=True)
     p["image"].mkdir(parents=True, exist_ok=True)
+    p["melodies"].mkdir(parents=True, exist_ok=True)
 
     if args.regen_sound:
         sound.ensure_wav(p["wav"], args.volume, force=True)
@@ -654,10 +701,12 @@ def main(argv: list[str] | None = None) -> int:
         return do_stop(args)
     if args.art:
         return do_art(args)
+    if args.melodies:
+        return do_melodies(args)
 
     try:
-        if args.rickroll:
-            return do_rickroll(args)
+        if args.play or args.rickroll:
+            return do_play(args, args.play or "rickroll")
         if args.once:
             return do_once(args)
         return do_daemon(args)
