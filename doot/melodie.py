@@ -18,7 +18,7 @@ collent tels quels dans <data_dir>/melodies/.
     Nom:d=8,o=5,b=130:f,f,e,e,a4,c,4a4,p,...
 
   d : duree par defaut (1 ronde, 2 blanche, 4 noire, 8 croche, 16, 32)
-  o : octave par defaut (4 a 7, la4 = 440 Hz)
+  o : octave par defaut (la4 = 440 Hz ; la norme dit 4 a 7, on prend 1 a 8)
   b : tempo, en noires par minute
   puis chaque note : [duree]nom[#][octave][.], `p` pour un silence, le point
   allonge de moitie. `4e6.` est une noire pointee de mi6, `8p` une croche de
@@ -53,7 +53,9 @@ FADE = 0.02                # fondu de fin quand la note est coupee, en secondes
 DUREES = (1, 2, 4, 8, 16, 32)
 DEMI_TONS = {"c": 0, "d": 2, "e": 4, "f": 5, "g": 7, "a": 9, "b": 11, "h": 11}
 # Le point se rencontre aux trois places : 8.f, 8f., 8f5. -- on prend tout.
-_NOTE = re.compile(r"^(\d+)?(\.?)([a-hp])(#?)(\.?)([4-7])?(\.?)$")
+# Octaves 1 a 8 : la norme dit 4 a 7, mais les lecteurs acceptent plus large
+# et les basses d'un riff descendent volontiers sous le do4.
+_NOTE = re.compile(r"^(\d+)?(\.?)([a-hp])(#?)(\.?)([1-8])?(\.?)$")
 
 
 class MelodieError(ValueError):
@@ -90,8 +92,8 @@ def parse(text: str, name: str = "") -> Melodie:
         defaults[cle] = int(valeur)
     if defaults["d"] not in DUREES:
         raise MelodieError(f"duree par defaut d={defaults['d']} : attendu 1, 2, 4, 8, 16 ou 32")
-    if not 4 <= defaults["o"] <= 7:
-        raise MelodieError(f"octave par defaut o={defaults['o']} : attendu de 4 a 7")
+    if not 1 <= defaults["o"] <= 8:
+        raise MelodieError(f"octave par defaut o={defaults['o']} : attendu de 1 a 8")
     if defaults["b"] <= 0:
         raise MelodieError("tempo b= : il faut au moins 1")
 
@@ -170,14 +172,17 @@ def find(wanted: str, melodies_dir: Path) -> Path | None:
 def transposition(melodie: Melodie) -> int:
     """Les demi-tons, par octaves entieres, qui ramenent la melodie sur le doot.
 
-    La mediane des hauteurs est posee au plus pres du re5 du coup de
-    trompette : une sonnerie ecrite a l'octave 6 descend d'une octave, une
-    autre a l'octave 4 remonte. Par octaves seulement, pour ne pas changer la
-    tonalite du morceau.
+    Le milieu de l'ambitus est pose au plus pres du re5 du coup de trompette :
+    une sonnerie ecrite a l'octave 6 descend d'une octave, une autre a
+    l'octave 4 remonte. Le milieu plutot que la mediane : un riff de basse
+    repete cent fois sous un theme aigu tirerait la mediane vers le bas et
+    enverrait le theme dans les aigus d'ecureuil, alors que les deux
+    extremes comptent autant a l'oreille. Par octaves seulement, pour ne pas
+    changer la tonalite du morceau.
     """
-    hauteurs = sorted(melodie.pitches())
-    mediane = hauteurs[len(hauteurs) // 2]
-    return 12 * round((NOTE_MIDI - mediane) / 12)
+    hauteurs = melodie.pitches()
+    milieu = (min(hauteurs) + max(hauteurs)) / 2
+    return 12 * round((NOTE_MIDI - milieu) / 12)
 
 
 def rate(demi_tons: float) -> float:
