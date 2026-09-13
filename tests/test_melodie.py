@@ -18,6 +18,8 @@ from doot import melodie
 RICKROLL = melodie.MELODIES_DIR / "rickroll.rtttl"
 SPOOKY = melodie.MELODIES_DIR / "spooky-scary-skeletons.rtttl"
 CARELESS = melodie.MELODIES_DIR / "careless-whisper.rtttl"
+MEGALOVANIA = melodie.MELODIES_DIR / "megalovania.rtttl"
+HALLOWEEN = melodie.MELODIES_DIR / "this-is-halloween.rtttl"
 
 
 class LectureRtttl(unittest.TestCase):
@@ -46,6 +48,10 @@ class LectureRtttl(unittest.TestCase):
         self.assertEqual(m.tempo, 63)
         self.assertEqual(m.notes, [(72, 1.0), (74, 1.0)])
 
+    def test_octaves_sous_la_norme(self):
+        """La norme s'arrete au do4 ; les basses d'un riff vont plus bas."""
+        self.assertEqual(melodie.parse("x:o=3:c,a#2").notes, [(48, 1.0), (46, 1.0)])
+
     def test_le_nom_du_fichier_supplee_un_titre_vide(self):
         self.assertEqual(melodie.parse(":d=4:c", name="sans-titre").name, "sans-titre")
 
@@ -54,6 +60,7 @@ class LectureRtttl(unittest.TestCase):
             "pas de sections": "il faut trois sections",
             "x:d=3:c": "duree par defaut d=3",
             "x:o=9:c": "octave par defaut o=9",
+            "x::c9": "note incomprise : 'c9'",
             "x:z=1:c": "reglage incompris",
             "x::c,x": "note incomprise : 'x'",
             "x::3c": "duree 3 dans '3c'",
@@ -82,9 +89,10 @@ class Catalogue(unittest.TestCase):
     def tearDown(self):
         self._dir.cleanup()
 
-    def test_les_trois_melodies_fournies(self):
+    def test_les_cinq_melodies_fournies(self):
         self.assertEqual([p.stem for p in melodie.bundled()],
-                         ["careless-whisper", "rickroll", "spooky-scary-skeletons"])
+                         ["careless-whisper", "megalovania", "rickroll",
+                          "spooky-scary-skeletons", "this-is-halloween"])
 
     def test_un_nom_trouve_la_fournie(self):
         self.assertEqual(melodie.find("rickroll", self.perso), RICKROLL)
@@ -120,11 +128,16 @@ class Accordage(unittest.TestCase):
 
     def test_recentrage_par_octaves(self):
         haute = melodie.parse("x:o=7:c,d,e")     # do7 : deux octaves trop haut
-        basse = melodie.parse("x:o=4:a,b,c")     # autour du la4
+        basse = melodie.parse("x:o=4:c,d,e")     # do4 : une octave trop bas
         pile = melodie.parse("x:o=5:c,d,e,f")
         self.assertEqual(melodie.transposition(haute), -24)
-        self.assertEqual(melodie.transposition(basse), 0)
+        self.assertEqual(melodie.transposition(basse), 12)
         self.assertEqual(melodie.transposition(pile), 0)
+
+    def test_le_milieu_de_l_ambitus_et_non_la_mediane(self):
+        """Cent notes de basse sous un theme aigu ne font pas monter le theme."""
+        m = melodie.parse("x:o=4:" + ",".join(["d"] * 100) + ",d6,g6")
+        self.assertEqual(melodie.transposition(m), 0)
 
     def test_transpose_s_ajoute_au_recentrage(self):
         m = melodie.parse("x:o=5:d")
@@ -139,10 +152,11 @@ class Accordage(unittest.TestCase):
         self.assertAlmostEqual(melodie.rate(melodie.notes(m)[0][2]), 415.3 / 594.0, places=3)
 
     def test_les_fournies_restent_a_moins_d_une_octave_du_doot(self):
-        # Le rickroll tient dans une octave et demie de lecture ; Spooky Scary
-        # Skeletons descend plus bas (le riff, sous les couplets) et monte
-        # jusqu'au si du pont, mais jamais a l'octave.
-        for fichier, bas, haut in ((RICKROLL, 0.6, 1.5), (SPOOKY, 0.45, 1.7), (CARELESS, 0.45, 1.5)):
+        # Le rickroll tient dans une octave et demie de lecture ; les autres
+        # descendent plus bas (un riff de basse) ou montent plus haut (un
+        # theme), mais jamais a l'octave au-dessus du doot.
+        for fichier, bas, haut in ((RICKROLL, 0.6, 1.5), (SPOOKY, 0.45, 1.7), (CARELESS, 0.45, 1.5),
+                                   (MEGALOVANIA, 0.35, 1.9), (HALLOWEEN, 0.55, 1.8)):
             vitesses = [melodie.rate(s) for _, _, s in melodie.notes(melodie.load(fichier))]
             self.assertGreater(min(vitesses), bas, fichier.name)
             self.assertLess(max(vitesses), haut, fichier.name)

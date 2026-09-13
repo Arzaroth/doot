@@ -12,7 +12,19 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ajouté
+
+- `megalovania` (le riff quatre fois puis les deux thèmes) et
+  `this-is-halloween` (ostinato, couplet et refrain), relevés sur des
+  arrangements Online Sequencer.
+
 ### Modifié
+
+- Le recentrage automatique d'une mélodie vise le milieu de son ambitus, plus
+  la médiane : un riff de basse répété sous un thème aigu n'envoie plus le
+  thème dans les aigus. Les mélodies déjà fournies ne bougent pas.
+- Le lecteur RTTTL accepte les octaves 1 à 8 (la norme s'arrête à 4–7), pour
+  les notes de basse d'un riff.
 
 - La copie de la recette AUR et son `.SRCINFO` ciblent désormais l'archive
   vérifiée de la version 1.11.0.

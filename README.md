@@ -434,7 +434,7 @@ fondu enchaîné autant qu'il faut, puis la finale — le « t » du doot. Sans 
 une blanche serait un toot suivi d'un silence, et un riff de sax deviendrait
 du morse.
 
-Trois mélodies sont fournies :
+Cinq mélodies sont fournies :
 
 - `rickroll`, le refrain de *Never Gonna Give You Up* en la♭ majeur comme le
   disque ;
@@ -447,7 +447,12 @@ Trois mélodies sont fournies :
   sax d'un MIDI (quantifié à la double-croche, 76 BPM), une quarte plus haut
   que le disque : le si♭3 du riff n'existe pas en RTTTL, et sol mineur tombe
   pile dans la fenêtre où le doot sonne bien. `--transpose -5` pour la
-  tonalité d'origine.
+  tonalité d'origine ;
+- `megalovania` (Undertale — un squelette, forcément) : le riff quatre fois,
+  puis les deux thèmes, relevés sur [Online Sequencer #973167](https://onlinesequencer.net/973167) ;
+- `this-is-halloween` (L'Étrange Noël de Monsieur Jack) : l'ostinato d'intro,
+  le couplet et « This is Halloween » deux fois, relevés sur
+  [Online Sequencer #3005280](https://onlinesequencer.net/3005280).
 
 ### Le format : RTTTL
 
@@ -462,15 +467,16 @@ SpookyScarySkeletons:d=8,o=5,b=130:f,f,e,e,a4,c,4a4,a4,f,f,e,e,4.a4,...
 ```
 
 - `d` : durée par défaut (`1` ronde, `2` blanche, `4` noire, `8` croche, `16`, `32`)
-- `o` : octave par défaut, de 4 à 7 (`a4` = 440 Hz)
+- `o` : octave par défaut (`a4` = 440 Hz ; la norme dit 4 à 7, doot accepte 1 à 8,
+  les basses d'un riff descendant volontiers sous le do4)
 - `b` : tempo, en noires par minute
 - puis chaque note : `[durée]nom[#][octave][.]` — `4e6.` est une noire pointée de
   mi6, `8p` une croche de silence, le point allonge de moitié et se lit aux trois
   places où on le rencontre (`8.f`, `8f.`, `8f5.`)
 
 Une mélodie écrite trop haut ou trop bas ferait un écureuil ou un tuba : elle est
-**ramenée par octaves entières** au plus près du ré5 du doot (la médiane de ses
-notes), ce qui ne change pas sa tonalité. `--transpose N` décale ensuite de N
+**ramenée par octaves entières** au plus près du ré5 du doot (le milieu de son
+ambitus), ce qui ne change pas sa tonalité. `--transpose N` décale ensuite de N
 demi-tons. Les deux mélodies fournies tiennent entre 0,7 et 1,5 fois la vitesse
 normale du coup, assez peu pour que le squelette reste un squelette.
 
