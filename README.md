@@ -37,6 +37,8 @@ tourne mais reste sagement endormi : le squelette range sa trompette.
 - **Son spatialisé** : le doot sort du côté où le squelette est apparu, calculé
   sur l'ensemble du bureau — collé à droite de l'écran de droite, il sonne
   franchement à droite.
+- **Orchestre polyphonique** : une ligne RTTTL donne une voix et un squelette ;
+  chacun hoche sur ses propres notes, sans plafond artificiel de musiciens.
 - **Prêt à l'emploi** : le squelette et son *doot* sont livrés avec ; dépose ton
   propre PNG/GIF ou mp3 pour les remplacer, sans toucher au code.
 - **Saisonnier** : la fenêtre du 1er septembre au 31 octobre est appliquée par le
@@ -466,9 +468,11 @@ le nom d'une mélodie fournie la remplace, comme un son ou une image.
 Une ligne est une voix. Pour jouer plusieurs notes en parallèle, mets autant
 de sonneries RTTTL complètes que tu veux, une par ligne, toutes au même tempo.
 Les voix sont additionnées et chacune est ramenée à `1 / nombre_de_voix` : le
-mix ne sature pas, quel que soit le nombre de voix. La première
-voix reste la principale et commande seule le hochement du squelette dans cette
-version. Les lignes vides et celles qui commencent par `#` sont ignorées.
+mix ne sature pas, quel que soit le nombre de voix. Chaque ligne affiche aussi
+son propre squelette, qui hoche uniquement sur ses notes. Ils partagent un seul
+overlay transparent, se rangent automatiquement en grille et se réduisent si
+nécessaire : il n'y a pas de plafond artificiel. Les lignes vides et celles qui
+commencent par `#` sont ignorées.
 
 ```
 # Melodie et basse, ensemble a 120 BPM
@@ -492,16 +496,18 @@ sa voix de squelette.
 
 ### Le hochement
 
-À chaque coup il **hoche la tête** : l'image se penche de 7° vers la gauche en
-grossissant de 6 %, autour du poing qui tient la trompette, puis se redresse en
-180 ms. Les trois étapes sont dessinées une fois pour toutes sur une toile
-commune, assez grande pour la plus penchée, et la fenêtre ne bouge pas.
+À chaque coup le squelette de la voix concernée **hoche la tête** : l'image se
+penche de 7° vers la gauche en grossissant de 6 %, autour du poing qui tient la
+trompette, puis se redresse en 180 ms. Les trois étapes sont dessinées une fois
+pour toutes sur une toile commune, assez grande pour la plus penchée, et
+aucune fenêtre ne bouge.
 
 Le concert se donne sur place et debout : ni entrée par un bord, ni tour complet.
-L'image PNG se penche ; l'ASCII art fait voler ses lettres à chaque coup ; un GIF
-animé garde sa propre animation. La mélodie est rendue en WAV à chaque fois, dans
-le dossier de données, et jouée par le lecteur habituel, donc spatialisée comme
-le reste. Même règle de saison que `--once`.
+Les musiciens sont regroupés dans un seul overlay, en grille adaptée à l'écran.
+Les images PNG se penchent indépendamment ; l'ASCII art fait voler les lettres
+du bon squelette à chaque coup ; un GIF animé garde sa propre animation. La
+mélodie est rendue en un seul WAV, puis jouée une seule fois par le lecteur
+habituel, donc spatialisée comme le reste. Même règle de saison que `--once`.
 
 ## Le son spatialisé
 

@@ -164,6 +164,37 @@ class Frame:
         return self.data.translate(table)
 
 
+def montage(frames: list[Frame], columns: int, gap: int = 0) -> Frame:
+    """Range des images de meme taille dans une grille transparente.
+
+    La derniere ligne peut etre incomplete. Il n'y a volontairement aucune
+    limite au nombre d'images : l'appelant choisit la grille et l'echelle qui
+    la feront tenir sur l'ecran.
+    """
+    if not frames:
+        raise ValueError("le montage demande au moins une image")
+    columns = max(1, min(int(columns), len(frames)))
+    gap = max(0, int(gap))
+    width, height = frames[0].width, frames[0].height
+    if any(frame.width != width or frame.height != height for frame in frames):
+        raise ValueError("toutes les images du montage doivent avoir la meme taille")
+
+    rows = (len(frames) + columns - 1) // columns
+    total_width = columns * width + (columns - 1) * gap
+    total_height = rows * height + (rows - 1) * gap
+    out = bytearray(total_width * total_height * 4)
+    line = width * 4
+    for index, frame in enumerate(frames):
+        column, row = index % columns, index // columns
+        left = column * (width + gap)
+        top = row * (height + gap)
+        for y in range(height):
+            source = y * line
+            target = ((top + y) * total_width + left) * 4
+            out[target:target + line] = frame.data[source:source + line]
+    return Frame(total_width, total_height, bytes(out))
+
+
 # ------------------------------------------------------------- decodage ------
 
 def _chunks(blob: bytes):

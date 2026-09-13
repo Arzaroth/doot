@@ -53,7 +53,9 @@ def run(overlay, frame: png.Frame, x: int, y: int, duration: float,
         opacity: float = 1.0, wav_path: Path | None = None, pan: float = 0.0,
         start: tuple[int, int] | None = None, slide_ms: int = 0,
         spins: list | None = None, spin_ms: int = 0,
-        beats: list | None = None, bobs: list | None = None) -> None:
+        beats: list | None = None, bobs: list | None = None,
+        voices: list[list] | None = None, columns: int = 1,
+        gap: int = 0) -> None:
     """Joue l'apparition puis rend la main, l'overlay ferme dans tous les cas.
 
     `spins` sont les quatre etapes d'un tour complet (`png.spin_frames`) :
@@ -63,8 +65,10 @@ def run(overlay, frame: png.Frame, x: int, y: int, duration: float,
 
     `beats` sont des instants en secondes et `bobs` les trois etapes du
     hochement (`png.bob_frames`) : a chaque instant le squelette se penche
-    puis se redresse. Meme contrainte de taille, et le tour complet passe
-    avant si les deux sont demandes.
+    puis se redresse. `voices` contient une liste de coups par squelette ; le
+    montage en grille est alors reconstruit seulement quand l'un d'eux bouge.
+    Meme contrainte de taille, et le tour complet passe avant si les deux sont
+    demandes.
 
     Tant que rien n'est affiche, l'erreur remonte : l'appelant doit pouvoir se
     replier sur un autre backend. Une fois la surface a l'ecran on n'echoue
@@ -73,7 +77,8 @@ def run(overlay, frame: png.Frame, x: int, y: int, duration: float,
     glisse = slide_ms > 0 and start is not None and tuple(start) != (x, y)
     depart_x, depart_y = start if glisse else (x, y)
     tourne = spin_ms > 0 and spins is not None and len(spins) == 4
-    hoche = bool(beats) and bobs is not None and len(bobs) == 3
+    groupe = bool(voices) and bobs is not None and len(bobs) == 3
+    hoche = not groupe and bool(beats) and bobs is not None and len(bobs) == 3
 
     try:
         overlay.map()
@@ -95,6 +100,8 @@ def run(overlay, frame: png.Frame, x: int, y: int, duration: float,
         montre = None
         quart = 0
         etape = 0
+        etapes_groupe = tuple(0 for _ in voices) if groupe else ()
+        image_groupe = frame
 
         while True:
             elapsed = time.monotonic() - debut
@@ -119,8 +126,18 @@ def run(overlay, frame: png.Frame, x: int, y: int, duration: float,
             # l'image reste droite (quart 0) jusqu'a la fin du doot.
             voulu = int(elapsed / rotation * 4) % 4 if tourne and elapsed < rotation else 0
             penche = bob_at(elapsed, beats) if hoche and not tourne else 0
+            groupe_change = False
             if tourne:
                 image = spins[voulu]
+            elif groupe:
+                nouvelles = tuple(bob_at(elapsed, coups) for coups in voices)
+                if nouvelles != etapes_groupe:
+                    etapes_groupe = nouvelles
+                    image_groupe = png.montage(
+                        [bobs[etape] for etape in etapes_groupe], columns, gap
+                    )
+                    groupe_change = True
+                image = image_groupe
             elif hoche:
                 image = bobs[penche]
             else:
@@ -131,7 +148,7 @@ def run(overlay, frame: png.Frame, x: int, y: int, duration: float,
             # bouge pas, donc rien ne le declencherait, et le contenu d'une
             # surface qu'on deplace n'est pas garanti d'etre conserve.
             if (level != montre or voulu != quart or penche != etape
-                    or (glisse and elapsed <= glissement)):
+                    or groupe_change or (glisse and elapsed <= glissement)):
                 overlay.draw(image.faded(level / 255))
                 montre = level
                 quart = voulu

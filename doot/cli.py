@@ -342,8 +342,20 @@ def do_play(args, wanted: str) -> int:
         except Exception as exc:
             log(f"image indisponible : {exc}", quiet=args.quiet)
 
-    window.show(wav_path=wav, duration=melodie.duration(morceau), image_path=picture,
-                beats=melodie.onsets(morceau, args.transpose), **display_options(args))
+    voice_beats = [
+        melodie.onsets(morceau, args.transpose, voice=index)
+        for index in range(len(morceau.voices))
+    ]
+    animation = {"beats": voice_beats[0]}
+    if len(voice_beats) > 1:
+        animation["voices"] = voice_beats
+    window.show(
+        wav_path=wav,
+        duration=melodie.duration(morceau),
+        image_path=picture,
+        **animation,
+        **display_options(args),
+    )
     return 0
 
 

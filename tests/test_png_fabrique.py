@@ -688,5 +688,42 @@ class TourCompletDeFrame(unittest.TestCase):
         self.assertEqual(etapes[0].data, self.frame.squared().data)
 
 
+class Montage(unittest.TestCase):
+    """Plusieurs squelettes dans une seule surface transparente."""
+
+    @staticmethod
+    def frame(value, width=2, height=1):
+        return png.Frame(width, height, bytes([value, 0, 0, 255]) * width * height)
+
+    @staticmethod
+    def pixel(frame, x, y):
+        start = (y * frame.width + x) * 4
+        return frame.data[start:start + 4]
+
+    def test_range_dans_une_grille_avec_derniere_ligne_incomplete(self):
+        frames = [self.frame(value) for value in (10, 20, 30)]
+        result = png.montage(frames, columns=2, gap=1)
+        self.assertEqual((result.width, result.height), (5, 3))
+        self.assertEqual(self.pixel(result, 0, 0), frames[0].data[:4])
+        self.assertEqual(self.pixel(result, 3, 0), frames[1].data[:4])
+        self.assertEqual(self.pixel(result, 0, 2), frames[2].data[:4])
+        self.assertEqual(self.pixel(result, 3, 2), bytes(4))
+
+    def test_l_espace_entre_les_images_reste_transparent(self):
+        result = png.montage([self.frame(10), self.frame(20)], columns=2, gap=2)
+        self.assertEqual(self.pixel(result, 2, 0), bytes(4))
+        self.assertEqual(self.pixel(result, 3, 0), bytes(4))
+
+    def test_cinquante_images_sans_plafond(self):
+        result = png.montage([self.frame(42)] * 50, columns=7)
+        self.assertEqual((result.width, result.height), (14, 8))
+        self.assertEqual(len(result.data), 14 * 8 * 4)
+
+    def test_refuse_le_vide_et_les_dimensions_differentes(self):
+        with self.assertRaises(ValueError):
+            png.montage([], 1)
+        with self.assertRaises(ValueError):
+            png.montage([self.frame(1), self.frame(2, width=3)], 2)
+
 if __name__ == "__main__":
     unittest.main()

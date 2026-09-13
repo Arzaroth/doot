@@ -184,6 +184,33 @@ class Play(CliTestCase):
         self.assertIn("2 voix", texte)
 
 
+class PlayPolyphonique(CliTestCase):
+    """Une voix RTTTL donne exactement un squelette dans le meme concert."""
+
+    def setUp(self):
+        super().setUp()
+        patch = mock.patch.object(season, "in_season", lambda now=None: True)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_megalovania_transmet_les_deux_voix(self):
+        from doot import melodie
+
+        morceau = melodie.load(melodie.MELODIES_DIR / "megalovania.rtttl")
+        code = self.run_cli("--play", "megalovania", "--no-sound")
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.shown), 1, "le groupe partage une seule fenetre")
+        self.assertEqual(
+            self.shown[0]["voices"],
+            [melodie.onsets(morceau, voice=index) for index in range(2)],
+        )
+        self.assertEqual(self.shown[0]["beats"], self.shown[0]["voices"][0])
+
+    def test_une_seule_voix_garde_l_api_historique(self):
+        self.run_cli("--play", "rickroll", "--no-sound")
+        self.assertNotIn("voices", self.shown[0])
+
+
 class OptionsDAffichage(CliTestCase):
     """Ce qui est transmis a la fenetre."""
 

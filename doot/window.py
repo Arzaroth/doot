@@ -189,6 +189,36 @@ def _auto_scale(width: int, height: int, screen_w: int, screen_h: int) -> float:
     return min(limit_h / height, limit_w / width)
 
 
+def ensemble_layout(count: int, width: int, height: int,
+                    screen_w: int, screen_h: int) -> tuple[int, int, float]:
+    """La grille et l'echelle qui font tenir tout l'orchestre a l'ecran.
+
+    Toutes les largeurs possibles sont essayees : il n'y a donc ni plafond de
+    voix, ni hypothese carree qui empilerait mal une image tres verticale.
+    """
+    count = max(1, int(count))
+    if count == 1:
+        return 1, 1, _auto_scale(width, height, screen_w, screen_h)
+
+    width, height = max(1, width), max(1, height)
+    best_columns, best_rows, best_fit = 1, count, -1.0
+    for columns in range(1, count + 1):
+        rows = (count + columns - 1) // columns
+        # Environ 5 % d'air entre deux squelettes, comme le montage final.
+        group_width = width * (columns + 0.05 * (columns - 1))
+        group_height = height * (rows + 0.05 * (rows - 1))
+        fit = min(screen_w * 0.86 / group_width,
+                  screen_h * 0.72 / group_height)
+        if fit > best_fit:
+            best_columns, best_rows, best_fit = columns, rows, fit
+    return best_columns, best_rows, min(1.0, best_fit)
+
+
+def ensemble_gap(width: int) -> int:
+    """Un peu d'air entre deux musiciens, proportionnel a leur taille."""
+    return max(2, round(width * 0.05))
+
+
 def active_monitors() -> list:
     """Les ecrans tels que les verra le backend qui affichera reellement.
 
@@ -204,7 +234,7 @@ def active_monitors() -> list:
 
 def _show_argb(wav_path, duration, center, opacity, image_path, scale, screen,
                spatialise, slide=True, side=None, slide_ms=420, spin=False,
-               spin_ms=700, beats=None) -> bool:
+               spin_ms=700, beats=None, voices=None) -> bool:
     """Tente les overlays sans tkinter ; faux si tkinter doit prendre le relais.
 
     Wayland passe en premier : layer-shell sait poser la surface sur la sortie
@@ -220,14 +250,14 @@ def _show_argb(wav_path, duration, center, opacity, image_path, scale, screen,
     for backend, enumere in ((wayland, wayland.monitors), (x11, screens.monitors)):
         if _tente_overlay(backend, enumere, wav_path, duration, center, opacity,
                           image_path, scale, screen, spatialise, slide, side,
-                          slide_ms, spin, spin_ms, beats):
+                          slide_ms, spin, spin_ms, beats, voices):
             return True
     return False
 
 
 def _tente_overlay(backend, enumere, wav_path, duration, center, opacity,
                    image_path, scale, screen, spatialise, slide, side,
-                   slide_ms, spin, spin_ms, beats=None) -> bool:
+                   slide_ms, spin, spin_ms, beats=None, voices=None) -> bool:
     if not backend.available():
         return False
 
@@ -239,9 +269,17 @@ def _tente_overlay(backend, enumere, wav_path, duration, center, opacity,
             image_width = image_height = max(image_width, image_height)
         found = enumere()
         monitor = screens.pick(found, screen)
-        wanted = scale if scale is not None else _auto_scale(
-            image_width, image_height, monitor.width, monitor.height
-        )
+        columns, gap = 1, 0
+        if voices:
+            columns, _rows, automatic = ensemble_layout(
+                len(voices), image_width, image_height,
+                monitor.width, monitor.height,
+            )
+            wanted = scale if scale is not None else automatic
+        else:
+            wanted = scale if scale is not None else _auto_scale(
+                image_width, image_height, monitor.width, monitor.height
+            )
         frame = png.frame(image_path, wanted)
 
         entree = pick_side(side) if slide else None
@@ -253,8 +291,11 @@ def _tente_overlay(backend, enumere, wav_path, duration, center, opacity,
         if spins:
             frame = spins[0]  # le carre : toutes les etapes ont sa taille
 
-        bobs = png.bob_frames(frame) if beats else None
-        if bobs:
+        bobs = png.bob_frames(frame) if beats or voices else None
+        if voices and bobs:
+            gap = ensemble_gap(bobs[0].width)
+            frame = png.montage([bobs[0]] * len(voices), columns, gap)
+        elif bobs:
             frame = bobs[0]  # la toile : idem, et l'image droite y est posee
 
         if slide:
@@ -273,7 +314,8 @@ def _tente_overlay(backend, enumere, wav_path, duration, center, opacity,
         backend.play(frame, repos_x, repos_y, duration, opacity, wav_path, pan,
                      start=(depart_x, depart_y), slide_ms=slide_ms if slide else 0,
                      spins=spins, spin_ms=spin_ms if spins else 0,
-                     beats=beats, bobs=bobs)
+                     beats=beats, bobs=bobs, voices=voices,
+                     columns=columns, gap=gap)
     except Exception:
         # overlay.run ne laisse remonter qu'avant affichage : arriver ici veut
         # dire que rien n'est a l'ecran, donc le repli ne fera pas de double.
@@ -299,6 +341,7 @@ def show(
     spin_chance: float = 0.25,
     spin_ms: int = 700,
     beats: list | None = None,
+    voices: list[list] | None = None,
 ) -> None:
     """Affiche un doot et rend la main quand il a disparu.
 
@@ -319,12 +362,14 @@ def show(
     droits.
 
     `beats` : des instants en secondes depuis l'apparition, a chacun desquels
-    le squelette donne un coup de trompette et hoche la tete. Un concert se
-    donne sur place et debout : ni glissement ni tour complet. Une image PNG
-    se penche autour du poing ; l'ASCII art fait voler ses lettres ; un GIF
-    garde sa propre animation.
+    le squelette donne un coup de trompette et hoche la tete. `voices` ajoute
+    un squelette par liste de coups, sans limite artificielle ; ils sont ranges
+    en grille et chacun suit sa propre voix. Un concert se donne sur place et
+    debout : ni glissement ni tour complet. Une image PNG se penche autour du
+    poing ; l'ASCII art fait voler ses lettres ; un GIF garde sa propre
+    animation.
     """
-    if beats:
+    if beats or voices:
         slide = False
         spin = False
     slide = decide_slide(slide, side, slide_chance)
@@ -332,7 +377,8 @@ def show(
     # quatre orientations pour ne rien montrer.
     spin = decide_spin(spin, spin_chance, slide) and spin_ms > 0
     if _show_argb(wav_path, duration, center, opacity, image_path, scale, screen,
-                  spatialise, slide, side, slide_ms, spin, spin_ms, beats):
+                  spatialise, slide, side, slide_ms, spin, spin_ms, beats,
+                  voices):
         return
 
     tk, tkfont = _import_tk()
@@ -349,6 +395,11 @@ def show(
     found = screens.monitors(root.winfo_screenwidth(), root.winfo_screenheight())
     monitor = screens.pick(found, screen)
     screen_w, screen_h = monitor.width, monitor.height
+    voice_beats = voices if voices else [beats or []]
+    skeleton_count = len(voice_beats)
+    columns, _rows, _automatic = ensemble_layout(
+        skeleton_count, 3, 5, screen_w, screen_h
+    )
 
     # Le bord d'entree decide de l'orientation : le bas de l'image doit se
     # poser contre lui. Il se choisit donc avant de charger quoi que ce soit.
@@ -369,13 +420,17 @@ def show(
                 # Le tour se joue dans le carre qui contient l'image : c'est lui
                 # qui doit tenir a l'ecran, et pas seulement l'image droite.
                 large = haut = max(large, haut)
-            wanted = scale if scale is not None else _auto_scale(
-                large, haut, screen_w, screen_h
-            )
+            if skeleton_count > 1:
+                columns, _rows, automatic = ensemble_layout(
+                    skeleton_count, large, haut, screen_w, screen_h
+                )
+            else:
+                automatic = _auto_scale(large, haut, screen_w, screen_h)
+            wanted = scale if scale is not None else automatic
             if spin and image_path.suffix.lower() == ".png":
                 spins = _spin_photos(tk, image_path, wanted)
                 frames = [spins[0]]
-            elif beats and image_path.suffix.lower() == ".png":
+            elif (beats or voices) and image_path.suffix.lower() == ".png":
                 bobs = _bob_photos(tk, image_path, wanted)
                 frames = [bobs[0]]
             elif tours and image_path.suffix.lower() == ".png":
@@ -390,34 +445,54 @@ def show(
             bobs = []
 
     widget_kwargs = dict(bg=background, borderwidth=0, highlightthickness=0)
-    if frames:
-        label = tk.Label(root, image=frames[0], **widget_kwargs)
-        # garde une reference, sinon Tk libere les images
-        label.image = frames + spins + bobs
-    else:
-        label = tk.Label(
-            root,
-            text=art.widest_frame(),
-            font=_pick_font(tkfont, font_size),
-            fg=FOREGROUND,
-            justify="left",
-            anchor="nw",
-            padx=6,
-            pady=6,
-            **widget_kwargs,
-        )
-    label.pack()
+    holder = root
+    if skeleton_count > 1:
+        holder = tk.Frame(root, **widget_kwargs)
+        holder.pack()
+
+    labels = []
+    spacing = ensemble_gap(frames[0].width()) if frames else max(2, font_size // 2)
+    for index in range(skeleton_count):
+        if frames:
+            label = tk.Label(holder, image=frames[0], **widget_kwargs)
+            # Garde une reference, sinon Tk libere les images.
+            label.image = frames + spins + bobs
+        else:
+            label = tk.Label(
+                holder,
+                text=art.widest_frame(),
+                font=_pick_font(tkfont, font_size),
+                fg=FOREGROUND,
+                justify="left",
+                anchor="nw",
+                padx=6,
+                pady=6,
+                **widget_kwargs,
+            )
+        if skeleton_count > 1:
+            row, column = divmod(index, columns)
+            label.grid(
+                row=row,
+                column=column,
+                padx=(0, spacing if column < columns - 1 else 0),
+                pady=(0, spacing),
+            )
+        else:
+            label.pack()
+        labels.append(label)
 
     # Dimensionne sur l'etat le plus large, puis repart de la premiere image.
     root.update_idletasks()
-    width = max(label.winfo_reqwidth(), 1)
-    height = max(label.winfo_reqheight(), 1)
+    measured = holder if skeleton_count > 1 else labels[0]
+    width = max(measured.winfo_reqwidth(), 1)
+    height = max(measured.winfo_reqheight(), 1)
     # Le squelette ASCII ne se pivote pas : des glyphes a chasse fixe tournes
     # d'un quart de tour ne veulent plus rien dire. On se contente de le
     # retourner quand il entre par la droite.
     retourne = not frames and entree == "right"
     if not frames:
-        label.configure(text=art.frame(0, mirrored=retourne))
+        for label in labels:
+            label.configure(text=art.frame(0, mirrored=retourne))
 
     if slide:
         depart_x, depart_y, repos_x, repos_y = monitor.entry(
@@ -440,7 +515,12 @@ def show(
     fade_in_ms = min(220, total_ms // 4)
     fade_out_ms = min(500, total_ms // 3)
     tick_ms = 40
-    state = {"elapsed": 0, "step": 0, "quart": 0, "etape": 0}
+    state = {
+        "elapsed": 0,
+        "step": 0,
+        "quart": 0,
+        "etapes": [0] * skeleton_count,
+    }
     # `elapsed` compte les pas de 40 ms, et chaque pas dure un peu plus : sur
     # un refrain de 18 s la derive se voit. Les coups de trompette se calent
     # donc sur l'horloge, comme le son qui vient de partir.
@@ -483,29 +563,34 @@ def show(
                 state["quart"] = quart
                 label.configure(image=spins[quart])
 
-        # Le hochement : penche puis droit a chaque coup de trompette.
-        penche = overlay.bob_at(time.monotonic() - depart, beats) if beats else 0
-        if bobs and penche != state["etape"]:
-            state["etape"] = penche
-            label.configure(image=bobs[penche])
+        # Chaque musicien hoche sur les coups de sa propre voix.
+        precise = time.monotonic() - depart
+        etapes = [overlay.bob_at(precise, coups) for coups in voice_beats]
+        if bobs:
+            for index, (label, penche) in enumerate(zip(labels, etapes)):
+                if penche != state["etapes"][index]:
+                    state["etapes"][index] = penche
+                    label.configure(image=bobs[penche])
 
         if frames:
             if len(frames) > 1:
                 wanted = (elapsed // GIF_FRAME_MS) % len(frames)
                 if wanted != state["step"]:
                     state["step"] = wanted
-                    label.configure(image=frames[wanted])
-        elif beats:
-            # Les lettres s'envolent a chaque coup, puis le squelette se tait.
-            wanted = len(art.DOOT_FRAMES) - 1 if penche else 0
-            if wanted != state["step"]:
-                state["step"] = wanted
-                label.configure(text=art.frame(wanted, mirrored=retourne))
+                    for label in labels:
+                        label.configure(image=frames[wanted])
+        elif beats or voices:
+            # Les lettres s'envolent sur la voix de chaque squelette.
+            for index, (label, penche) in enumerate(zip(labels, etapes)):
+                wanted = len(art.DOOT_FRAMES) - 1 if penche else 0
+                if wanted != state["etapes"][index]:
+                    state["etapes"][index] = wanted
+                    label.configure(text=art.frame(wanted, mirrored=retourne))
         else:
             wanted = min(len(art.DOOT_FRAMES) - 1, elapsed // art.FRAME_MS)
             if wanted != state["step"]:
                 state["step"] = wanted
-                label.configure(text=art.frame(wanted, mirrored=retourne))
+                labels[0].configure(text=art.frame(wanted, mirrored=retourne))
 
         if elapsed >= total_ms:
             root.quit()
