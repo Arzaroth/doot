@@ -87,6 +87,48 @@ class RefusHorsSaison(CliTestCase):
             self.assertEqual(self.shown, [])
 
 
+class Rickroll(CliTestCase):
+    """`--rickroll` : un seul passage, sur place, avec la partition."""
+
+    def hors_saison(self):
+        return mock.patch.object(season, "in_season", lambda now=None: False)
+
+    def en_saison(self):
+        return mock.patch.object(season, "in_season", lambda now=None: True)
+
+    def test_hors_saison_le_squelette_range_sa_trompette(self):
+        with self.hors_saison():
+            code = self.run_cli("--rickroll", "--no-sound")
+        self.assertEqual(code, 3)
+        self.assertEqual(self.shown, [])
+
+    def test_en_saison_joue_le_refrain(self):
+        from doot import rickroll
+
+        with self.en_saison():
+            code = self.run_cli("--rickroll")
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.shown), 1)
+        montre = self.shown[0]
+        self.assertEqual(montre["beats"], rickroll.onsets())
+        self.assertEqual(montre["duration"], rickroll.duration())
+        self.assertEqual(montre["wav_path"], self.paths["data"] / "rickroll.wav")
+        self.assertTrue(montre["wav_path"].is_file())
+
+    def test_no_sound_ne_rend_pas_le_refrain(self):
+        with self.en_saison():
+            self.run_cli("--rickroll", "--no-sound")
+        self.assertIsNone(self.shown[0]["wav_path"])
+        self.assertFalse((self.paths["data"] / "rickroll.wav").exists())
+
+    def test_les_reglages_d_affichage_suivent(self):
+        with self.en_saison():
+            self.run_cli("--rickroll", "--no-sound", "--screen", "primary", "--opacity", "0.5")
+        montre = self.shown[0]
+        self.assertEqual(montre["screen"], "primary")
+        self.assertEqual(montre["opacity"], 0.5)
+
+
 class OptionsDAffichage(CliTestCase):
     """Ce qui est transmis a la fenetre."""
 

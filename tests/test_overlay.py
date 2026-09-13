@@ -110,5 +110,69 @@ class TourComplet(unittest.TestCase):
         self.assertTrue(all(len(pixels) == 16 for pixels in surface.pixels))
 
 
+class Hochement(unittest.TestCase):
+    """A chaque coup le squelette se penche puis se redresse.
+
+    Meme ruse que pour le tour : un octet par etape, a un rang qui lui est
+    propre (0 droit, 1 a mi-chemin, 2 penche), pour lire l'etape dans chaque
+    dessin quelle que soit l'opacite.
+    """
+
+    def etapes(self):
+        return [png.Frame(2, 2, bytes(
+            120 if octet == etape else 0 for _ in range(4) for octet in range(4)
+        )) for etape in range(3)]
+
+    def dessine(self, beats, **kwargs):
+        surface = FausseSurface()
+        etapes = self.etapes()
+        overlay.run(surface, etapes[0], 0, 0, 1.0, beats=beats, bobs=etapes, **kwargs)
+        vus = []
+        for pixels in surface.pixels:
+            rangs = {i % 4 for i, octet in enumerate(pixels) if octet}
+            if len(rangs) == 1:
+                vus.append(rangs.pop())
+        return vus
+
+    def test_le_pas_du_hochement(self):
+        self.assertEqual(overlay.bob_step(-0.01), 0)
+        self.assertEqual(overlay.bob_step(0.0), 1)
+        self.assertEqual(overlay.bob_step(overlay.BOB * 0.4), 2)
+        self.assertEqual(overlay.bob_step(overlay.BOB * 0.7), 1)
+        self.assertEqual(overlay.bob_step(overlay.BOB), 0)
+
+    def test_le_dernier_coup_passe_commande(self):
+        coups = [0.5, 1.0]
+        self.assertEqual(overlay.bob_at(0.2, coups), 0)
+        self.assertEqual(overlay.bob_at(0.5, coups), 1)
+        self.assertEqual(overlay.bob_at(0.5 + overlay.BOB * 0.4, coups), 2)
+        self.assertEqual(overlay.bob_at(0.9, coups), 0)
+        self.assertEqual(overlay.bob_at(1.0 + overlay.BOB * 0.4, coups), 2)
+
+    def test_un_coup_penche_puis_redresse(self):
+        # Le coup tombe bien apres le fondu d'apparition, et la boucle a
+        # plusieurs pas de 40 ms pour voir chaque etape.
+        enchainement = [etape for etape, _ in itertools.groupby(self.dessine([0.4]))]
+        self.assertEqual(enchainement, [0, 1, 2, 1, 0])
+
+    def test_sans_coup_le_squelette_reste_droit(self):
+        self.assertEqual(set(self.dessine([])), {0})
+
+    def test_le_tour_complet_passe_avant(self):
+        """Si un tour est aussi demande, c'est lui qu'on voit, pas le hochement."""
+        tour = png.Frame(2, 2, bytes(
+            120 if octet == 3 else 0 for _ in range(4) for octet in range(4)
+        ))
+        surface = FausseSurface()
+        overlay.run(surface, tour, 0, 0, 0.6, beats=[0.1, 0.3], bobs=self.etapes(),
+                    spins=[tour] * 4, spin_ms=400)
+        vus = set()
+        for pixels in surface.pixels:
+            rangs = {i % 4 for i, octet in enumerate(pixels) if octet}
+            if len(rangs) == 1:
+                vus.add(rangs.pop())
+        self.assertEqual(vus, {3})
+
+
 if __name__ == "__main__":
     unittest.main()

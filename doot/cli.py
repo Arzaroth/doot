@@ -300,6 +300,40 @@ def do_once(args) -> int:
     return 0
 
 
+def do_rickroll(args) -> int:
+    """Le refrain de Never Gonna Give You Up, en doots, sur place.
+
+    Meme regle de saison que `--once` : hors saison le squelette range sa
+    trompette, rickroll ou pas. Le refrain est rendu a chaque fois, en une
+    fraction de seconde, dans le dossier de donnees : pas de cache a invalider.
+    """
+    if not args.ignore_season and not season.in_season():
+        print(f"doot : {season.describe()}")
+        print(f"Saison : {season.SEASON_LABEL}. (--ignore-season pour forcer un test.)")
+        return 3
+
+    from . import rickroll, window
+
+    p = paths()
+    wav = None
+    if not args.no_sound:
+        try:
+            wav = rickroll.render(p["data"] / "rickroll.wav")
+        except Exception as exc:
+            log(f"refrain indisponible : {exc}", quiet=args.quiet)
+
+    picture = None
+    if not args.no_image:
+        try:
+            picture = image.pick_image(p["image"], args.image)
+        except Exception as exc:
+            log(f"image indisponible : {exc}", quiet=args.quiet)
+
+    window.show(wav_path=wav, duration=rickroll.duration(), image_path=picture,
+                beats=rickroll.onsets(), **display_options(args))
+    return 0
+
+
 def sans_affichage() -> bool:
     """Aucun serveur graphique joignable : ni X11, ni Wayland.
 
@@ -503,6 +537,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"doot {__version__}")
 
     parser.add_argument("--once", action="store_true", help="affiche un doot tout de suite puis quitte")
+    parser.add_argument("--rickroll", action="store_true",
+                        help="le squelette joue le refrain de Never Gonna Give You Up, "
+                             "en doots, puis quitte")
     parser.add_argument("--status", action="store_true", help="affiche l'etat (saison, daemon, audio)")
     parser.add_argument("--stop", action="store_true", help="arrete le daemon en cours")
     parser.add_argument("--paths", action="store_true", help="affiche les chemins utilises")
@@ -619,6 +656,8 @@ def main(argv: list[str] | None = None) -> int:
         return do_art(args)
 
     try:
+        if args.rickroll:
+            return do_rickroll(args)
         if args.once:
             return do_once(args)
         return do_daemon(args)

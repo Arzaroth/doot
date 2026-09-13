@@ -193,6 +193,7 @@ d'écraser des fichiers qui ne lui appartiennent pas.
 doot                         # lance le daemon (c'est ce que fait le démarrage auto)
 doot --once                  # un doot tout de suite, puis on quitte
 doot --once --ignore-season  # idem, même hors saison : pratique pour tester
+doot --rickroll              # le refrain de Never Gonna Give You Up, en doots
 doot --status                # saison, daemon, son et image utilisés
 doot --stop                  # arrête le daemon
 doot --paths                 # où sont les fichiers
@@ -409,6 +410,33 @@ Il demande une **image PNG** : les GIF animés et le squelette ASCII restent
 droits, faute de pouvoir être pivotés (`doot/png.py` ne décode pas les GIF, et
 des glyphes à chasse fixe tournés d'un quart de tour ne veulent plus rien dire).
 
+## Le rickroll
+
+```bash
+doot --rickroll              # le refrain, tout de suite, puis on quitte
+doot --rickroll --center     # au milieu de l'écran
+```
+
+Le squelette surgit et joue **le refrain de *Never Gonna Give You Up***, en
+doots. Un seul son, celui du `doot.mp3` fourni : le coup de trompette est isolé
+(`doot/assets/doot-note.wav`, 265 ms, un ré5) puis relu plus ou moins vite pour
+chaque note, comme une bande qu'on accélère — un demi-ton, c'est 2^(1/12) fois
+plus vite. Rien n'est synthétisé, tout le timbre vient de ce seul doot. Le refrain
+est en la♭ majeur, comme le disque, à 113 battements par minute : la tonique
+tombe six demi-tons sous le doot, et l'octave du haut ne dépasse pas 1,4 fois la
+vitesse normale, assez peu pour que le squelette reste un squelette.
+
+À chaque coup il **hoche la tête** : l'image se penche de 7° vers la gauche en
+grossissant de 6 %, autour du poing qui tient la trompette, puis se redresse en
+180 ms. Les trois étapes sont dessinées une fois pour toutes sur une toile
+commune, assez grande pour la plus penchée, et la fenêtre ne bouge pas.
+
+Le concert se donne sur place et debout : ni entrée par un bord, ni tour complet.
+L'image PNG se penche ; l'ASCII art fait voler ses lettres à chaque coup ; un GIF
+animé garde sa propre animation. Le refrain est rendu en WAV à chaque fois, dans
+le dossier de données (`doot --paths`), et joué par le lecteur habituel, donc
+spatialisé comme le reste. Même règle de saison que `--once`.
+
 ## Le son spatialisé
 
 Le doot sort du côté où le squelette est apparu. La position est calculée sur
@@ -520,6 +548,7 @@ des quatre installeurs.
 | `doot/wayland.py` | l'overlay natif Wayland, en layer-shell |
 | `doot/overlay.py` | la boucle d'animation, partagée par les deux overlays |
 | `doot/sound.py` | synthèse du jingle, durée et lecture selon l'OS |
+| `doot/rickroll.py` | le refrain en doots : partition, accordage et rendu |
 | `doot/audio.py` | la sortie audio native (PulseAudio/PipeWire, ALSA) |
 | `doot/window.py` | l'overlay tkinter, la transparence, le fondu |
 | `doot/cli.py` | la CLI, la boucle aléatoire, l'instance unique |

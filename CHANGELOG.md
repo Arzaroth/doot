@@ -12,6 +12,14 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ajouté
+
+- `doot --rickroll` : le squelette joue le refrain de *Never Gonna Give You Up*
+  en doots. Le coup de trompette du `doot.mp3` est isolé dans
+  `doot/assets/doot-note.wav` et relu plus ou moins vite pour chaque note, en
+  la♭ majeur à 113 BPM ; rien n'est synthétisé. À chaque coup le squelette
+  hoche la tête (7°, 6 % plus grand, autour du poing), sur les trois overlays.
+
 ### Modifié
 
 - La copie de la recette AUR et son `.SRCINFO` ciblent désormais l'archive

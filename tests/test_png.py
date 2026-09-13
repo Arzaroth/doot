@@ -157,5 +157,66 @@ class DecodeurPng(unittest.TestCase):
             png.frame(bad, 1.0)
 
 
+@unittest.skipIf(png is None, "doot/png.py absent")
+class Hochement(unittest.TestCase):
+    """`bob_frames` : trois etapes sur une toile commune, pivot immobile.
+
+    L'image d'essai est un damier de couleurs uniques par pixel : on peut
+    ainsi dire de quel pixel d'origine vient chaque pixel de la toile.
+    """
+
+    def setUp(self):
+        self.width, self.height = 20, 30
+        pixels = bytearray()
+        for y in range(self.height):
+            for x in range(self.width):
+                pixels += bytes((x + 1, y + 1, 7, 255))
+        self.frame = png.Frame(self.width, self.height, bytes(pixels))
+        self.bobs = png.bob_frames(self.frame)
+
+    def origine(self, frame, x, y):
+        p = (y * frame.width + x) * 4
+        return frame.data[p] - 1, frame.data[p + 1] - 1, frame.data[p + 3]
+
+    def test_trois_etapes_de_meme_taille(self):
+        self.assertEqual(len(self.bobs), 3)
+        tailles = {(b.width, b.height) for b in self.bobs}
+        self.assertEqual(len(tailles), 1)
+        largeur, hauteur = tailles.pop()
+        self.assertGreater(largeur, self.width)
+        self.assertGreater(hauteur, self.height)
+
+    def test_l_etape_droite_est_l_image_posee_sur_la_toile(self):
+        droite = self.bobs[0]
+        trouves = [(x, y) for y in range(droite.height) for x in range(droite.width)
+                   if self.origine(droite, x, y)[2]]
+        self.assertEqual(len(trouves), self.width * self.height)
+        gauche, haut = min(trouves)
+        for y in range(self.height):
+            for x in range(self.width):
+                self.assertEqual(self.origine(droite, gauche + x, haut + y)[:2], (x, y))
+
+    def test_le_pivot_ne_bouge_pas(self):
+        """Le poing sur la trompette reste au meme endroit a chaque etape."""
+        pivot = (round(self.width * png.BOB_PIVOT[0]), round(self.height * png.BOB_PIVOT[1]))
+        droite = self.bobs[0]
+        ou = next((x, y) for y in range(droite.height) for x in range(droite.width)
+                  if self.origine(droite, x, y)[2] and self.origine(droite, x, y)[:2] == pivot)
+        for etape in self.bobs[1:]:
+            self.assertEqual(self.origine(etape, *ou)[:2], pivot)
+
+    def test_penchee_a_gauche_et_un_peu_plus_grande(self):
+        droite, penchee = self.bobs[0], self.bobs[2]
+        aire = lambda f: sum(f.data[3::4]) // 255
+        self.assertGreater(aire(penchee), aire(droite) * 1.08)
+        # Le haut de l'image part vers la gauche : le coin superieur droit de
+        # l'image droite est, une fois penche, plus a gauche qu'avant.
+        def colonne_du_coin(frame):
+            return max(x for y in range(frame.height) for x in range(frame.width)
+                       if self.origine(frame, x, y)[2]
+                       and self.origine(frame, x, y)[:2] == (self.width - 1, 0))
+        self.assertLess(colonne_du_coin(penchee), colonne_du_coin(droite))
+
+
 if __name__ == "__main__":
     unittest.main()

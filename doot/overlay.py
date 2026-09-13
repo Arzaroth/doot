@@ -17,18 +17,54 @@ from pathlib import Path
 from . import png, screens, sound
 
 TICK = 0.04
+BOB = 0.18   # duree d'un hochement de tete, en secondes
+
+
+def bob_step(since: float) -> int:
+    """L'etape du hochement `since` secondes apres le coup de trompette.
+
+    0 : droit, 1 : a mi-chemin, 2 : penche. Le squelette se penche vite et
+    revient plus lentement, comme le `@keyframes` de la page qui a servi de
+    maquette : penche au tiers du mouvement, droit a la fin.
+    """
+    if since < 0 or since >= BOB:
+        return 0
+    phase = since / BOB
+    if phase < 0.2:
+        return 1
+    if phase < 0.55:
+        return 2
+    if phase < 0.8:
+        return 1
+    return 0
+
+
+def bob_at(elapsed: float, beats: list) -> int:
+    """L'etape du hochement a `elapsed` secondes, `beats` etant les coups."""
+    dernier = None
+    for coup in beats:
+        if coup > elapsed:
+            break
+        dernier = coup
+    return 0 if dernier is None else bob_step(elapsed - dernier)
 
 
 def run(overlay, frame: png.Frame, x: int, y: int, duration: float,
         opacity: float = 1.0, wav_path: Path | None = None, pan: float = 0.0,
         start: tuple[int, int] | None = None, slide_ms: int = 0,
-        spins: list | None = None, spin_ms: int = 0) -> None:
+        spins: list | None = None, spin_ms: int = 0,
+        beats: list | None = None, bobs: list | None = None) -> None:
     """Joue l'apparition puis rend la main, l'overlay ferme dans tous les cas.
 
     `spins` sont les quatre etapes d'un tour complet (`png.spin_frames`) :
     l'image les parcourt en `spin_ms` puis reste droite pour le reste du doot.
     Toutes ont la meme taille, celle de `frame`, sinon la surface changerait de
     dimensions en cours de route.
+
+    `beats` sont des instants en secondes et `bobs` les trois etapes du
+    hochement (`png.bob_frames`) : a chaque instant le squelette se penche
+    puis se redresse. Meme contrainte de taille, et le tour complet passe
+    avant si les deux sont demandes.
 
     Tant que rien n'est affiche, l'erreur remonte : l'appelant doit pouvoir se
     replier sur un autre backend. Une fois la surface a l'ecran on n'echoue
@@ -37,6 +73,7 @@ def run(overlay, frame: png.Frame, x: int, y: int, duration: float,
     glisse = slide_ms > 0 and start is not None and tuple(start) != (x, y)
     depart_x, depart_y = start if glisse else (x, y)
     tourne = spin_ms > 0 and spins is not None and len(spins) == 4
+    hoche = bool(beats) and bobs is not None and len(bobs) == 3
 
     try:
         overlay.map()
@@ -57,6 +94,7 @@ def run(overlay, frame: png.Frame, x: int, y: int, duration: float,
         debut = time.monotonic()
         montre = None
         quart = 0
+        etape = 0
 
         while True:
             elapsed = time.monotonic() - debut
@@ -80,16 +118,24 @@ def run(overlay, frame: png.Frame, x: int, y: int, duration: float,
             # Le tour se joue sur place : les quatre quarts defilent, puis
             # l'image reste droite (quart 0) jusqu'a la fin du doot.
             voulu = int(elapsed / rotation * 4) % 4 if tourne and elapsed < rotation else 0
-            image = spins[voulu] if tourne else frame
+            penche = bob_at(elapsed, beats) if hoche and not tourne else 0
+            if tourne:
+                image = spins[voulu]
+            elif hoche:
+                image = bobs[penche]
+            else:
+                image = frame
 
             level = round(factor * ceiling * 255)
             # Pendant le glissement on redessine a chaque pas : l'opacite ne
             # bouge pas, donc rien ne le declencherait, et le contenu d'une
             # surface qu'on deplace n'est pas garanti d'etre conserve.
-            if level != montre or voulu != quart or (glisse and elapsed <= glissement):
+            if (level != montre or voulu != quart or penche != etape
+                    or (glisse and elapsed <= glissement)):
                 overlay.draw(image.faded(level / 255))
                 montre = level
                 quart = voulu
+                etape = penche
             time.sleep(TICK)
     except Exception:
         pass
