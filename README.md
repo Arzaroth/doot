@@ -193,7 +193,9 @@ d'écraser des fichiers qui ne lui appartiennent pas.
 doot                         # lance le daemon (c'est ce que fait le démarrage auto)
 doot --once                  # un doot tout de suite, puis on quitte
 doot --once --ignore-season  # idem, même hors saison : pratique pour tester
-doot --rickroll              # le refrain de Never Gonna Give You Up, en doots
+doot --play spooky-scary-skeletons   # une mélodie en doots (voir --melodies)
+doot --rickroll              # raccourci de --play rickroll
+doot --melodies              # les mélodies jouables, les tiennes et les fournies
 doot --status                # saison, daemon, son et image utilisés
 doot --stop                  # arrête le daemon
 doot --paths                 # où sont les fichiers
@@ -410,21 +412,55 @@ Il demande une **image PNG** : les GIF animés et le squelette ASCII restent
 droits, faute de pouvoir être pivotés (`doot/png.py` ne décode pas les GIF, et
 des glyphes à chasse fixe tournés d'un quart de tour ne veulent plus rien dire).
 
-## Le rickroll
+## Les mélodies
 
 ```bash
-doot --rickroll              # le refrain, tout de suite, puis on quitte
-doot --rickroll --center     # au milieu de l'écran
+doot --melodies                        # ce qui est jouable
+doot --play spooky-scary-skeletons     # une mélodie fournie, tout de suite, puis on quitte
+doot --rickroll                        # raccourci de --play rickroll
+doot --play ~/sonneries/tetris.rtttl   # n'importe quel fichier RTTTL
+doot --play rickroll --transpose -3    # trois demi-tons plus bas
 ```
 
-Le squelette surgit et joue **le refrain de *Never Gonna Give You Up***, en
-doots. Un seul son, celui du `doot.mp3` fourni : le coup de trompette est isolé
-(`doot/assets/doot-note.wav`, 265 ms, un ré5) puis relu plus ou moins vite pour
-chaque note, comme une bande qu'on accélère — un demi-ton, c'est 2^(1/12) fois
-plus vite. Rien n'est synthétisé, tout le timbre vient de ce seul doot. Le refrain
-est en la♭ majeur, comme le disque, à 113 battements par minute : la tonique
-tombe six demi-tons sous le doot, et l'octave du haut ne dépasse pas 1,4 fois la
-vitesse normale, assez peu pour que le squelette reste un squelette.
+Le squelette surgit et joue une mélodie **en doots**. Un seul son, celui du
+`doot.mp3` fourni : le coup de trompette est isolé (`doot/assets/doot-note.wav`,
+265 ms, un ré5) puis relu plus ou moins vite pour chaque note, comme une bande
+qu'on accélère — un demi-ton, c'est 2^(1/12) fois plus vite. Rien n'est
+synthétisé, tout le timbre vient de ce seul doot.
+
+Deux mélodies sont fournies : `rickroll`, le refrain de *Never Gonna Give You
+Up* en la♭ majeur comme le disque, et `spooky-scary-skeletons` — le riff
+d'intro, les couplets et le pont d'Andrew Gold, en si mineur, relevés sur un
+arrangement piano ([Online Sequencer #32991](https://onlinesequencer.net/32991)) :
+la voix du dessus de la main droite, instant par instant, ralentie à 135 BPM
+parce qu'à la vitesse du disque les doots se marchent dessus.
+
+### Le format : RTTTL
+
+Les mélodies sont des fichiers **RTTTL**, le format des sonneries Nokia. Rien à
+inventer : des milliers de morceaux existent déjà sous cette forme, ils se
+collent tels quels dans un fichier `.rtttl` du dossier `melodies/` (`doot
+--paths`), et `doot --play nom-du-fichier` les joue. Un fichier à toi qui porte
+le nom d'une mélodie fournie la remplace, comme un son ou une image.
+
+```
+SpookyScarySkeletons:d=8,o=5,b=130:f,f,e,e,a4,c,4a4,a4,f,f,e,e,4.a4,...
+```
+
+- `d` : durée par défaut (`1` ronde, `2` blanche, `4` noire, `8` croche, `16`, `32`)
+- `o` : octave par défaut, de 4 à 7 (`a4` = 440 Hz)
+- `b` : tempo, en noires par minute
+- puis chaque note : `[durée]nom[#][octave][.]` — `4e6.` est une noire pointée de
+  mi6, `8p` une croche de silence, le point allonge de moitié et se lit aux trois
+  places où on le rencontre (`8.f`, `8f.`, `8f5.`)
+
+Une mélodie écrite trop haut ou trop bas ferait un écureuil ou un tuba : elle est
+**ramenée par octaves entières** au plus près du ré5 du doot (la médiane de ses
+notes), ce qui ne change pas sa tonalité. `--transpose N` décale ensuite de N
+demi-tons. Les deux mélodies fournies tiennent entre 0,7 et 1,5 fois la vitesse
+normale du coup, assez peu pour que le squelette reste un squelette.
+
+### Le hochement
 
 À chaque coup il **hoche la tête** : l'image se penche de 7° vers la gauche en
 grossissant de 6 %, autour du poing qui tient la trompette, puis se redresse en
@@ -433,9 +469,9 @@ commune, assez grande pour la plus penchée, et la fenêtre ne bouge pas.
 
 Le concert se donne sur place et debout : ni entrée par un bord, ni tour complet.
 L'image PNG se penche ; l'ASCII art fait voler ses lettres à chaque coup ; un GIF
-animé garde sa propre animation. Le refrain est rendu en WAV à chaque fois, dans
-le dossier de données (`doot --paths`), et joué par le lecteur habituel, donc
-spatialisé comme le reste. Même règle de saison que `--once`.
+animé garde sa propre animation. La mélodie est rendue en WAV à chaque fois, dans
+le dossier de données, et jouée par le lecteur habituel, donc spatialisée comme
+le reste. Même règle de saison que `--once`.
 
 ## Le son spatialisé
 
@@ -548,7 +584,7 @@ des quatre installeurs.
 | `doot/wayland.py` | l'overlay natif Wayland, en layer-shell |
 | `doot/overlay.py` | la boucle d'animation, partagée par les deux overlays |
 | `doot/sound.py` | synthèse du jingle, durée et lecture selon l'OS |
-| `doot/rickroll.py` | le refrain en doots : partition, accordage et rendu |
+| `doot/melodie.py` | les mélodies en doots : lecture RTTTL, accordage et rendu |
 | `doot/audio.py` | la sortie audio native (PulseAudio/PipeWire, ALSA) |
 | `doot/window.py` | l'overlay tkinter, la transparence, le fondu |
 | `doot/cli.py` | la CLI, la boucle aléatoire, l'instance unique |

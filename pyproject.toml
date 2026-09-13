@@ -51,4 +51,4 @@ Issues = "https://github.com/boubou666/doot/issues"
 packages = ["doot"]
 
 [tool.setuptools.package-data]
-doot = ["assets/*"]
+doot = ["assets/*", "assets/melodies/*"]
