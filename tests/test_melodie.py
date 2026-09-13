@@ -17,6 +17,7 @@ from doot import melodie
 
 RICKROLL = melodie.MELODIES_DIR / "rickroll.rtttl"
 SPOOKY = melodie.MELODIES_DIR / "spooky-scary-skeletons.rtttl"
+CARELESS = melodie.MELODIES_DIR / "careless-whisper.rtttl"
 
 
 class LectureRtttl(unittest.TestCase):
@@ -81,9 +82,9 @@ class Catalogue(unittest.TestCase):
     def tearDown(self):
         self._dir.cleanup()
 
-    def test_les_deux_melodies_fournies(self):
+    def test_les_trois_melodies_fournies(self):
         self.assertEqual([p.stem for p in melodie.bundled()],
-                         ["rickroll", "spooky-scary-skeletons"])
+                         ["careless-whisper", "rickroll", "spooky-scary-skeletons"])
 
     def test_un_nom_trouve_la_fournie(self):
         self.assertEqual(melodie.find("rickroll", self.perso), RICKROLL)
@@ -141,7 +142,7 @@ class Accordage(unittest.TestCase):
         # Le rickroll tient dans une octave et demie de lecture ; Spooky Scary
         # Skeletons descend plus bas (le riff, sous les couplets) et monte
         # jusqu'au si du pont, mais jamais a l'octave.
-        for fichier, bas, haut in ((RICKROLL, 0.6, 1.5), (SPOOKY, 0.45, 1.7)):
+        for fichier, bas, haut in ((RICKROLL, 0.6, 1.5), (SPOOKY, 0.45, 1.7), (CARELESS, 0.45, 1.5)):
             vitesses = [melodie.rate(s) for _, _, s in melodie.notes(melodie.load(fichier))]
             self.assertGreater(min(vitesses), bas, fichier.name)
             self.assertLess(max(vitesses), haut, fichier.name)
@@ -177,6 +178,48 @@ class Partition(unittest.TestCase):
     def test_le_tempo_etire_la_partition(self):
         m = melodie.parse("x:d=4,b=60:c,c,c,c")
         self.assertAlmostEqual(melodie.duration(m), melodie.LEAD + 4 + melodie.TAIL)
+
+
+class Tenue(unittest.TestCase):
+    """`sustained` : le coup tel quel s'il suffit, sinon boucle puis finale."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.source, cls.rate = melodie._read_note()
+
+    def test_un_coup_assez_long_est_rendu_tel_quel(self):
+        self.assertEqual(melodie.sustained(self.source, self.rate, len(self.source)), list(self.source))
+
+    def test_la_tenue_atteint_la_longueur_voulue(self):
+        voulu = self.rate * 2   # deux secondes, huit fois le coup
+        tenu = melodie.sustained(self.source, self.rate, voulu)
+        self.assertGreaterEqual(len(tenu), voulu)
+        self.assertLess(len(tenu), voulu + len(self.source))
+
+    def test_la_finale_est_celle_du_coup(self):
+        """Le « t » du doot termine la note tenue, comme la note courte."""
+        tenu = melodie.sustained(self.source, self.rate, self.rate)
+        queue = int(self.rate * 0.05)
+        self.assertEqual(tenu[-queue:], list(self.source[-queue:]))
+
+    def test_pas_de_saut_aux_raccords(self):
+        """Les fondus enchaines evitent le clic : aucun ecart entre deux
+        echantillons voisins ne depasse ce qu'on trouve dans le coup lui-meme."""
+        tenu = melodie.sustained(self.source, self.rate, self.rate)
+        pire_source = max(abs(b - a) for a, b in zip(self.source, self.source[1:]))
+        pire_tenu = max(abs(b - a) for a, b in zip(tenu, tenu[1:]))
+        self.assertLessEqual(pire_tenu, pire_source)
+
+    def test_une_note_longue_sonne_jusqu_au_bout(self):
+        with tempfile.TemporaryDirectory() as d:
+            wav = melodie.render(Path(d) / "tenue.wav", melodie.parse("x:d=1,o=5,b=60:d"))
+            with wave.open(str(wav), "rb") as handle:
+                rate = handle.getframerate()
+                samples = array.array("h", handle.readframes(handle.getnframes()))
+        # Une ronde a 60 : quatre secondes. Le coup seul se tait au bout de 265 ms.
+        debut = melodie.LEAD + 3.0
+        tranche = samples[int(debut * rate):int((debut + 0.2) * rate)]
+        self.assertGreater(max(abs(v) for v in tranche), 3000)
 
 
 class Rendu(unittest.TestCase):

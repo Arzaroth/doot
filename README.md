@@ -428,12 +428,26 @@ Le squelette surgit et joue une mélodie **en doots**. Un seul son, celui du
 qu'on accélère — un demi-ton, c'est 2^(1/12) fois plus vite. Rien n'est
 synthétisé, tout le timbre vient de ce seul doot.
 
-Deux mélodies sont fournies : `rickroll`, le refrain de *Never Gonna Give You
-Up* en la♭ majeur comme le disque, et `spooky-scary-skeletons` — le riff
-d'intro, les couplets et le pont d'Andrew Gold, en si mineur, relevés sur un
-arrangement piano ([Online Sequencer #32991](https://onlinesequencer.net/32991)) :
-la voix du dessus de la main droite, instant par instant, ralentie à 135 BPM
-parce qu'à la vitesse du disque les doots se marchent dessus.
+Une note plus longue que le coup de trompette est **tenue** comme le ferait un
+sampleur : l'attaque telle quelle, puis la partie stable du son bouclée en
+fondu enchaîné autant qu'il faut, puis la finale — le « t » du doot. Sans ça,
+une blanche serait un toot suivi d'un silence, et un riff de sax deviendrait
+du morse.
+
+Trois mélodies sont fournies :
+
+- `rickroll`, le refrain de *Never Gonna Give You Up* en la♭ majeur comme le
+  disque ;
+- `spooky-scary-skeletons` — le riff d'intro, les couplets et le pont d'Andrew
+  Gold, en si mineur, relevés sur un arrangement piano
+  ([Online Sequencer #32991](https://onlinesequencer.net/32991)) : la voix du
+  dessus de la main droite, instant par instant, ralentie à 135 BPM parce qu'à
+  la vitesse du disque les doots se marchent dessus ;
+- `careless-whisper`, le riff de sax de George Michael, relevé sur le canal
+  sax d'un MIDI (quantifié à la double-croche, 76 BPM), une quarte plus haut
+  que le disque : le si♭3 du riff n'existe pas en RTTTL, et sol mineur tombe
+  pile dans la fenêtre où le doot sonne bien. `--transpose -5` pour la
+  tonalité d'origine.
 
 ### Le format : RTTTL
 

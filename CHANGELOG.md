@@ -12,6 +12,14 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ajouté
+
+- `careless-whisper` : le riff de sax de George Michael en doots, relevé sur
+  le canal sax d'un MIDI, en sol mineur (une quarte au-dessus du disque).
+- Les notes plus longues que le coup de trompette sont tenues : la partie
+  stable du doot est bouclée en fondu enchaîné, puis sa finale jouée. Une
+  blanche n'est plus un toot suivi d'un silence.
+
 ### Modifié
 
 - La copie de la recette AUR et son `.SRCINFO` ciblent désormais l'archive

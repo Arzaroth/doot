@@ -246,13 +246,56 @@ def _resampled(source: array.array, vitesse: float, longueur: int) -> list:
     return out
 
 
+# Points de boucle du coup de trompette, en secondes : le plateau stable apres
+# l'attaque (le doot est a 96-72 % de son pic entre 30 et 95 ms), boucle de
+# 24 periodes du re5 fondue sur 2 periodes.
+LOOP_START = 0.040
+LOOP_PERIODS = 24
+FADE_PERIODS = 2
+
+
+def sustained(source: array.array, rate_hz: int, longueur: int) -> list:
+    """Le coup tenu jusqu'a `longueur` echantillons : attaque, boucle, finale.
+
+    Un doot dure 265 ms ; une blanche a 76 BPM en dure 1 600. Sans ca, une
+    note tenue est un toot suivi d'un silence, et un riff de sax legato
+    devient du morse. On fait comme un sampleur : l'attaque telle quelle,
+    puis la partie stable du son bouclee autant de fois qu'il faut, en
+    fondu enchaine d'une periode a l'autre, puis la finale (le 't' du
+    doot) telle quelle. Si le coup suffit, il est rendu tel quel.
+    """
+    if longueur <= len(source):
+        return list(source)
+    periode = rate_hz / NOTE_FREQ
+    debut = int(LOOP_START * rate_hz)
+    boucle = int(round(LOOP_PERIODS * periode))
+    fondu = int(round(FADE_PERIODS * periode))
+    fin = debut + boucle
+    attaque = list(source[:fin])
+    finale = list(source[fin:])
+    tours = -(-(longueur - len(source)) // (boucle - fondu))
+    segment = list(source[debut:fin])
+    out = attaque
+    for _ in range(tours):
+        # Fondu enchaine : la queue de ce qu'on a deja avec la tete du segment.
+        for k in range(fondu):
+            f = k / fondu
+            out[-fondu + k] = int(out[-fondu + k] * (1 - f) + segment[k] * f)
+        out += segment[fondu:]
+    for k in range(fondu):
+        f = k / fondu
+        out[-fondu + k] = int(out[-fondu + k] * (1 - f) + finale[k] * f)
+    out += finale[fondu:]
+    return out
+
+
 def render(dest: Path, melodie: Melodie, transpose: int | None = None) -> Path:
     """Ecrit la melodie en WAV mono 16 bits et rend son chemin.
 
     Chaque note occupe son creneau a `NOTE_FILL` pres, puis s'eteint en `FADE`
-    secondes ; une note plus longue que le coup de trompette laisse le coup
-    finir seul, sans l'etirer. Les creneaux ne se chevauchent pas, on n'a donc
-    jamais deux coups a additionner.
+    secondes ; une note plus longue que le coup de trompette le tient en
+    bouclant sa partie stable (`sustained`). Les creneaux ne se chevauchent
+    pas, on n'a donc jamais deux coups a additionner.
     """
     source, rate_hz = _read_note()
     total = int(duration(melodie) * rate_hz)
@@ -261,11 +304,14 @@ def render(dest: Path, melodie: Melodie, transpose: int | None = None) -> Path:
 
     for debut, duree, demi_tons in notes(melodie, transpose):
         vitesse = rate(demi_tons)
-        naturelle = (len(source) - 1) / vitesse
         creneau = duree * NOTE_FILL * rate_hz
+        # Le coup, tenu s'il le faut, dans le domaine de la source : a la
+        # vitesse `vitesse`, il en faut `creneau * vitesse` echantillons.
+        tenu = sustained(source, rate_hz, int(creneau * vitesse) + 1)
+        naturelle = (len(tenu) - 1) / vitesse
         coupe = creneau < naturelle
         longueur = int(min(creneau, naturelle))
-        echantillons = _resampled(source, vitesse, longueur)
+        echantillons = _resampled(array.array("h", tenu), vitesse, longueur)
         if coupe:
             n = len(echantillons)
             for k in range(min(fondu, n)):
