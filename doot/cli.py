@@ -360,7 +360,8 @@ def do_melodies(args) -> int:
         for fichier in fichiers:
             try:
                 morceau = melodie.load(fichier)
-                detail = (f"{morceau.name} - {len(morceau.pitches())} notes, "
+                voix = "" if len(morceau.voices) == 1 else f", {len(morceau.voices)} voix"
+                detail = (f"{morceau.name} - {len(morceau.pitches())} notes{voix}, "
                           f"{morceau.tempo:.0f} BPM, {melodie.duration(morceau):.0f} s")
             except melodie.MelodieError as exc:
                 detail = f"illisible : {exc}"

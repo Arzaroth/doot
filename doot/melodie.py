@@ -24,6 +24,11 @@ collent tels quels dans <data_dir>/melodies/.
   allonge de moitie. `4e6.` est une noire pointee de mi6, `8p` une croche de
   silence.
 
+Plusieurs lignes, plusieurs voix : chaque ligne est une sonnerie complete,
+toutes au meme tempo, jouees ensemble. La premiere est la voix principale,
+celle dont les coups font hocher le squelette. Une ligne qui commence par `#`
+est un commentaire (la source de la transcription, par exemple).
+
 Une melodie ecrite trop haut ou trop bas pour le doot ferait un ecureuil ou
 un tuba : elle est ramenee, par octaves entieres, au plus pres du re5 du coup
 de trompette. `--transpose` ajoute ensuite des demi-tons a la demande.
@@ -64,20 +69,53 @@ class MelodieError(ValueError):
 
 @dataclass
 class Melodie:
-    """Une melodie lue : `notes` sont des (hauteur MIDI ou None, duree en temps)."""
+    """Une melodie lue.
+
+    `voices` : une liste par voix, de (hauteur MIDI ou None, duree en temps).
+    `notes` est la premiere, la voix principale : c'est elle qui fait hocher
+    le squelette, et la seule qu'a une sonnerie ordinaire.
+    """
 
     name: str
     tempo: float
-    notes: list
+    voices: list
+
+    @property
+    def notes(self) -> list:
+        return self.voices[0]
 
     def pitches(self) -> list:
-        return [midi for midi, _ in self.notes if midi is not None]
+        return [midi for voix in self.voices for midi, _ in voix if midi is not None]
 
 
 # ------------------------------------------------------------------ RTTTL ----
 
 def parse(text: str, name: str = "") -> Melodie:
-    """Lit une sonnerie RTTTL. Leve MelodieError si elle est mal ecrite."""
+    """Lit une sonnerie RTTTL, ou plusieurs (une par ligne) jouees ensemble.
+
+    Leve MelodieError si l'une est mal ecrite, ou si elles n'ont pas le meme
+    tempo : deux voix qui ne battent pas la meme mesure ne sont pas un duo.
+    """
+    lignes = [l.strip() for l in text.splitlines() if l.strip() and not l.strip().startswith("#")]
+    if not lignes:
+        raise MelodieError("aucune sonnerie dans le fichier")
+    voix = []
+    for numero, ligne in enumerate(lignes, 1):
+        try:
+            voix.append(_parse_voice(ligne, name))
+        except MelodieError as exc:
+            if len(lignes) == 1:
+                raise
+            raise MelodieError(f"voix {numero} : {exc}") from exc
+    titre, tempo, _ = voix[0]
+    for numero, (_, autre, _) in enumerate(voix[1:], 2):
+        if autre != tempo:
+            raise MelodieError(f"voix {numero} : tempo b={autre:g}, la premiere voix bat a {tempo:g}")
+    return Melodie(titre, tempo, [notes for _, _, notes in voix])
+
+
+def _parse_voice(text: str, name: str) -> tuple:
+    """Une sonnerie RTTTL : (titre, tempo, notes)."""
     parts = text.strip().split(":")
     if len(parts) != 3:
         raise MelodieError("il faut trois sections separees par ':' : nom, reglages, notes")
@@ -117,7 +155,7 @@ def parse(text: str, name: str = "") -> Melodie:
         lues.append((midi, temps))
     if not any(midi is not None for midi, _ in lues):
         raise MelodieError("aucune note dans la melodie")
-    return Melodie(titre or name, float(defaults["b"]), lues)
+    return titre or name, float(defaults["b"]), lues
 
 
 def load(path: Path) -> Melodie:
@@ -190,16 +228,17 @@ def rate(demi_tons: float) -> float:
     return 2 ** (demi_tons / 12)
 
 
-def notes(melodie: Melodie, transpose: int | None = None) -> list:
-    """La melodie en secondes : (debut, duree, demi-tons au-dessus du doot).
+def notes(melodie: Melodie, transpose: int | None = None, voice: int = 0) -> list:
+    """Une voix en secondes : (debut, duree, demi-tons au-dessus du doot).
 
-    `transpose` : des demi-tons en plus du recentrage automatique.
+    `transpose` : des demi-tons en plus du recentrage automatique, qui est
+    celui de la melodie entiere : les voix gardent leurs ecarts.
     """
     decalage = transposition(melodie) + (transpose or 0)
     seconde_par_temps = 60.0 / melodie.tempo
     out = []
     position = LEAD
-    for midi, temps in melodie.notes:
+    for midi, temps in melodie.voices[voice]:
         duree = temps * seconde_par_temps
         if midi is not None:
             out.append((position, duree, midi + decalage - NOTE_MIDI))
@@ -207,14 +246,18 @@ def notes(melodie: Melodie, transpose: int | None = None) -> list:
     return out
 
 
-def onsets(melodie: Melodie, transpose: int | None = None) -> list:
-    """Les instants ou le squelette donne un coup de trompette."""
-    return [debut for debut, _, _ in notes(melodie, transpose)]
+def onsets(melodie: Melodie, transpose: int | None = None, voice: int = 0) -> list:
+    """Les instants ou une voix donne un coup de trompette.
+
+    La voix principale (0) reste le defaut : avec un seul squelette, c'est elle
+    qui commande son hochement.
+    """
+    return [debut for debut, _, _ in notes(melodie, transpose, voice)]
 
 
 def duration(melodie: Melodie) -> float:
-    """Duree totale de l'affichage : tete, melodie, queue."""
-    total = sum(temps for _, temps in melodie.notes) * 60.0 / melodie.tempo
+    """Duree totale de l'affichage : tete, la plus longue des voix, queue."""
+    total = max(sum(temps for _, temps in voix) for voix in melodie.voices) * 60.0 / melodie.tempo
     return LEAD + total + TAIL
 
 
@@ -299,32 +342,36 @@ def render(dest: Path, melodie: Melodie, transpose: int | None = None) -> Path:
 
     Chaque note occupe son creneau a `NOTE_FILL` pres, puis s'eteint en `FADE`
     secondes ; une note plus longue que le coup de trompette le tient en
-    bouclant sa partie stable (`sustained`). Les creneaux ne se chevauchent
-    pas, on n'a donc jamais deux coups a additionner.
+    bouclant sa partie stable (`sustained`). Dans une voix les creneaux ne se
+    chevauchent pas ; entre voix ils s'additionnent, chaque voix ramenee a
+    1/n : quel que soit le nombre de voix, leur somme ne peut pas depasser
+    l'amplitude du doot d'origine.
     """
     source, rate_hz = _read_note()
     total = int(duration(melodie) * rate_hz)
     buffer = [0] * total
     fondu = int(FADE * rate_hz)
+    gain = 1 / len(melodie.voices)
 
-    for debut, duree, demi_tons in notes(melodie, transpose):
-        vitesse = rate(demi_tons)
-        creneau = duree * NOTE_FILL * rate_hz
-        # Le coup, tenu s'il le faut, dans le domaine de la source : a la
-        # vitesse `vitesse`, il en faut `creneau * vitesse` echantillons.
-        tenu = sustained(source, rate_hz, int(creneau * vitesse) + 1)
-        naturelle = (len(tenu) - 1) / vitesse
-        coupe = creneau < naturelle
-        longueur = int(min(creneau, naturelle))
-        echantillons = _resampled(array.array("h", tenu), vitesse, longueur)
-        if coupe:
-            n = len(echantillons)
-            for k in range(min(fondu, n)):
-                echantillons[n - 1 - k] = echantillons[n - 1 - k] * k // fondu
-        offset = int(debut * rate_hz)
-        for k, valeur in enumerate(echantillons):
-            if offset + k < total:
-                buffer[offset + k] = valeur
+    for voice in range(len(melodie.voices)):
+        for debut, duree, demi_tons in notes(melodie, transpose, voice):
+            vitesse = rate(demi_tons)
+            creneau = duree * NOTE_FILL * rate_hz
+            # Le coup, tenu s'il le faut, dans le domaine de la source : a la
+            # vitesse `vitesse`, il en faut `creneau * vitesse` echantillons.
+            tenu = sustained(source, rate_hz, int(creneau * vitesse) + 1)
+            naturelle = (len(tenu) - 1) / vitesse
+            coupe = creneau < naturelle
+            longueur = int(min(creneau, naturelle))
+            echantillons = _resampled(array.array("h", tenu), vitesse, longueur)
+            if coupe:
+                n = len(echantillons)
+                for k in range(min(fondu, n)):
+                    echantillons[n - 1 - k] = echantillons[n - 1 - k] * k // fondu
+            offset = int(debut * rate_hz)
+            for k, valeur in enumerate(echantillons):
+                if offset + k < total:
+                    buffer[offset + k] += int(valeur * gain)
 
     frames = array.array("h", (max(-32768, min(32767, v)) for v in buffer))
     dest = Path(dest)
