@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import random
 import unittest
+from pathlib import Path
+from unittest import mock
 
 from doot import window
 
@@ -134,6 +136,116 @@ class TourComplet(unittest.TestCase):
     def test_jamais_pendant_une_entree_par_un_bord(self):
         """L'image y est deja pivotee pour poser les pieds contre le bord."""
         self.assertEqual(self.part_tournee(1.0, glisse=True), 0.0)
+
+    def test_le_repli_tk_termine_apres_un_tour(self):
+        """La boucle d'orchestre ne doit pas masquer le label du tour."""
+        class Photo:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def width(self):
+                return 120
+
+            def height(self):
+                return 160
+
+        class Racine:
+            def __init__(self):
+                self.prochain = None
+                self.termine = False
+                self.detruite = False
+
+            def winfo_screenwidth(self):
+                return 800
+
+            def winfo_screenheight(self):
+                return 600
+
+            def update_idletasks(self):
+                pass
+
+            def withdraw(self):
+                pass
+
+            def overrideredirect(self, _value):
+                pass
+
+            def wm_attributes(self, *_args):
+                pass
+
+            def configure(self, **_kwargs):
+                pass
+
+            def geometry(self, _value):
+                pass
+
+            def deiconify(self):
+                pass
+
+            def after(self, _delay, callback):
+                self.prochain = callback
+
+            def mainloop(self):
+                for _ in range(20):
+                    callback, self.prochain = self.prochain, None
+                    if callback is None or self.termine:
+                        return
+                    callback()
+                raise AssertionError("la boucle Tk ne s'est pas terminee")
+
+            def quit(self):
+                self.termine = True
+
+            def destroy(self):
+                self.detruite = True
+
+        etiquettes = []
+
+        class Etiquette:
+            def __init__(self, _parent, **_kwargs):
+                self.images = []
+                etiquettes.append(self)
+
+            def pack(self):
+                pass
+
+            def configure(self, **kwargs):
+                if "image" in kwargs:
+                    self.images.append(kwargs["image"])
+
+            def winfo_reqwidth(self):
+                return 160
+
+            def winfo_reqheight(self):
+                return 160
+
+        class FauxTk:
+            PhotoImage = Photo
+            Label = Etiquette
+
+            def __init__(self, root):
+                self.Tk = lambda: root
+
+        root = Racine()
+        photos = [Photo() for _ in range(4)]
+        tk = FauxTk(root)
+        monitor = window.screens.Monitor(0, 0, 800, 600)
+        with mock.patch.object(window, "_show_argb", return_value=False), \
+             mock.patch.object(window, "_import_tk", return_value=(tk, object())), \
+             mock.patch.object(window, "_spin_photos", return_value=photos), \
+             mock.patch.object(window.screens, "monitors", return_value=[monitor]):
+            window.show(
+                duration=0.4,
+                image_path=Path("squelette.png"),
+                center=True,
+                slide=False,
+                spin=True,
+                spin_chance=1.0,
+            )
+
+        self.assertTrue(root.termine)
+        self.assertTrue(root.detruite)
+        self.assertIn(photos[1], etiquettes[0].images)
 
 
 class Orchestre(unittest.TestCase):
