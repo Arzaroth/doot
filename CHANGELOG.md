@@ -12,6 +12,11 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Corrigé
+
+- Le tour complet ne bloque plus le callback tkinter : le squelette finit son
+  animation et disparaît au lieu de rester affiché indéfiniment sous Windows.
+
 ## [1.13.0] - 2026-09-13
 
 ### Modifié

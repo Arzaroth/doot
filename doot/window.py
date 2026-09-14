@@ -561,31 +561,31 @@ def show(
             quart = int(elapsed / spin_ms * 4) % 4 if elapsed < spin_ms else 0
             if quart != state["quart"]:
                 state["quart"] = quart
-                label.configure(image=spins[quart])
+                labels[0].configure(image=spins[quart])
 
         # Chaque musicien hoche sur les coups de sa propre voix.
         precise = time.monotonic() - depart
         etapes = [overlay.bob_at(precise, coups) for coups in voice_beats]
         if bobs:
-            for index, (label, penche) in enumerate(zip(labels, etapes)):
+            for index, (musicien, penche) in enumerate(zip(labels, etapes)):
                 if penche != state["etapes"][index]:
                     state["etapes"][index] = penche
-                    label.configure(image=bobs[penche])
+                    musicien.configure(image=bobs[penche])
 
         if frames:
             if len(frames) > 1:
                 wanted = (elapsed // GIF_FRAME_MS) % len(frames)
                 if wanted != state["step"]:
                     state["step"] = wanted
-                    for label in labels:
-                        label.configure(image=frames[wanted])
+                    for musicien in labels:
+                        musicien.configure(image=frames[wanted])
         elif beats or voices:
             # Les lettres s'envolent sur la voix de chaque squelette.
-            for index, (label, penche) in enumerate(zip(labels, etapes)):
+            for index, (musicien, penche) in enumerate(zip(labels, etapes)):
                 wanted = len(art.DOOT_FRAMES) - 1 if penche else 0
                 if wanted != state["etapes"][index]:
                     state["etapes"][index] = wanted
-                    label.configure(text=art.frame(wanted, mirrored=retourne))
+                    musicien.configure(text=art.frame(wanted, mirrored=retourne))
         else:
             wanted = min(len(art.DOOT_FRAMES) - 1, elapsed // art.FRAME_MS)
             if wanted != state["step"]:
