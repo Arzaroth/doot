@@ -12,6 +12,8 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.13.1] - 2026-09-14
+
 ### Corrigé
 
 - Le tour complet ne bloque plus le callback tkinter : le squelette finit son
@@ -571,7 +573,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.13.0...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.13.1...HEAD
+[1.13.1]: https://github.com/boubou666/doot/compare/v1.13.0...v1.13.1
 [1.13.0]: https://github.com/boubou666/doot/compare/v1.12.0...v1.13.0
 [1.12.0]: https://github.com/boubou666/doot/compare/v1.11.0...v1.12.0
 [1.11.0]: https://github.com/boubou666/doot/compare/v1.10.0...v1.11.0
