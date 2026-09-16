@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import json
 import os
 import random
 import sys
@@ -46,6 +47,7 @@ def paths() -> dict[str, Path]:
         "wav": root / "doot.wav",
         "log": root / "doot.log",
         "pid": root / "doot.pid",
+        "state": root / "state.json",
     }
 
 
@@ -332,6 +334,80 @@ def do_play(args, wanted: str) -> int:
     return 0
 
 
+def read_state() -> dict:
+    """L'etat garde entre deux lancements. Vide si illisible : rien n'en depend."""
+    try:
+        return json.loads(paths()["state"].read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def write_state(state: dict) -> None:
+    try:
+        chemin = paths()["state"]
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        chemin.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def melody_due(depuis: int, chance: float, pity: int, rng=random) -> bool:
+    """Ce declenchement joue-t-il une melodie ?
+
+    `depuis` compte les declenchements passes depuis la derniere. Le compteur
+    de pitie borne les series noires : avec 40, le quarantieme declenchement
+    sans melodie en joue une a coup sur.
+    """
+    if pity > 0 and depuis >= pity - 1:
+        return True
+    return rng.random() < chance
+
+
+def melody_pool(p: dict) -> list:
+    """Les melodies tirables : celles deposees par l'utilisateur, puis celles fournies."""
+    from . import melodie
+
+    return melodie.custom(p["melodies"]) + melodie.bundled()
+
+
+def melody_roll(args, rng=random):
+    """La melodie de ce declenchement, ou None pour des doots ordinaires.
+
+    Le compteur vit dans le fichier d'etat et pas en memoire : le daemon
+    repart a chaque ouverture de session, et une pitie remise a zero aussi
+    souvent ne bornerait plus rien.
+    """
+    if args.no_melody:
+        return None
+
+    pool = melody_pool(paths())
+    if not pool:
+        return None
+
+    etat = read_state()
+    depuis = int(etat.get("depuis_melodie", 0))
+    tiree = melody_due(depuis, args.melody_chance, args.melody_pity, rng)
+    etat["depuis_melodie"] = 0 if tiree else depuis + 1
+    write_state(etat)
+    return rng.choice(pool) if tiree else None
+
+
+def emit_melodie_tiree(args, fichier, journal: bool = False) -> None:
+    """Joue la melodie tiree au sort, ou retombe sur des doots si elle est illisible."""
+    from . import melodie
+
+    try:
+        morceau = melodie.load(fichier)
+    except melodie.MelodieError as exc:
+        log(f"melodie illisible ({fichier.name}) : {exc}", quiet=args.quiet)
+        emit_doots(args, journal=journal)
+        return
+
+    emit_melodie(args, morceau)
+    if journal:
+        log(f"melodie : {morceau.name or fichier.stem} !", quiet=args.quiet)
+
+
 def emit_melodie(args, morceau) -> None:
     """Affiche le squelette jouant `morceau`, son et hochements compris."""
     from . import melodie, window
@@ -447,7 +523,11 @@ def do_daemon(args) -> int:
                 continue  # la saison s'est fermee pendant l'attente
 
             try:
-                emit_doots(args, journal=True)
+                fichier = melody_roll(args)
+                if fichier is None:
+                    emit_doots(args, journal=True)
+                else:
+                    emit_melodie_tiree(args, fichier, journal=True)
             except window.TkinterMissing as exc:
                 log(str(exc), quiet=args.quiet)
                 return 4
@@ -648,6 +728,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--center", action="store_true", help="toujours au centre au lieu du hasard")
     parser.add_argument("--no-slide", action="store_true",
                         help="apparait toujours sur place, sans jamais entrer par un bord")
+    parser.add_argument("--no-melody", action="store_true",
+                        help="jamais de melodie a la place d'un doot")
+    parser.add_argument("--melody-chance", type=float, default=0.05, metavar="PART",
+                        help="part des declenchements qui jouent une melodie au lieu "
+                             "d'un doot (defaut 0.05, une fois sur vingt ; 0 pour ne "
+                             "garder que la garantie de --melody-pity)")
+    parser.add_argument("--melody-pity", type=int, default=40, metavar="N",
+                        help="le N-ieme declenchement sans melodie en joue une a coup "
+                             "sur (defaut 40, 0 pour ne rien garantir)")
     parser.add_argument("--slide-chance", type=float, default=0.5, metavar="PART",
                         help="proportion de doots qui entrent par un bord ; le reste "
                              "surgit sur place (defaut 0.5, soit un sur deux)")
