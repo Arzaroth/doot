@@ -663,6 +663,12 @@ class MelodieAuHasard(CliTestCase):
     def args(self, *options):
         return cli.build_parser().parse_args(list(options))
 
+    def declenchement(self, args, rng, jouee=True):
+        """Un tour complet : le tirage, puis l'enregistrement de ce qu'il a donne."""
+        fichier = cli.melody_roll(args, rng)
+        cli.note_melodie(bool(fichier) and jouee)
+        return fichier
+
     def melodie_fournie(self):
         from doot import melodie
 
@@ -705,18 +711,18 @@ class MelodieAuHasard(CliTestCase):
     def test_le_compteur_monte_puis_repart_a_zero(self):
         args = self.args("--melody-chance", "0", "--melody-pity", "3")
         rng = random.Random(0)
-        vus = [bool(cli.melody_roll(args, rng)) for _ in range(5)]
+        vus = [bool(self.declenchement(args, rng)) for _ in range(5)]
         self.assertEqual(vus, [False, False, True, False, False])
 
     def test_le_compteur_est_relu_du_fichier_a_chaque_fois(self):
         """C'est ce qui le fait survivre au redemarrage du daemon."""
         args = self.args("--melody-chance", "0", "--melody-pity", "10")
-        cli.melody_roll(args, random.Random(0))
-        cli.melody_roll(args, random.Random(0))
+        self.declenchement(args, random.Random(0))
+        self.declenchement(args, random.Random(0))
         self.assertEqual(json.loads(self.paths["state"].read_text())["depuis_melodie"], 2)
 
         cli.write_state({"depuis_melodie": 9})
-        self.assertIsNotNone(cli.melody_roll(args, random.Random(0)))
+        self.assertIsNotNone(self.declenchement(args, random.Random(0)))
 
     ETATS_ABIMES = (
         "ceci n'est pas du json",
@@ -742,7 +748,7 @@ class MelodieAuHasard(CliTestCase):
         for contenu in self.ETATS_ABIMES:
             with self.subTest(etat=contenu):
                 self.paths["state"].write_text(contenu, encoding="utf-8")
-                cli.melody_roll(args, random.Random(0))
+                self.declenchement(args, random.Random(0))
                 repare = json.loads(self.paths["state"].read_text(encoding="utf-8"))
                 self.assertEqual(repare["depuis_melodie"], 1, "le compteur repart de zero")
 
@@ -755,7 +761,7 @@ class MelodieAuHasard(CliTestCase):
     def test_les_autres_cles_de_l_etat_survivent(self):
         """Le fichier est partage : un compteur ajoute plus tard ne doit pas disparaitre."""
         cli.write_state({"depuis_melodie": 1, "autre_compteur": 7})
-        cli.melody_roll(self.args("--melody-chance", "1"), random.Random(0))
+        self.declenchement(self.args("--melody-chance", "1"), random.Random(0))
         etat = json.loads(self.paths["state"].read_text(encoding="utf-8"))
         self.assertEqual(etat["autre_compteur"], 7)
 
@@ -769,6 +775,40 @@ class MelodieAuHasard(CliTestCase):
         args = self.args("--melody-chance", "1")
         with mock.patch.object(cli, "melody_pool", lambda p: []):
             self.assertIsNone(cli.melody_roll(args, random.Random(0)))
+
+    def test_une_melodie_illisible_ne_consomme_pas_la_pitie(self):
+        """Le repli sur des doots ne vaut pas melodie jouee.
+
+        Sinon le quarantieme declenchement joue des doots, remet le compteur a
+        zero, et repousse la garantie de quarante tours ; avec un fichier
+        casse tire plusieurs fois, la serie reelle n'est plus bornee du tout.
+        """
+        casse = Path(self._dir.name) / "casse.rtttl"
+        casse.write_text("ceci n'est pas une sonnerie", encoding="utf-8")
+        args = self.args("--melody-chance", "0", "--melody-pity", "40", "--no-sound")
+        cli.write_state({"depuis_melodie": 39})
+
+        with mock.patch.object(cli, "melody_pool", lambda p: [casse]):
+            fichier = cli.melody_roll(args, random.Random(0))
+            self.assertIsNotNone(fichier, "le quarantieme declenchement est du")
+            jouee = cli.emit_melodie_tiree(args, fichier, journal=True)
+            cli.note_melodie(jouee)
+
+            self.assertFalse(jouee)
+            self.assertEqual(
+                json.loads(self.paths["state"].read_text())["depuis_melodie"], 40,
+                "la garantie reste due au lieu d'etre consommee",
+            )
+            self.assertIsNotNone(cli.melody_roll(args, random.Random(0)),
+                                 "le declenchement suivant retente")
+
+    def test_la_melodie_jouee_consomme_la_pitie(self):
+        args = self.args("--melody-chance", "0", "--melody-pity", "40", "--no-sound")
+        cli.write_state({"depuis_melodie": 39})
+        fichier = cli.melody_roll(args, random.Random(0))
+        self.assertTrue(cli.emit_melodie_tiree(args, fichier))
+        cli.note_melodie(True)
+        self.assertEqual(json.loads(self.paths["state"].read_text())["depuis_melodie"], 0)
 
     # ---------------------------------------------------------- affichage ---
 
@@ -793,9 +833,19 @@ class MelodieAuHasard(CliTestCase):
     # ------------------------------------------------------------ daemon ----
 
     def test_le_daemon_suit_le_tirage(self):
-        """Une melodie tiree remplace la salve, elle ne s'y ajoute pas."""
-        for tiree, attendu in ((self.melodie_fournie(), "melodie"), (None, "doots")):
-            with self.subTest(tirage=attendu):
+        """Une melodie tiree remplace la salve, elle ne s'y ajoute pas.
+
+        Et le sort du declenchement est enregistre : une melodie jouee remet le
+        compteur a zero, des doots le font monter.
+        """
+        cas = (
+            (self.melodie_fournie(), True, "melodie", 0),
+            (self.melodie_fournie(), False, "melodie", 6),
+            (None, False, "doots", 6),
+        )
+        for tiree, jouee, attendu, compteur in cas:
+            with self.subTest(tirage=attendu, jouee=jouee):
+                cli.write_state({"depuis_melodie": 5})
                 appels = []
                 sommeils = []
 
@@ -804,14 +854,20 @@ class MelodieAuHasard(CliTestCase):
                     if len(sommeils) > 1:
                         raise KeyboardInterrupt
 
+                def joue_melodie(a, f, journal=False):
+                    appels.append("melodie")
+                    return jouee
+
                 with mock.patch.object(cli, "melody_roll", lambda args, rng=None: tiree), \
                         mock.patch.object(cli, "emit_doots",
                                           lambda a, journal=False: appels.append("doots")), \
-                        mock.patch.object(cli, "emit_melodie_tiree",
-                                          lambda a, f, journal=False: appels.append("melodie")), \
+                        mock.patch.object(cli, "emit_melodie_tiree", joue_melodie), \
                         mock.patch.object(cli.time, "sleep", dors):
                     self.run_cli("--ignore-season", "--quiet")
+
                 self.assertEqual(appels, [attendu])
+                etat = json.loads(self.paths["state"].read_text(encoding="utf-8"))
+                self.assertEqual(etat["depuis_melodie"], compteur)
 
 
 if __name__ == "__main__":

@@ -392,9 +392,8 @@ def melody_pool(p: dict) -> list:
 def melody_roll(args, rng=random):
     """La melodie de ce declenchement, ou None pour des doots ordinaires.
 
-    Le compteur vit dans le fichier d'etat et pas en memoire : le daemon
-    repart a chaque ouverture de session, et une pitie remise a zero aussi
-    souvent ne bornerait plus rien.
+    Ne touche pas au compteur : tant qu'aucune melodie n'a joue, la garantie
+    reste due. C'est `note_melodie` qui tranche, une fois le sort connu.
     """
     if args.no_melody:
         return None
@@ -403,16 +402,31 @@ def melody_roll(args, rng=random):
     if not pool:
         return None
 
+    depuis = state_compteur(read_state(), "depuis_melodie")
+    if not melody_due(depuis, args.melody_chance, args.melody_pity, rng):
+        return None
+    return rng.choice(pool)
+
+
+def note_melodie(jouee: bool) -> None:
+    """Enregistre ce que ce declenchement a donne.
+
+    Le compteur vit dans le fichier d'etat et pas en memoire : le daemon
+    repart a chaque ouverture de session, et une pitie remise a zero aussi
+    souvent ne bornerait plus rien.
+    """
     etat = read_state()
     depuis = state_compteur(etat, "depuis_melodie")
-    tiree = melody_due(depuis, args.melody_chance, args.melody_pity, rng)
-    etat["depuis_melodie"] = 0 if tiree else depuis + 1
+    etat["depuis_melodie"] = 0 if jouee else depuis + 1
     write_state(etat)
-    return rng.choice(pool) if tiree else None
 
 
-def emit_melodie_tiree(args, fichier, journal: bool = False) -> None:
-    """Joue la melodie tiree au sort, ou retombe sur des doots si elle est illisible."""
+def emit_melodie_tiree(args, fichier, journal: bool = False) -> bool:
+    """Joue la melodie tiree au sort ; faux si elle etait illisible.
+
+    Le repli sur des doots ne vaut pas melodie jouee : rendre faux laisse la
+    garantie due au declenchement suivant, au lieu de la repousser d'autant.
+    """
     from . import melodie
 
     try:
@@ -420,11 +434,12 @@ def emit_melodie_tiree(args, fichier, journal: bool = False) -> None:
     except melodie.MelodieError as exc:
         log(f"melodie illisible ({fichier.name}) : {exc}", quiet=args.quiet)
         emit_doots(args, journal=journal)
-        return
+        return False
 
     emit_melodie(args, morceau)
     if journal:
         log(f"melodie : {morceau.name or fichier.stem} !", quiet=args.quiet)
+    return True
 
 
 def emit_melodie(args, morceau) -> None:
@@ -545,8 +560,10 @@ def do_daemon(args) -> int:
                 fichier = melody_roll(args)
                 if fichier is None:
                     emit_doots(args, journal=True)
+                    jouee = False
                 else:
-                    emit_melodie_tiree(args, fichier, journal=True)
+                    jouee = emit_melodie_tiree(args, fichier, journal=True)
+                note_melodie(jouee)
             except window.TkinterMissing as exc:
                 log(str(exc), quiet=args.quiet)
                 return 4
