@@ -335,11 +335,30 @@ def do_play(args, wanted: str) -> int:
 
 
 def read_state() -> dict:
-    """L'etat garde entre deux lancements. Vide si illisible : rien n'en depend."""
+    """L'etat garde entre deux lancements. Vide si illisible : rien n'en depend.
+
+    Un JSON syntaxiquement valide n'est pas un etat valide : le fichier se
+    modifie a la main, et une racine qui n'est pas un objet ferait echouer
+    chaque reveil du daemon sans que rien ne la repare.
+    """
     try:
-        return json.loads(paths()["state"].read_text(encoding="utf-8"))
+        etat = json.loads(paths()["state"].read_text(encoding="utf-8"))
     except Exception:
         return {}
+    return etat if isinstance(etat, dict) else {}
+
+
+def state_compteur(etat: dict, cle: str) -> int:
+    """Un compteur de l'etat, ramene a un entier positif.
+
+    Tout le reste, du texte a l'absent en passant par un nombre negatif,
+    repart de zero : perdre un cycle de pitie vaut mieux que perdre tous les
+    declenchements suivants.
+    """
+    valeur = etat.get(cle, 0)
+    if isinstance(valeur, bool) or not isinstance(valeur, int):
+        return 0
+    return max(0, valeur)
 
 
 def write_state(state: dict) -> None:
@@ -385,7 +404,7 @@ def melody_roll(args, rng=random):
         return None
 
     etat = read_state()
-    depuis = int(etat.get("depuis_melodie", 0))
+    depuis = state_compteur(etat, "depuis_melodie")
     tiree = melody_due(depuis, args.melody_chance, args.melody_pity, rng)
     etat["depuis_melodie"] = 0 if tiree else depuis + 1
     write_state(etat)

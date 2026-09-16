@@ -718,10 +718,46 @@ class MelodieAuHasard(CliTestCase):
         cli.write_state({"depuis_melodie": 9})
         self.assertIsNotNone(cli.melody_roll(args, random.Random(0)))
 
-    def test_un_etat_illisible_ne_fait_rien_planter(self):
-        self.paths["state"].write_text("ceci n'est pas du json", encoding="utf-8")
-        args = self.args("--melody-chance", "1")
-        self.assertIsNotNone(cli.melody_roll(args, random.Random(0)))
+    ETATS_ABIMES = (
+        "ceci n'est pas du json",
+        "[]",
+        "null",
+        '"bonjour"',
+        "42",
+        '{"depuis_melodie": "beaucoup"}',
+        '{"depuis_melodie": null}',
+        '{"depuis_melodie": true}',
+        '{"depuis_melodie": 2.5}',
+        '{"depuis_melodie": -5}',
+    )
+
+    def test_un_etat_abime_ne_fait_rien_planter(self):
+        """Le fichier se modifie a la main, et du JSON valide n'est pas un etat valide.
+
+        Un plantage ici serait rattrape par la boucle du daemon, qui
+        n'afficherait alors ni melodie ni doot, et comme rien ne reparerait le
+        fichier, tous les declenchements suivants seraient perdus aussi.
+        """
+        args = self.args("--melody-chance", "0", "--melody-pity", "3")
+        for contenu in self.ETATS_ABIMES:
+            with self.subTest(etat=contenu):
+                self.paths["state"].write_text(contenu, encoding="utf-8")
+                cli.melody_roll(args, random.Random(0))
+                repare = json.loads(self.paths["state"].read_text(encoding="utf-8"))
+                self.assertEqual(repare["depuis_melodie"], 1, "le compteur repart de zero")
+
+    def test_state_compteur_ramene_a_un_entier_positif(self):
+        for valeur, attendu in (({}, 0), ({"n": 3}, 3), ({"n": -5}, 0), ({"n": True}, 0),
+                                ({"n": 2.5}, 0), ({"n": "beaucoup"}, 0), ({"n": None}, 0)):
+            with self.subTest(valeur=valeur):
+                self.assertEqual(cli.state_compteur(valeur, "n"), attendu)
+
+    def test_les_autres_cles_de_l_etat_survivent(self):
+        """Le fichier est partage : un compteur ajoute plus tard ne doit pas disparaitre."""
+        cli.write_state({"depuis_melodie": 1, "autre_compteur": 7})
+        cli.melody_roll(self.args("--melody-chance", "1"), random.Random(0))
+        etat = json.loads(self.paths["state"].read_text(encoding="utf-8"))
+        self.assertEqual(etat["autre_compteur"], 7)
 
     # ------------------------------------------------------------ refus -----
 
