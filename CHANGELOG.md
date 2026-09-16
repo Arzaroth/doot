@@ -12,6 +12,8 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.14.0] - 2026-09-16
+
 ### Ajouté
 - Le démon joue parfois une mélodie à la place du doot du moment, une fois sur
   vingt, tirée au hasard parmi les tiennes et celles fournies. `--melody-chance`
@@ -582,7 +584,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.13.1...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.14.0...HEAD
+[1.14.0]: https://github.com/boubou666/doot/compare/v1.13.1...v1.14.0
 [1.13.1]: https://github.com/boubou666/doot/compare/v1.13.0...v1.13.1
 [1.13.0]: https://github.com/boubou666/doot/compare/v1.12.0...v1.13.0
 [1.12.0]: https://github.com/boubou666/doot/compare/v1.11.0...v1.12.0
