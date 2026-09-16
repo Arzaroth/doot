@@ -328,6 +328,16 @@ def do_play(args, wanted: str) -> int:
         print(f"doot : melodie illisible, {exc}")
         return 2
 
+    emit_melodie(args, morceau)
+    return 0
+
+
+def emit_melodie(args, morceau) -> None:
+    """Affiche le squelette jouant `morceau`, son et hochements compris."""
+    from . import melodie, window
+
+    p = paths()
+
     wav = None
     if not args.no_sound:
         try:
@@ -356,7 +366,6 @@ def do_play(args, wanted: str) -> int:
         **animation,
         **display_options(args),
     )
-    return 0
 
 
 def do_melodies(args) -> int:
