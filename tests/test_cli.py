@@ -858,7 +858,11 @@ class MelodieAuHasard(CliTestCase):
                     appels.append("melodie")
                     return jouee
 
-                with mock.patch.object(cli, "melody_roll", lambda args, rng=None: tiree), \
+                # Le daemon refuse de demarrer sans affichage : sans ce faux, le
+                # test dependrait du DISPLAY de la machine qui le lance, et
+                # tomberait sur un runner sans ecran.
+                with mock.patch.object(cli, "sans_affichage", lambda: False), \
+                        mock.patch.object(cli, "melody_roll", lambda args, rng=None: tiree), \
                         mock.patch.object(cli, "emit_doots",
                                           lambda a, journal=False: appels.append("doots")), \
                         mock.patch.object(cli, "emit_melodie_tiree", joue_melodie), \
