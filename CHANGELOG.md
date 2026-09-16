@@ -12,6 +12,15 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ajouté
+- Le démon joue parfois une mélodie à la place du doot du moment, une fois sur
+  vingt, tirée au hasard parmi les tiennes et celles fournies. `--melody-chance`
+  règle la proportion, `--no-melody` coupe tout.
+- Un compteur de pitié borne les séries sans mélodie : le quarantième
+  déclenchement qui n'en a pas joué en joue une à coup sûr, `--melody-pity` le
+  règle. Il est gardé dans `state.json` plutôt qu'en mémoire, le démon repartant
+  à chaque ouverture de session.
+
 ## [1.13.1] - 2026-09-14
 
 ### Corrigé

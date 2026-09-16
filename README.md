@@ -224,6 +224,9 @@ doot --art                   # imprime le squelette dans le terminal
 | `--spin` | — | ce doot fait un tour complet sur lui-même (impose l'apparition sur place) |
 | `--spin-chance` | `0.25` | proportion des apparitions sur place qui font un tour complet |
 | `--spin-ms` | `700` | durée du tour complet, en millisecondes |
+| `--melody-chance` | `0.05` | proportion de déclenchements qui jouent une mélodie au lieu d'un doot |
+| `--melody-pity` | `40` | le N-ième déclenchement sans mélodie en joue une à coup sûr (`0` : aucune garantie) |
+| `--no-melody` | — | jamais de mélodie à la place d'un doot |
 | `--no-spin` | — | jamais de tour complet, le squelette reste droit |
 | `--screen` | `random` | écran d'apparition : `random`, `primary`, ou un index (`0`, `1`…) |
 | `--no-sound` | — | mode muet |
@@ -418,6 +421,23 @@ doot --play spooky-scary-skeletons     # une mélodie fournie, tout de suite, pu
 doot --rickroll                        # raccourci de --play rickroll
 doot --play ~/sonneries/tetris.rtttl   # n'importe quel fichier RTTTL
 doot --play rickroll --transpose -3    # trois demi-tons plus bas
+```
+
+Le démon en joue aussi de lui-même, sans qu'on demande rien : une fois sur
+vingt, la mélodie remplace le doot du moment. Elle est tirée au hasard parmi
+les tiennes et celles fournies.
+
+Une chance seule laisse de longues séries sans rien. Un compteur de pitié les
+borne, comme dans les jeux qui tirent au sort : le quarantième déclenchement
+sans mélodie en joue une à coup sûr, ce qui porte le taux réel de 5,0 % à
+5,7 %. Le compteur est gardé dans `state.json` (`doot
+--paths`), donc il survit à la fermeture de session ; sinon quarante
+déclenchements, soit plusieurs jours, ne seraient jamais atteints.
+
+```bash
+doot --melody-chance 0.2               # une fois sur cinq
+doot --melody-chance 0 --melody-pity 40  # exactement tous les quarante, jamais avant
+doot --no-melody                       # rien que des doots
 ```
 
 Le squelette surgit et joue une mélodie **en doots**. Un seul son, celui du

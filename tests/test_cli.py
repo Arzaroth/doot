@@ -8,7 +8,9 @@ affichage.
 
 from __future__ import annotations
 
+import json
 import os
+import random
 import tempfile
 import unittest
 from datetime import datetime
@@ -32,6 +34,7 @@ class CliTestCase(unittest.TestCase):
             "wav": root / "doot.wav",
             "log": root / "doot.log",
             "pid": root / "doot.pid",
+            "state": root / "state.json",
         }
         self.shown = []
 
@@ -646,6 +649,133 @@ class AucunAffichage(CliTestCase):
             self.run_cli("--ignore-season", "--quiet")
         journal = self.paths["log"].read_text(encoding="utf-8")
         self.assertIn("aucun affichage joignable", journal)
+
+
+class MelodieAuHasard(CliTestCase):
+    """Le daemon joue parfois une melodie au lieu de la salve ordinaire.
+
+    Deux reglages independants : une chance par declenchement, et un compteur
+    de pitie qui borne les series noires. Le compteur vit dans le fichier
+    d'etat, pas en memoire, parce que le daemon repart a chaque ouverture de
+    session.
+    """
+
+    def args(self, *options):
+        return cli.build_parser().parse_args(list(options))
+
+    def melodie_fournie(self):
+        from doot import melodie
+
+        fournies = melodie.bundled()
+        self.assertTrue(fournies, "aucune melodie fournie avec le paquet")
+        return fournies[0]
+
+    # ------------------------------------------------------------ tirage ----
+
+    def test_la_chance_seule_suit_le_taux(self):
+        rng = random.Random(0)
+        tirages = 200_000
+        touches = sum(cli.melody_due(0, 0.05, 0, rng) for _ in range(tirages))
+        self.assertAlmostEqual(touches / tirages, 0.05, delta=0.002)
+
+    def test_la_pitie_garantit_le_quarantieme(self):
+        """Trente-neuf declenchements peuvent passer, le quarantieme non."""
+        rng = random.Random(0)
+        self.assertFalse(cli.melody_due(38, 0.0, 40, rng))
+        self.assertTrue(cli.melody_due(39, 0.0, 40, rng))
+
+    def test_pitie_a_zero_ne_garantit_rien(self):
+        rng = random.Random(0)
+        self.assertFalse(cli.melody_due(10_000, 0.0, 0, rng))
+
+    def test_la_serie_noire_est_bornee(self):
+        """Sans la pitie, une chance a 5 % laisse passer des series tres longues."""
+        rng = random.Random(1)
+        depuis = pire = 0
+        for _ in range(200_000):
+            if cli.melody_due(depuis, 0.05, 40, rng):
+                pire = max(pire, depuis)
+                depuis = 0
+            else:
+                depuis += 1
+        self.assertLessEqual(pire, 39)
+
+    # ------------------------------------------------------------- etat -----
+
+    def test_le_compteur_monte_puis_repart_a_zero(self):
+        args = self.args("--melody-chance", "0", "--melody-pity", "3")
+        rng = random.Random(0)
+        vus = [bool(cli.melody_roll(args, rng)) for _ in range(5)]
+        self.assertEqual(vus, [False, False, True, False, False])
+
+    def test_le_compteur_est_relu_du_fichier_a_chaque_fois(self):
+        """C'est ce qui le fait survivre au redemarrage du daemon."""
+        args = self.args("--melody-chance", "0", "--melody-pity", "10")
+        cli.melody_roll(args, random.Random(0))
+        cli.melody_roll(args, random.Random(0))
+        self.assertEqual(json.loads(self.paths["state"].read_text())["depuis_melodie"], 2)
+
+        cli.write_state({"depuis_melodie": 9})
+        self.assertIsNotNone(cli.melody_roll(args, random.Random(0)))
+
+    def test_un_etat_illisible_ne_fait_rien_planter(self):
+        self.paths["state"].write_text("ceci n'est pas du json", encoding="utf-8")
+        args = self.args("--melody-chance", "1")
+        self.assertIsNotNone(cli.melody_roll(args, random.Random(0)))
+
+    # ------------------------------------------------------------ refus -----
+
+    def test_no_melody_coupe_tout(self):
+        args = self.args("--no-melody", "--melody-chance", "1", "--melody-pity", "1")
+        self.assertIsNone(cli.melody_roll(args, random.Random(0)))
+
+    def test_sans_melodie_disponible_on_garde_les_doots(self):
+        args = self.args("--melody-chance", "1")
+        with mock.patch.object(cli, "melody_pool", lambda p: []):
+            self.assertIsNone(cli.melody_roll(args, random.Random(0)))
+
+    # ---------------------------------------------------------- affichage ---
+
+    def test_la_melodie_tiree_est_jouee(self):
+        args = self.args("--no-sound")
+        cli.emit_melodie_tiree(args, self.melodie_fournie(), journal=True)
+        self.assertEqual(len(self.shown), 1)
+        self.assertTrue(self.shown[0]["beats"], "le squelette doit hocher sur les notes")
+        self.assertGreater(self.shown[0]["duration"], 0)
+        self.assertIn("melodie :", self.paths["log"].read_text(encoding="utf-8"))
+
+    def test_une_melodie_illisible_retombe_sur_les_doots(self):
+        casse = Path(self._dir.name) / "casse.rtttl"
+        casse.write_text("ceci n'est pas une sonnerie", encoding="utf-8")
+        retombees = []
+        with mock.patch.object(cli, "emit_doots",
+                               lambda args, journal=False: retombees.append(journal)):
+            cli.emit_melodie_tiree(self.args("--no-sound"), casse, journal=True)
+        self.assertEqual(retombees, [True], "le declenchement ne doit pas etre perdu")
+        self.assertIn("melodie illisible", self.paths["log"].read_text(encoding="utf-8"))
+
+    # ------------------------------------------------------------ daemon ----
+
+    def test_le_daemon_suit_le_tirage(self):
+        """Une melodie tiree remplace la salve, elle ne s'y ajoute pas."""
+        for tiree, attendu in ((self.melodie_fournie(), "melodie"), (None, "doots")):
+            with self.subTest(tirage=attendu):
+                appels = []
+                sommeils = []
+
+                def dors(_duree):
+                    sommeils.append(1)
+                    if len(sommeils) > 1:
+                        raise KeyboardInterrupt
+
+                with mock.patch.object(cli, "melody_roll", lambda args, rng=None: tiree), \
+                        mock.patch.object(cli, "emit_doots",
+                                          lambda a, journal=False: appels.append("doots")), \
+                        mock.patch.object(cli, "emit_melodie_tiree",
+                                          lambda a, f, journal=False: appels.append("melodie")), \
+                        mock.patch.object(cli.time, "sleep", dors):
+                    self.run_cli("--ignore-season", "--quiet")
+                self.assertEqual(appels, [attendu])
 
 
 if __name__ == "__main__":
