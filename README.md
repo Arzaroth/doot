@@ -90,8 +90,8 @@ données. Tu n'as plus le dépôt sous la main ? Tout se retire à la main :
 
 | Système | Ce qu'il faut supprimer |
 | --- | --- |
-| **Linux** | `systemctl --user disable --now doot.service` puis `rm -rf ~/.config/systemd/user/doot.service ~/.config/autostart/doot.desktop ~/.local/bin/doot ~/.local/share/doot` |
-| **macOS** | `launchctl unload ~/Library/LaunchAgents/com.doot.skeleton.plist` puis `rm -rf ~/Library/LaunchAgents/com.doot.skeleton.plist ~/.local/bin/doot ~/Library/Application\ Support/doot` |
+| **Linux** | `systemctl --user disable --now doot.service` puis `rm -rf ~/.config/systemd/user/doot.service ~/.config/autostart/doot.desktop ~/.local/bin/doot ~/.local/bin/doot-gui ~/.local/share/doot` |
+| **macOS** | `launchctl unload ~/Library/LaunchAgents/com.doot.skeleton.plist` puis `rm -rf ~/Library/LaunchAgents/com.doot.skeleton.plist ~/.local/bin/doot ~/.local/bin/doot-gui ~/Library/Application\ Support/doot` |
 | **Windows** | supprime le raccourci `doot` dans `shell:startup` (Win+R → `shell:startup`), puis les dossiers `%LOCALAPPDATA%\Programs\doot` et `%LOCALAPPDATA%\doot` |
 
 Envie de le garder mais en plus discret ? `doot --min 7200 --max 28800` espace les
@@ -209,8 +209,23 @@ d'écraser des fichiers qui ne lui appartiennent pas.
 
 ## 🎺 Utilisation
 
+### Interface graphique
+
+```bash
+doot --gui       # ouvre le grimoire graphique
+doot-gui         # raccourci equivalent apres installation
+```
+
+Le grimoire rassemble toutes les actions et tous les réglages de la CLI. Chaque
+action possède sa vignette, la commande exacte reste visible avant son lancement
+et sa sortie s'affiche dans un journal intégré, jusque dans des barres de
+défilement en forme d'os. Le daemon peut être lancé en arrière-plan : fermer le
+grimoire ne l'arrête pas. La GUI utilise Tkinter, déjà requis par l'overlay, et
+n'ajoute donc aucune dépendance.
+
 ```bash
 doot                         # lance le daemon (c'est ce que fait le démarrage auto)
+doot --gui                   # ouvre le lanceur graphique de toutes les commandes
 doot --once                  # un doot tout de suite, puis on quitte
 doot --once --ignore-season  # idem, même hors saison : pratique pour tester
 doot --play spooky-scary-skeletons   # une mélodie en doots (voir --melodies)

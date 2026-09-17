@@ -33,9 +33,9 @@ if [ -f "$PLIST" ]; then
 fi
 
 rm -f "$CONFIG_HOME/autostart/doot.desktop"
-rm -f "$BIN_DIR/doot"
+rm -f "$BIN_DIR/doot" "$BIN_DIR/doot-gui"
 rm -rf "$DATA_HOME/doot/app"
-say "commande    : retiree"
+say "commandes   : retirees"
 
 if [ "$PURGE" -eq 1 ]; then
     rm -rf "$DATA_HOME/doot"

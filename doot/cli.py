@@ -1187,6 +1187,8 @@ def build_parser(profile_defaults: dict | None = None) -> argparse.ArgumentParse
         f"uniquement du {season.SEASON_LABEL}.",
     )
     parser.add_argument("--version", action="version", version=f"doot {__version__}")
+    parser.add_argument("--gui", action="store_true",
+                        help="ouvre le grimoire graphique de toutes les commandes")
 
     parser.add_argument("--once", action="store_true", help="affiche un doot tout de suite puis quitte")
     parser.add_argument("--play", default=None, metavar="MELODIE",
@@ -1379,6 +1381,11 @@ def parse_args(argv: list[str] | None = None):
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+
+    if args.gui:
+        from . import gui
+
+        return gui.main()
 
     if args.min < 1:
         args.min = 1
