@@ -754,7 +754,8 @@ def do_sync_init(args, cible: str) -> int:
         # flotte, chaque autre poste continuant a publier sous l'ancienne. Le
         # reste de la fiche decrivait un seau et ne decrit plus rien.
         gardees = {champ: fiche[champ]
-                   for champ in ("cle", "cle_precedente") if fiche.get(champ)}
+                   for champ in ("cle", "cles_quittees", "cle_precedente")
+                   if fiche.get(champ)}
         fiche = {"dossier": str(Path(cible).expanduser()), **gardees}
 
     if not fiche.get("cle") or args.sync_force:
@@ -795,7 +796,7 @@ def do_sync_join(args, texte: str) -> int:
         return 2
 
     # L'objet publie sous l'ancienne cle ne serait plus lisible par personne :
-    # `poser_cle` retient laquelle, et le cycle le retire une fois la part
+    # `poser_cle` retient lesquelles, et le cycle les retire une fois la part
     # republiee sous la neuve.
     fiche = partage.poser_cle(p["data"], fiche, texte.strip())
     etat = read_state()
