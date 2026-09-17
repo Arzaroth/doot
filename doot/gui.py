@@ -299,6 +299,23 @@ def format_command(argv: Sequence[str]) -> str:
     return shlex.join(words)
 
 
+def wheel_units(delta: int) -> int:
+    """Convertit une molette Windows/macOS en un nombre d'unites non nul."""
+    if delta == 0:
+        return 0
+    magnitude = max(1, round(abs(delta) / 120))
+    return -magnitude if delta > 0 else magnitude
+
+
+def widget_is_inside(widget, ancestor) -> bool:
+    """Dit si ``widget`` est ``ancestor`` ou l'un de ses descendants Tk."""
+    while widget is not None:
+        if widget is ancestor:
+            return True
+        widget = getattr(widget, "master", None)
+    return False
+
+
 class BoneScrollbar:
     """Scrollbar verticale dessinee comme un os, compatible avec ``yview``."""
 
@@ -434,6 +451,8 @@ class DootApp:
         self.images: dict[str, object] = {}
         self.events: queue.Queue = queue.Queue()
         self.processes: list[subprocess.Popen] = []
+        self.wheel_canvases: list[object] = []
+        self.wheel_bindings_installed = False
 
         root.title("doot — grimoire de commandes")
         root.geometry("1180x860")
@@ -719,22 +738,37 @@ class DootApp:
             bone=self.BONE, outline=self.GOLD, track="#4b3459",
         )
 
-    def _wheel_scroll(self, canvas, widget) -> None:
-        def bind(_event):
-            canvas.bind_all(
-                "<MouseWheel>",
-                lambda event: canvas.yview_scroll(int(-event.delta / 120), "units"),
-            )
-            canvas.bind_all("<Button-4>", lambda _e: canvas.yview_scroll(-1, "units"))
-            canvas.bind_all("<Button-5>", lambda _e: canvas.yview_scroll(1, "units"))
+    def _wheel_scroll(self, canvas, _widget) -> None:
+        """Enregistre un canevas defilable sans casser les widgets enfants."""
+        self.wheel_canvases.append(canvas)
+        if self.wheel_bindings_installed:
+            return
+        self.root.bind_all("<MouseWheel>", self._dispatch_wheel, add="+")
+        self.root.bind_all("<Button-4>", self._dispatch_wheel, add="+")
+        self.root.bind_all("<Button-5>", self._dispatch_wheel, add="+")
+        self.wheel_bindings_installed = True
 
-        def unbind(_event):
-            canvas.unbind_all("<MouseWheel>")
-            canvas.unbind_all("<Button-4>")
-            canvas.unbind_all("<Button-5>")
+    def _dispatch_wheel(self, event):
+        canvas = next(
+            (
+                candidate for candidate in self.wheel_canvases
+                if widget_is_inside(getattr(event, "widget", None), candidate)
+            ),
+            None,
+        )
+        if canvas is None:
+            return None
 
-        widget.bind("<Enter>", bind)
-        widget.bind("<Leave>", unbind)
+        delta = getattr(event, "delta", 0)
+        if delta:
+            units = wheel_units(delta)
+        else:
+            number = getattr(event, "num", 0)
+            units = -1 if number == 4 else 1 if number == 5 else 0
+        if units:
+            canvas.yview_scroll(units, "units")
+            return "break"
+        return None
 
     def _selected_command(self) -> CommandSpec:
         key = self.selected_key.get()
