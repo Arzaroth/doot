@@ -8,6 +8,7 @@ affichage.
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import random
@@ -1483,6 +1484,47 @@ class PartageAutomatique(CliTestCase):
         cli.write_state(etat)
         self.assertNotIn("sync", etat)
         self.assertNotIn("cle", json.dumps(etat))
+
+
+class IdentifiantsDuSeau(CliTestCase):
+    """Les identifiants S3 se posent dans la fiche, pas dans l'environnement.
+
+    Une machine qui garde deja des `AWS_*` pour autre chose ne doit pas avoir a
+    les partager avec doot, ni a jouer avec l'ordre de chargement de
+    `environment.d` pour les separer.
+    """
+
+    def sync_init(self, *extra):
+        with mock.patch.object(partage, "cycle", return_value=[]):
+            return self.run_cli("--sync-init", "s3://seau",
+                                "--sync-endpoint", "https://exemple.invalid", *extra)
+
+    def fiche(self):
+        return partage.reglage(self.paths["data"])
+
+    def test_les_deux_champs_atterrissent_dans_la_fiche(self):
+        self.assertEqual(self.sync_init("--sync-key-id", "abc",
+                                        "--sync-secret", "xyz"), 0)
+        self.assertEqual((self.fiche()["cle_acces"], self.fiche()["secret"]),
+                         ("abc", "xyz"))
+
+    def test_sans_les_drapeaux_la_fiche_ne_porte_rien(self):
+        """Un champ vide masquerait l'environnement, qui doit pouvoir repondre."""
+        self.assertEqual(self.sync_init(), 0)
+        self.assertNotIn("cle_acces", self.fiche())
+        self.assertNotIn("secret", self.fiche())
+
+    def test_un_tiret_lit_le_secret_sur_l_entree(self):
+        """Pour qu'il ne traine ni dans `ps` ni dans l'historique du shell."""
+        with mock.patch("sys.stdin", io.StringIO("depuis-l-entree\n")):
+            self.assertEqual(self.sync_init("--sync-key-id", "abc",
+                                            "--sync-secret", "-"), 0)
+        self.assertEqual(self.fiche()["secret"], "depuis-l-entree")
+
+    def test_une_relance_sans_drapeaux_les_conserve(self):
+        self.sync_init("--sync-key-id", "abc", "--sync-secret", "xyz")
+        self.assertEqual(self.sync_init(), 0)
+        self.assertEqual(self.fiche()["secret"], "xyz")
 
 
 class AnnoncesGroupees(CliTestCase):

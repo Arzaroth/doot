@@ -8,6 +8,8 @@ fusionnees par maximum au lieu d'etre additionnees.
 from __future__ import annotations
 
 import json
+import os
+import sys
 import tempfile
 import unittest
 from datetime import datetime
@@ -286,6 +288,90 @@ class QuatreCentQuatreS3(unittest.TestCase):
             with self.subTest(code=code):
                 with self.refus(code, "Nope"), self.assertRaises(transport.TransportError):
                     self.seau().reprendre(transport.Objet("abc.dootsync"))
+
+
+class IdentifiantsDuSeau(unittest.TestCase):
+    """D'ou viennent la cle d'acces et le secret, et dans quel ordre."""
+
+    def seau(self, **kwargs):
+        from doot import transport
+        return transport.S3("https://exemple.invalid", "auto", "seau", **kwargs)
+
+    def sans_variables(self, **posees):
+        vides = {v: "" for v in ("DOOT_S3_KEY_ID", "AWS_ACCESS_KEY_ID",
+                                 "DOOT_S3_SECRET", "AWS_SECRET_ACCESS_KEY",
+                                 "DOOT_S3_SESSION_TOKEN", "AWS_SESSION_TOKEN")}
+        return mock.patch.dict("os.environ", dict(vides, **posees))
+
+    def test_les_noms_propres_a_doot_priment_sur_aws(self):
+        """Une machine qui garde deja des AWS_* pour autre chose les garde."""
+        with self.sans_variables(DOOT_S3_KEY_ID="a-doot", AWS_ACCESS_KEY_ID="a-autre",
+                                 DOOT_S3_SECRET="s-doot", AWS_SECRET_ACCESS_KEY="s-autre"):
+            depot = self.seau()
+        self.assertEqual((depot.cle_acces, depot.secret), ("a-doot", "s-doot"))
+
+    def test_aws_repond_quand_doot_ne_dit_rien(self):
+        with self.sans_variables(AWS_ACCESS_KEY_ID="a-autre", AWS_SECRET_ACCESS_KEY="s-autre"):
+            depot = self.seau()
+        self.assertEqual((depot.cle_acces, depot.secret), ("a-autre", "s-autre"))
+
+    def test_la_fiche_prime_sur_tout_l_environnement(self):
+        with self.sans_variables(DOOT_S3_KEY_ID="a-doot", AWS_ACCESS_KEY_ID="a-autre"):
+            depot = self.seau(cle_acces="a-fiche", secret="s-fiche")
+        self.assertEqual((depot.cle_acces, depot.secret), ("a-fiche", "s-fiche"))
+
+    def test_sans_rien_nulle_part_les_champs_restent_vides(self):
+        with self.sans_variables():
+            depot = self.seau()
+        self.assertEqual((depot.cle_acces, depot.secret, depot.jeton), ("", "", ""))
+
+
+class DroitsDeLaFiche(unittest.TestCase):
+    """`replica.json` porte la cle de la flotte : personne d'autre ne la lit."""
+
+    def setUp(self):
+        self._dir = tempfile.TemporaryDirectory()
+        self.dossier = Path(self._dir.name)
+        self.addCleanup(self._dir.cleanup)
+        partage._connues.clear()
+        self.addCleanup(partage._connues.clear)
+
+    def droits(self):
+        return (self.dossier / partage.FICHIER).stat().st_mode & 0o777
+
+    @unittest.skipIf(sys.platform == "win32", "les droits POSIX n'y veulent rien dire")
+    def test_la_fiche_naît_illisible_pour_les_autres(self):
+        partage.poser_reglage(self.dossier, {"dossier": "/tmp/x", "cle": "dootsync1aa"})
+        self.assertEqual(self.droits(), 0o600)
+
+    @unittest.skipIf(sys.platform == "win32", "les droits POSIX n'y veulent rien dire")
+    def test_les_droits_survivent_a_une_reecriture(self):
+        """`os.replace` emporte les droits du tampon : les poser apres ne tiendrait pas."""
+        partage.poser_reglage(self.dossier, {"dossier": "/tmp/x", "cle": "dootsync1aa"})
+        for _ in range(3):
+            partage.poser_reglage(self.dossier, {"dossier": "/tmp/y", "cle": "dootsync1bb"})
+            self.assertEqual(self.droits(), 0o600)
+
+    @unittest.skipIf(sys.platform == "win32", "les droits POSIX n'y veulent rien dire")
+    def test_les_droits_sont_poses_avant_le_renommage(self):
+        """Apres, le fichier serait brievement lisible entre les deux appels."""
+        vus = {}
+        vrai_replace = os.replace
+
+        def espion(source, cible):
+            vus["mode"] = os.stat(source).st_mode & 0o777
+            return vrai_replace(source, cible)
+
+        with mock.patch("os.replace", espion):
+            partage.poser_reglage(self.dossier, {"dossier": "/tmp/x", "cle": "dootsync1aa"})
+        self.assertEqual(vus["mode"], 0o600)
+
+    def test_un_objet_du_depot_garde_les_droits_ordinaires(self):
+        """Seul ce qui porte un secret se restreint ; un objet chiffre, non."""
+        from doot import transport
+        cible = self.dossier / "objet.dootsync"
+        transport.ecrire_atomiquement(cible, b"charge")
+        self.assertNotEqual(cible.stat().st_mode & 0o777, 0o600)
 
 
 class SignatureS3(unittest.TestCase):

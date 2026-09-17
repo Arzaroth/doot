@@ -192,6 +192,17 @@ if ($engineExit -ne 0) {
 }
 Write-Item "moteur      : desktop-overlay $EngineVersion"
 
+# Le partage chiffre des succes en depend. L'echec n'arrete pas l'installation :
+# doot s'affiche et joue sans, et ne reclame le paquet qu'au premier --sync-init.
+& $python -m pip install --quiet --disable-pip-version-check --target $AppDir "cryptography>=42" 2>&1 | Out-Null
+if ($LASTEXITCODE -eq 0) {
+    Write-Item "chiffrement : cryptography"
+} else {
+    Write-Item "chiffrement : cryptography n'a pas pu etre pose"
+    Write-Item "              doot marche ; le partage des succes le demandera :"
+    Write-Item "              $python -m pip install --target $AppDir 'cryptography>=42'"
+}
+
 $cmdPath = Join-Path $BinDir 'doot.cmd'
 @"
 @echo off

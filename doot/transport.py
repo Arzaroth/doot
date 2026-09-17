@@ -30,6 +30,23 @@ SHA256_VIDE = hashlib.sha256(b"").hexdigest()
 ESPACE_S3 = "{http://s3.amazonaws.com/doc/2006-03-01/}"
 
 
+# Les noms propres a doot viennent en premier : une machine qui garde deja des
+# identifiants S3 dans `AWS_*` pour autre chose n'a pas a les partager avec lui,
+# ni a jouer avec l'ordre de chargement de `environment.d` pour les separer.
+VAR_CLE_ACCES = ("DOOT_S3_KEY_ID", "AWS_ACCESS_KEY_ID")
+VAR_SECRET = ("DOOT_S3_SECRET", "AWS_SECRET_ACCESS_KEY")
+VAR_JETON = ("DOOT_S3_SESSION_TOKEN", "AWS_SESSION_TOKEN")
+
+
+def _environnement(*noms: str) -> str:
+    """La premiere de ces variables qui porte quelque chose."""
+    for nom in noms:
+        valeur = os.environ.get(nom, "")
+        if valeur:
+            return valeur
+    return ""
+
+
 class TransportError(RuntimeError):
     """Le depot est injoignable ou refuse : le cycle le note et passe."""
 
@@ -42,16 +59,23 @@ class Objet:
     modifie: str = ""
 
 
-def ecrire_atomiquement(chemin: Path, octets: bytes) -> None:
+def ecrire_atomiquement(chemin: Path, octets: bytes, mode: int | None = None) -> None:
     """Ecrit a cote puis renomme.
 
     Un pair qui lit pendant l'ecriture recevrait sinon un fichier tronque, ce
     qui est d'autant plus probable sur un dossier synchronise ou un montage
     reseau.
+
+    `mode` est pose sur le tampon avant le renommage, et non sur la cible
+    apres : `os.replace` emporte les droits du tampon, donc les poser ensuite
+    laisserait le fichier lisible entre les deux. Un fichier qui porte un
+    secret le demande ; un objet du depot ou un export, non.
     """
     chemin.parent.mkdir(parents=True, exist_ok=True)
     tampon = chemin.with_name(f".{chemin.name}.tmp")
     tampon.write_bytes(octets)
+    if mode is not None:
+        os.chmod(tampon, mode)
     os.replace(tampon, chemin)
 
 
@@ -105,9 +129,9 @@ class S3:
         self.region = region or "auto"
         self.seau = seau
         self.prefixe = f"{prefixe.strip('/')}/{VERSION}/" if prefixe.strip("/") else f"{VERSION}/"
-        self.cle_acces = cle_acces or os.environ.get("AWS_ACCESS_KEY_ID", "")
-        self.secret = secret or os.environ.get("AWS_SECRET_ACCESS_KEY", "")
-        self.jeton = jeton or os.environ.get("AWS_SESSION_TOKEN", "")
+        self.cle_acces = cle_acces or _environnement(*VAR_CLE_ACCES)
+        self.secret = secret or _environnement(*VAR_SECRET)
+        self.jeton = jeton or _environnement(*VAR_JETON)
 
     def decrire(self) -> str:
         return f"seau {self.seau} sur {urllib.parse.urlparse(self.endpoint).netloc}"
