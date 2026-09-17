@@ -91,5 +91,31 @@ class EntreeCli(unittest.TestCase):
         lancer.assert_called_once_with()
 
 
+class ParametresFacultatifs(unittest.TestCase):
+    """Un dossier local ne doit pas reclamer les reglages d'un seau."""
+
+    def sync_init(self):
+        return next(c for c in gui.COMMANDS if c.key == "sync-init")
+
+    def test_un_dossier_local_se_compose_sans_endpoint(self):
+        argv = gui.build_command_argv(
+            self.sync_init(), {"--sync-init": "/home/moi/Sync"}, {}, strict=True)
+        self.assertIn("--sync-init", argv)
+        self.assertNotIn("--sync-endpoint", argv)
+        self.assertNotIn("--sync-region", argv)
+
+    def test_le_depot_reste_obligatoire(self):
+        with self.assertRaises(ValueError):
+            gui.build_command_argv(self.sync_init(), {}, {}, strict=True)
+
+    def test_un_seau_transmet_ses_reglages(self):
+        argv = gui.build_command_argv(
+            self.sync_init(),
+            {"--sync-init": "s3://seau/doot", "--sync-endpoint": "https://exemple"},
+            {}, strict=True)
+        self.assertIn("--sync-endpoint", argv)
+        self.assertIn("https://exemple", argv)
+
+
 if __name__ == "__main__":
     unittest.main()

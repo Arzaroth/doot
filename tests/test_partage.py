@@ -242,6 +242,52 @@ class TransportDossier(unittest.TestCase):
         self.assertEqual([p.name for p in depot.racine.iterdir() if p.name.startswith(".")], [])
 
 
+class QuatreCentQuatreS3(unittest.TestCase):
+    """Un 404 ne veut pas dire la meme chose selon le geste."""
+
+    def seau(self):
+        from doot import transport
+        return transport.S3("https://exemple.invalid", "auto", "seau-absent",
+                            cle_acces="A", secret="B")
+
+    def refus(self, code=404, raison="Not Found"):
+        import urllib.error
+        return mock.patch.object(
+            __import__("doot.transport", fromlist=["transport"]).urllib.request,
+            "urlopen",
+            side_effect=urllib.error.HTTPError("u", code, raison, {}, None),
+        )
+
+    def test_un_seau_absent_fait_echouer_le_depot(self):
+        """Sinon `--sync-init` annonce un partage sans avoir stocke un octet."""
+        from doot import transport
+        with self.refus(404, "NoSuchBucket"), \
+                self.assertRaises(transport.TransportError):
+            self.seau().deposer("abc.dootsync", b"charge")
+
+    def test_un_seau_absent_fait_echouer_le_listing(self):
+        from doot import transport
+        with self.refus(404, "NoSuchBucket"), \
+                self.assertRaises(transport.TransportError):
+            self.seau().lister()
+
+    def test_un_objet_absent_se_lit_comme_vide(self):
+        from doot import transport
+        with self.refus():
+            self.assertIsNone(self.seau().reprendre(transport.Objet("abc.dootsync")))
+
+    def test_retirer_un_objet_absent_ne_leve_pas(self):
+        with self.refus():
+            self.assertIsNone(self.seau().effacer("abc.dootsync"))
+
+    def test_les_autres_codes_remontent_toujours(self):
+        from doot import transport
+        for code in (403, 500):
+            with self.subTest(code=code):
+                with self.refus(code, "Nope"), self.assertRaises(transport.TransportError):
+                    self.seau().reprendre(transport.Objet("abc.dootsync"))
+
+
 class SignatureS3(unittest.TestCase):
     """Les trois etages de la signature version 4."""
 

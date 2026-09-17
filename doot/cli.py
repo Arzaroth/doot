@@ -754,7 +754,8 @@ def do_sync_init(args, cible: str) -> int:
         # flotte, chaque autre poste continuant a publier sous l'ancienne.
         fiche = {"dossier": str(Path(cible).expanduser()), "cle": fiche.get("cle", "")}
 
-    if not fiche.get("cle") or args.sync_force:
+    ancienne = fiche.get("cle")
+    if not ancienne or args.sync_force:
         fiche["cle"] = coffre.en_texte(coffre.creer())
 
     partage.poser_reglage(p["data"], fiche)
@@ -766,6 +767,11 @@ def do_sync_init(args, cible: str) -> int:
     if note.get("erreur"):
         print(f"doot : depot inutilisable, {note['erreur']}")
         return 2
+
+    # Apres publication seulement : l'objet de l'ancienne cle ne serait plus
+    # lisible par personne, et chaque cycle le signalerait comme etranger.
+    if ancienne and ancienne != fiche["cle"]:
+        partage.oublier_sous(etat, fiche, ancienne)
 
     print(f"doot : partage par {note.get('depot', cible)}")
     print(f"  {note.get('pairs', 0)} autre(s) machine(s) deja presente(s)")
@@ -796,8 +802,6 @@ def do_sync_join(args, texte: str) -> int:
     ancienne = fiche.get("cle")
     fiche["cle"] = texte.strip()
     partage.poser_reglage(p["data"], fiche)
-    if ancienne and ancienne != fiche["cle"]:
-        partage.oublier_sous(read_state(), fiche, ancienne)
     etat = read_state()
     nouveaux = partage.cycle(etat, p["data"])
     write_state(etat)
@@ -806,6 +810,9 @@ def do_sync_join(args, texte: str) -> int:
     if note.get("erreur"):
         print(f"doot : depot inutilisable, {note['erreur']}")
         return 2
+
+    if ancienne and ancienne != fiche["cle"]:
+        partage.oublier_sous(etat, fiche, ancienne)
     print(f"doot : flotte rejointe, {note.get('pairs', 0)} autre(s) machine(s)")
     annoncer_succes(args, nouveaux)
     return 0

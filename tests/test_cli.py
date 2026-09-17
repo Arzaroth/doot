@@ -1343,6 +1343,14 @@ class PartageAutomatique(CliTestCase):
         apres = {p.name for p in (self.depot() / "v1").iterdir()}
         self.assertEqual(len(apres), 1, f"reste {apres - avant | avant - apres}")
 
+    def test_la_rotation_retire_l_objet_de_l_ancienne_cle(self):
+        """Symetrique de celui de --sync-join : la cle neuve ne laisse pas de dechet."""
+        self.run_cli("--sync-init", str(self.depot()))
+        self.assertEqual(len(list((self.depot() / "v1").iterdir())), 1)
+        self.run_cli("--sync-init", str(self.depot()), "--sync-force")
+        restants = list((self.depot() / "v1").iterdir())
+        self.assertEqual(len(restants), 1, f"reste {[p.name for p in restants]}")
+
     def test_sync_init_off_coupe_tout(self):
         self.regle()
         self.assertEqual(self.run_cli("--sync-init", "off"), 0)

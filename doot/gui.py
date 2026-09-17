@@ -30,6 +30,7 @@ class ParameterSpec:
     label: str
     hint: str
     multiple: bool = False
+    requis: bool = True
 
 
 @dataclass(frozen=True)
@@ -150,8 +151,10 @@ COMMANDS: tuple[CommandSpec, ...] = (
         "recopier sur les autres postes ; utilise 'off' pour l'arreter.",
         parameters=(
             ParameterSpec("--sync-init", "Depot", "dossier, s3://seau/prefixe, ou off"),
-            ParameterSpec("--sync-endpoint", "Point d'acces", "https://... pour un seau"),
-            ParameterSpec("--sync-region", "Region", "region du seau, defaut auto"),
+            ParameterSpec("--sync-endpoint", "Point d'acces",
+                          "https://... pour un seau", requis=False),
+            ParameterSpec("--sync-region", "Region",
+                          "region du seau, defaut auto", requis=False),
         ),
         image="success/canon_a_os.png",
     ),
@@ -281,6 +284,8 @@ def build_command_argv(
     for parameter in command.parameters:
         raw = str(parameter_values.get(parameter.option, "")).strip()
         if not raw:
+            if not parameter.requis:
+                continue
             if strict:
                 raise ValueError(f"Le champ « {parameter.label} » est obligatoire.")
             argv.extend((parameter.option, f"<{parameter.hint}>"))

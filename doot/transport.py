@@ -155,7 +155,12 @@ class S3:
         return entetes, query
 
     def _appeler(self, methode: str, chemin: str, requete: dict = None,
-                 charge: bytes = b"") -> bytes | None:
+                 charge: bytes = b"", absent_permis: bool = False) -> bytes | None:
+        """`absent_permis` ne vaut que pour un objet qu'on lit ou qu'on retire.
+
+        Un 404 sur le depot ou sur le listing dit que le seau n'existe pas, et
+        l'avaler ferait annoncer un partage reussi sans avoir stocke un octet.
+        """
         requete = requete or {}
         entetes, query = self._signer(methode, chemin, requete, charge)
         url = f"{self.endpoint}{urllib.parse.quote(chemin, safe='/')}"
@@ -169,7 +174,7 @@ class S3:
             with urllib.request.urlopen(demande, timeout=DELAI) as reponse:
                 return reponse.read()
         except urllib.error.HTTPError as exc:
-            if exc.code == 404:
+            if exc.code == 404 and absent_permis:
                 return None
             raise TransportError(f"{methode} {chemin} : {exc.code} {exc.reason}") from exc
         except urllib.error.URLError as exc:
@@ -202,10 +207,11 @@ class S3:
                 return trouves
 
     def reprendre(self, objet: Objet) -> bytes | None:
-        return self._appeler("GET", f"/{self.seau}/{self.prefixe}{objet.nom}")
+        return self._appeler("GET", f"/{self.seau}/{self.prefixe}{objet.nom}",
+                             absent_permis=True)
 
     def effacer(self, nom: str) -> None:
-        self._appeler("DELETE", f"/{self.seau}/{self.prefixe}{nom}")
+        self._appeler("DELETE", f"/{self.seau}/{self.prefixe}{nom}", absent_permis=True)
 
 
 def ouvrir(reglage: dict):
