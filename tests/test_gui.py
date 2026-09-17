@@ -14,6 +14,7 @@ class CatalogueGraphique(unittest.TestCase):
         attendues = {
             "--once", "--play", "--rickroll", "--melodies", "--sync-init",
             "--sync-join", "--sync-endpoint", "--sync-region",
+            "--sync-key-id", "--sync-secret",
             "--export", "--merge", "--achievements", "--events", "--event",
             "--status", "--stop", "--paths", "--art", "--update",
             "--check-update", "--profiles", "--save-profile",

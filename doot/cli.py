@@ -727,6 +727,22 @@ def sync_tour(args) -> None:
     annoncer_succes(args, nouveaux)
 
 
+def lire_secret(valeur: str) -> str:
+    """Le secret tel qu'il a ete donne, ou lu ailleurs si c'est `-`.
+
+    Un secret passe en argument se lit dans `ps` et reste dans l'historique du
+    shell. `-` le prend sur l'entree standard : saisie invisible quand il y a
+    un terminal, une ligne lue sinon, ce qui laisse `... | doot --sync-secret -`
+    utilisable dans un script.
+    """
+    if valeur != "-":
+        return valeur
+    if sys.stdin.isatty():
+        import getpass
+        return getpass.getpass("Secret Access Key : ").strip()
+    return sys.stdin.readline().strip()
+
+
 def do_sync_init(args, cible: str) -> int:
     """Frappe une cle et retient ou publier. `off` coupe tout."""
     p = paths()
@@ -744,8 +760,13 @@ def do_sync_init(args, cible: str) -> int:
         seau, _, prefixe = reste.partition("/")
         fiche.update({"seau": seau, "prefixe": prefixe,
                       "endpoint": args.sync_endpoint or fiche.get("endpoint", ""),
-                      "region": args.sync_region or fiche.get("region", "auto")})
+                      "region": args.sync_region or fiche.get("region", "auto"),
+                      "cle_acces": args.sync_key_id or fiche.get("cle_acces", ""),
+                      "secret": lire_secret(args.sync_secret) or fiche.get("secret", "")})
         fiche.pop("dossier", None)
+        for champ in ("cle_acces", "secret"):
+            if not fiche[champ]:
+                fiche.pop(champ)   # laisse l'environnement repondre
         if not fiche["endpoint"]:
             print("doot : un seau demande --sync-endpoint https://...")
             return 2
@@ -1209,6 +1230,12 @@ def build_parser(profile_defaults: dict | None = None) -> argparse.ArgumentParse
                         help="point d'acces du seau (R2, MinIO, B2, S3)")
     parser.add_argument("--sync-region", dest="sync_region", default="", metavar="REGION",
                         help="region du seau (defaut auto)")
+    parser.add_argument("--sync-key-id", dest="sync_key_id", default="", metavar="ID",
+                        help="identifiant d'acces au seau ; sans lui, "
+                             "DOOT_S3_KEY_ID puis AWS_ACCESS_KEY_ID")
+    parser.add_argument("--sync-secret", dest="sync_secret", default="", metavar="SECRET",
+                        help="secret d'acces au seau ; `-` le lit sur l'entree "
+                             "standard plutot que de le laisser dans `ps`")
     parser.add_argument("--sync-force", dest="sync_force", action="store_true",
                         help="frappe une cle neuve meme s'il y en avait une")
     parser.add_argument("--export", "--exporter", dest="exporter", default=None,
