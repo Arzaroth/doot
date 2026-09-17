@@ -42,16 +42,23 @@ class Objet:
     modifie: str = ""
 
 
-def ecrire_atomiquement(chemin: Path, octets: bytes) -> None:
+def ecrire_atomiquement(chemin: Path, octets: bytes, mode: int | None = None) -> None:
     """Ecrit a cote puis renomme.
 
     Un pair qui lit pendant l'ecriture recevrait sinon un fichier tronque, ce
     qui est d'autant plus probable sur un dossier synchronise ou un montage
     reseau.
+
+    `mode` est pose sur le tampon avant le renommage, et non sur la cible
+    apres : `os.replace` emporte les droits du tampon, donc les poser ensuite
+    laisserait le fichier lisible entre les deux. Un fichier qui porte un
+    secret le demande ; un objet du depot ou un export, non.
     """
     chemin.parent.mkdir(parents=True, exist_ok=True)
     tampon = chemin.with_name(f".{chemin.name}.tmp")
     tampon.write_bytes(octets)
+    if mode is not None:
+        os.chmod(tampon, mode)
     os.replace(tampon, chemin)
 
 

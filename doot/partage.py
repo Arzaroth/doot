@@ -51,6 +51,7 @@ def _ecrire_fiche(dossier: Path, note: dict) -> None:
         transport.ecrire_atomiquement(
             dossier / FICHIER,
             (json.dumps(note, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
+            mode=0o600,
         )
     except OSError:
         pass
