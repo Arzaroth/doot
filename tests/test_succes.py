@@ -22,7 +22,7 @@ class Enregistrement(unittest.TestCase):
             formation="random", spin=False, bord=None,
         )
         self.assertIn("premier_doot", self.ids(nouveaux))
-        self.assertEqual(self.etat["stats"]["doots"], 1)
+        self.assertEqual(succes.total(self.etat, "doots"), 1)
         self.assertEqual(succes.score(self.etat), 5)
 
     def test_un_succes_n_est_annonce_qu_une_fois(self):
@@ -168,18 +168,24 @@ class EspecesDeStatistiques(unittest.TestCase):
             for droite in range(gauche + 1, len(especes)):
                 self.assertEqual(set(especes[gauche]) & set(especes[droite]), set())
 
-    def test_les_ensembles_sont_des_listes_et_le_reste_des_entiers(self):
-        stats = {}
-        etat = {"stats": stats}
+    def test_chaque_espece_a_la_forme_que_sa_fusion_attend(self):
+        """Un total est range en parts par machine, sans quoi la fusion double."""
+        etat = {}
         succes.enregistrer(etat, "doots", quantite=4, formation="canon",
                            spin=True, bord="left", rencontre="lune")
         succes.enregistrer(etat, "melodie", nom="rickroll", voix=2, fournie=True)
+        stats = etat["stats"]
+        for cle in succes.TOTAUX:
+            if cle in stats:
+                self.assertIsInstance(stats[cle], dict, cle)
+                for part in stats[cle].values():
+                    self.assertIsInstance(part, int, cle)
+        for cle in succes.MAXIMA:
+            if cle in stats:
+                self.assertIsInstance(stats[cle], int, cle)
         for cle in succes.ENSEMBLES:
             if cle in stats:
                 self.assertIsInstance(stats[cle], list, cle)
-        for cle in succes.TOTAUX + succes.MAXIMA:
-            if cle in stats:
-                self.assertIsInstance(stats[cle], int, cle)
 
 
 if __name__ == "__main__":

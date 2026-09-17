@@ -8,6 +8,7 @@ memes identifiants de succes sans changer le format du fichier.
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -44,11 +45,40 @@ class Succes:
     progression: Progression
 
 
-def _compteur(stats: dict, cle: str) -> int:
-    valeur = stats.get(cle, 0)
+def _entier(valeur) -> int:
     if isinstance(valeur, bool) or not isinstance(valeur, int):
         return 0
     return max(0, valeur)
+
+
+def machine(etat: dict) -> str:
+    """L'identifiant de cette installation, cree au premier besoin.
+
+    Il ne sert qu'a garder separees les parts de chaque machine, ce qui rend la
+    fusion idempotente. Il ne quitte le poste que par un export demande.
+    """
+    valeur = etat.get("machine")
+    if isinstance(valeur, str) and valeur:
+        return valeur
+    valeur = uuid.uuid4().hex[:12]
+    etat["machine"] = valeur
+    return valeur
+
+
+def _parts(stats: dict, cle: str, origine: str) -> dict:
+    """Les parts d'un total, par machine. Un entier d'avant revient a `origine`."""
+    valeur = stats.get(cle)
+    if isinstance(valeur, dict):
+        return {str(nom): _entier(part) for nom, part in valeur.items()}
+    entier = _entier(valeur)
+    return {origine: entier} if entier else {}
+
+
+def _compteur(stats: dict, cle: str) -> int:
+    valeur = stats.get(cle, 0)
+    if isinstance(valeur, dict):
+        return sum(_entier(part) for part in valeur.values())
+    return _entier(valeur)
 
 
 def _liste(stats: dict, cle: str) -> list[str]:
@@ -123,8 +153,13 @@ def _stats(etat: dict) -> dict:
     return stats
 
 
-def _ajoute(stats: dict, cle: str, quantite: int = 1) -> None:
-    stats[cle] = _compteur(stats, cle) + max(0, quantite)
+def _ajoute(stats: dict, cle: str, origine: str, quantite: int = 1) -> None:
+    quantite = max(0, quantite)
+    if not quantite:
+        return
+    parts = _parts(stats, cle, origine)
+    parts[origine] = _entier(parts.get(origine)) + quantite
+    stats[cle] = parts
 
 
 def _ajoute_unique(stats: dict, cle: str, valeur: str) -> None:
@@ -144,6 +179,7 @@ def enregistrer(etat: dict, evenement: str, maintenant: datetime | None = None,
 
     maintenant = maintenant or datetime.now()
     stats = _stats(etat)
+    origine = machine(etat)
 
     if evenement == "doots":
         quantite = details.get("quantite", 0)
@@ -151,24 +187,24 @@ def enregistrer(etat: dict, evenement: str, maintenant: datetime | None = None,
             quantite = 0
         quantite = max(0, quantite)
         if quantite:
-            _ajoute(stats, "doots", quantite)
-            _ajoute(stats, "declenchements")
+            _ajoute(stats, "doots", origine, quantite)
+            _ajoute(stats, "declenchements", origine)
             stats["plus_grande_salve"] = max(
                 _compteur(stats, "plus_grande_salve"), quantite
             )
             if details.get("formation") == "canon" and quantite >= 4:
-                _ajoute(stats, "canons")
+                _ajoute(stats, "canons", origine)
             formation = details.get("formation")
             if formation in ("canon", "wave", "rain", "vortex") and quantite >= 4:
                 _ajoute_unique(stats, "formations", formation)
             if details.get("spin") is True:
-                _ajoute(stats, "tours_imposes")
+                _ajoute(stats, "tours_imposes", origine)
             bord = details.get("bord")
             if bord in ("left", "right", "top", "bottom"):
                 _ajoute_unique(stats, "bords_imposes", bord)
             rencontre = details.get("rencontre")
             if isinstance(rencontre, str) and rencontre:
-                _ajoute(stats, "evenements")
+                _ajoute(stats, "evenements", origine)
                 _ajoute_unique(stats, "evenements_vus", rencontre)
             _jour_actif(stats, maintenant)
 
@@ -179,15 +215,15 @@ def enregistrer(etat: dict, evenement: str, maintenant: datetime | None = None,
         voix = details.get("voix", 1)
         if isinstance(voix, bool) or not isinstance(voix, int):
             voix = 1
-        _ajoute(stats, "melodies")
-        _ajoute(stats, "declenchements")
+        _ajoute(stats, "melodies", origine)
+        _ajoute(stats, "declenchements", origine)
         stats["voix_max"] = max(_compteur(stats, "voix_max"), max(1, voix))
         if details.get("fournie") is True:
             _ajoute_unique(stats, "melodies_fournies", nom)
         else:
-            _ajoute(stats, "melodies_perso")
+            _ajoute(stats, "melodies_perso", origine)
         if nom.casefold() == "rickroll":
-            _ajoute(stats, "rickrolls")
+            _ajoute(stats, "rickrolls", origine)
         _jour_actif(stats, maintenant)
 
     elif evenement == "profil":
@@ -195,6 +231,12 @@ def enregistrer(etat: dict, evenement: str, maintenant: datetime | None = None,
         if isinstance(nom, str):
             _ajoute_unique(stats, "profils_actifs", nom)
 
+    return _debloquer(etat, maintenant)
+
+
+def _debloquer(etat: dict, maintenant: datetime) -> list[Succes]:
+    """Les succes que l'etat courant vient d'atteindre."""
+    stats = _stats(etat)
     acquis = etat.get("succes")
     if not isinstance(acquis, dict):
         acquis = {}
@@ -210,6 +252,55 @@ def enregistrer(etat: dict, evenement: str, maintenant: datetime | None = None,
     return nouveaux
 
 
+def fusionner(local: dict, distant: dict, maintenant: datetime | None = None) -> list[Succes]:
+    """Fait entrer l'etat d'une autre machine dans celui-ci.
+
+    Idempotente et commutative : refaire la fusion, ou la faire dans l'autre
+    sens, donne le meme etat. C'est ce que les parts par machine achetent, un
+    total simple s'additionnerait a chaque passage.
+
+    Renvoie les succes que la reunion des deux debloque, qu'aucune des deux
+    machines n'avait forcement atteints seule.
+    """
+    maintenant = maintenant or datetime.now()
+    venue = distant.get("machine")
+    if not isinstance(venue, str) or not venue:
+        raise ValueError("l'etat a fusionner ne dit pas de quelle machine il vient")
+
+    ici = _stats(local)
+    la_bas = distant.get("stats")
+    if isinstance(la_bas, dict):
+        for cle in TOTAUX:
+            parts = _parts(ici, cle, machine(local))
+            for nom, part in _parts(la_bas, cle, venue).items():
+                parts[nom] = max(_entier(parts.get(nom)), part)
+            if parts:
+                ici[cle] = parts
+        for cle in MAXIMA:
+            valeur = max(_compteur(ici, cle), _compteur(la_bas, cle))
+            if valeur:
+                ici[cle] = valeur
+        for cle in ENSEMBLES:
+            reunion = sorted(set(_liste(ici, cle)) | set(_liste(la_bas, cle)))
+            if reunion:
+                ici[cle] = reunion
+
+    acquis = local.get("succes")
+    if not isinstance(acquis, dict):
+        acquis = {}
+        local["succes"] = acquis
+    autres = distant.get("succes")
+    if isinstance(autres, dict):
+        for identifiant, date in autres.items():
+            if not isinstance(date, str):
+                continue
+            ancienne = acquis.get(identifiant)
+            if not isinstance(ancienne, str) or date < ancienne:
+                acquis[identifiant] = date
+
+    return _debloquer(local, maintenant)
+
+
 def debloques(etat: dict) -> dict:
     valeur = etat.get("succes", {})
     if not isinstance(valeur, dict):
@@ -217,6 +308,15 @@ def debloques(etat: dict) -> dict:
     connus = {item.identifiant for item in CATALOGUE}
     return {identifiant: date for identifiant, date in valeur.items()
             if identifiant in connus}
+
+
+def total(etat: dict, cle: str) -> int:
+    """La valeur d'une statistique, parts de toutes les machines reunies.
+
+    Passer par ici plutot que par le dictionnaire : un total est stocke en
+    parts, un maximum en entier, et la forme n'a pas a sortir du module.
+    """
+    return _compteur(_stats(etat), cle)
 
 
 def score(etat: dict) -> int:
