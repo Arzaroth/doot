@@ -1249,10 +1249,17 @@ class SynchronisationAutomatique(CliTestCase):
         self.assertEqual(etat["sync_note"]["pairs"], 1)
 
     def test_un_dossier_impossible_ne_leve_jamais(self):
-        """Un doot ne doit pas dependre de la synchronisation."""
+        """Un doot ne doit pas dependre de la synchronisation.
+
+        Le chemin barre par un fichier vaut sur les trois systemes, la ou un
+        `/proc/...` ne barrait que Linux.
+        """
         from doot import succes
+        bloque = Path(self._dir.name) / "bloque"
+        bloque.write_text("je ne suis pas un dossier", encoding="utf-8")
+
         etat = self.poste("ici", 10)
-        etat["sync"] = "/proc/interdit/nope"
+        etat["sync"] = str(bloque / "dedans")
         self.assertEqual(cli.sync_cycle(self.args_daemon(), etat), [])
         self.assertIn("erreur", etat["sync_note"])
         self.assertEqual(succes.total(etat, "doots"), 10)
