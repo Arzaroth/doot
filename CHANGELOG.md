@@ -12,7 +12,7 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
-## [1.18.2] - 2026-09-17
+## [1.19.0] - 2026-09-17
 
 ### Ajouté
 - `--sync-key-id` et `--sync-secret` posent les identifiants du seau dans la
@@ -706,8 +706,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.18.2...HEAD
-[1.18.2]: https://github.com/boubou666/doot/compare/v1.18.1...v1.18.2
+[Non publié]: https://github.com/boubou666/doot/compare/v1.19.0...HEAD
+[1.19.0]: https://github.com/boubou666/doot/compare/v1.18.1...v1.19.0
 [1.18.1]: https://github.com/boubou666/doot/compare/v1.18.0...v1.18.1
 [1.18.0]: https://github.com/boubou666/doot/compare/v1.17.1...v1.18.0
 [1.17.1]: https://github.com/boubou666/doot/compare/v1.17.0...v1.17.1
