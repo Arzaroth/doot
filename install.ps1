@@ -16,7 +16,7 @@ param(
     [int]    $BurstMin   = 1,
     [int]    $BurstMax   = 1,
     [double] $BurstDelay = 0.6,
-    [ValidateSet('random', 'canon')]
+    [ValidateSet('random', 'canon', 'wave', 'rain', 'vortex')]
     [string] $Formation  = 'random',
     [switch] $NoAutostart
 )

@@ -299,6 +299,13 @@ class Formation(UpdateTestCase):
     def test_canon_est_repris(self):
         self.assertEqual(update.formation_reglee({"formation": "canon"}), "canon")
 
+    def test_les_nouvelles_formations_sont_reprises(self):
+        for formation in ("wave", "rain", "vortex"):
+            with self.subTest(formation=formation):
+                self.assertEqual(
+                    update.formation_reglee({"formation": formation}), formation
+                )
+
     def test_random_reste_le_defaut_silencieux(self):
         self.assertIsNone(update.formation_reglee({"formation": "random"}))
 

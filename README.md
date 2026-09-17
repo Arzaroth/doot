@@ -55,6 +55,12 @@
   franchement à droite.
 - **Orchestre polyphonique** : une ligne RTTTL donne une voix et un squelette ;
   chacun hoche sur ses propres notes, sans plafond artificiel de musiciens.
+- **Chorégraphies** : les salves peuvent défiler en canon, onduler entre les
+  écrans, tomber du haut ou tournoyer sur place.
+- **Rencontres rares** : parade, pluie d'os et vortex interrompent parfois la
+  routine ; un compteur de pitié garantit que les trois finissent par sortir.
+- **Profils persistants** : sauvegarde plusieurs ambiances et active celle que
+  le daemon doit reprendre automatiquement, y compris après une mise à jour.
 - **Prêt à l'emploi** : le squelette et son *doot* sont livrés avec ; dépose ton
   propre PNG/GIF ou mp3 pour les remplacer, sans toucher au code.
 - **Saisonnier** : la fenêtre du 1er septembre au 31 octobre est appliquée par le
@@ -210,7 +216,10 @@ doot --once --ignore-season  # idem, même hors saison : pratique pour tester
 doot --play spooky-scary-skeletons   # une mélodie en doots (voir --melodies)
 doot --rickroll              # raccourci de --play rickroll
 doot --melodies              # les mélodies jouables, les tiennes et les fournies
+doot --events                # les rencontres rares disponibles
+doot --event pluie           # force une rencontre rare, pour la découvrir
 doot --achievements          # les succès locaux, leur progression et le score
+doot --profiles              # les profils enregistrés et celui qui est actif
 doot --status                # saison, daemon, son et image utilisés
 doot --stop                  # arrête le daemon
 doot --paths                 # où sont les fichiers
@@ -225,7 +234,7 @@ doot --art                   # imprime le squelette dans le terminal
 | `--min` / `--max` | `600` / `3600` | bornes du délai aléatoire entre deux doot, en secondes |
 | `--burst-min` / `--burst-max` | `1` / `1` | bornes du nombre de doots enchaînés à chaque déclenchement |
 | `--burst-delay` | `0.6` | pause entre deux doots d'une même salve, en secondes |
-| `--formation` | `random` | formation d'une salve : `random` ou `canon` (bords et écrans en séquence) |
+| `--formation` | `random` | formation : `random`, `canon`, `wave`, `rain` ou `vortex` |
 | `--duration` | durée du son | durée d'affichage, en secondes (au moins 2.8) |
 | `--image` | — | un PNG/GIF précis à afficher |
 | `--no-image` | — | force l'ASCII art même si une image est disponible |
@@ -244,6 +253,9 @@ doot --art                   # imprime le squelette dans le terminal
 | `--melody-chance` | `0.05` | proportion de déclenchements qui jouent une mélodie au lieu d'un doot |
 | `--melody-pity` | `40` | le N-ième déclenchement sans mélodie en joue une à coup sûr (`0` : aucune garantie) |
 | `--no-melody` | — | jamais de mélodie à la place d'un doot |
+| `--event-chance` | `0.02` | proportion de déclenchements transformés en rencontre rare |
+| `--event-pity` | `100` | le N-ième déclenchement sans événement en force un (`0` : aucune garantie) |
+| `--no-event` | — | coupe les événements rares automatiques |
 | `--no-spin` | — | jamais de tour complet, le squelette reste droit |
 | `--screen` | `random` | écran d'apparition : `random`, `primary`, ou un index (`0`, `1`…) |
 | `--no-sound` | — | mode muet |
@@ -257,8 +269,8 @@ doot --art                   # imprime le squelette dans le terminal
 Doot garde sa progression **uniquement en local**, dans le même `state.json` que
 le compteur de mélodies (`doot --paths` montre son emplacement). Aucun compte,
 aucune connexion et aucune télémétrie : les apparitions, les salves, les mélodies,
-les bords imposés et les jours actifs débloquent 14 succès pour un total de
-375 points.
+les bords imposés, les formations, les événements et les profils débloquent
+18 succès pour un total de 475 points.
 
 ```bash
 doot --achievements     # alias français : doot --succes
@@ -348,18 +360,40 @@ Par défaut, chaque doot de la salve est tiré indépendamment : son animation
 son image et son son. Une salve de quatre, ce sont quatre squelettes différents
 qui arrivent chacun à leur façon, pas la même apparition répétée.
 
-`--formation canon` transforme la salve en petite parade : les bords suivent
-le cycle gauche → haut → droite → bas et les écrans disponibles sont parcourus
-dans l'ordre. Les doots restent séquentiels et `--burst-delay` donne le tempo.
-Avec un seul écran, le canon garde son tour des bords ; `--screen` ou `--side`
-peut fixer respectivement l'écran ou le bord, et `--no-slide` garde uniquement
-la chorégraphie des écrans.
+`--formation` transforme la salve en petite parade. Les doots restent
+séquentiels et `--burst-delay` donne le tempo :
+
+| Formation | Chorégraphie |
+| --- | --- |
+| `random` | chaque écran, bord et animation est tiré indépendamment, comme avant |
+| `canon` | gauche → haut → droite → bas, avec les écrans parcourus dans l'ordre |
+| `wave` | gauche ↔ droite, avec un aller-retour sur la rangée d'écrans |
+| `rain` | tous les squelettes tombent du haut, écran après écran |
+| `vortex` | apparitions sur place, chacune avec un tour complet |
+
+```bash
+doot --once --ignore-season --burst-min 6 --burst-max 6 --formation wave
+doot --once --ignore-season --burst-min 7 --burst-max 7 --formation rain
+doot --once --ignore-season --burst-min 5 --burst-max 5 --formation vortex
+```
+
+Avec un seul écran, la chorégraphie des bords reste visible. `--screen` ou
+`--side` peut fixer respectivement l'écran ou le bord ; `--no-slide` et
+`--no-spin` restent prioritaires. Un vortex sans rotation reste donc sur place,
+mais droit.
 
 ### Les garder au démarrage
 
-Les options ci-dessus valent pour la commande que tu tapes. Le doot lancé à
-l'ouverture de session, lui, tient sa ligne de commande des installeurs — il
-faut donc la leur demander :
+Le moyen le plus simple est d'enregistrer puis d'activer un profil. Le daemon
+lancé à l'ouverture de session le charge tout seul, sans réinstallation :
+
+```bash
+doot --save-profile parade --burst-min 2 --burst-max 5 --formation wave
+doot --activate-profile parade
+```
+
+Les installeurs savent aussi inscrire directement les salves dans la commande
+de démarrage :
 
 ```bash
 ./install.sh --burst-min 2 --burst-max 5 --formation canon    # Linux, macOS
@@ -369,10 +403,10 @@ faut donc la leur demander :
 powershell -ExecutionPolicy Bypass -File .\install.ps1 -BurstMin 2 -BurstMax 5 -Formation canon
 ```
 
-Le réglage part dans `install.json`, la fiche que relit `doot --update` : il
-survit donc aux mises à jour. Éditer l'unité systemd, le LaunchAgent ou le
-raccourci à la main marche aussi, mais **la prochaine mise à jour les
-réécrit** — les installeurs les regénèrent depuis la fiche.
+Dans ce second cas, le réglage part dans `install.json`, la fiche que relit
+`doot --update` : il survit donc aux mises à jour. Éditer l'unité systemd, le
+LaunchAgent ou le raccourci à la main marche aussi, mais **la prochaine mise à
+jour les réécrit** — les installeurs les regénèrent depuis la fiche.
 
 Sans ces options, la ligne engendrée est exactement celle d'avant les salves :
 mettre doot à jour ne fait donc apparaître aucune salve chez personne.
@@ -384,6 +418,59 @@ le daemon revérifie après chaque attente.
 
 Par défaut `--burst-min` et `--burst-max` valent `1` : un déclenchement, un
 doot, comme avant.
+
+## 🎲 Les événements rares
+
+Avant le tirage d'une mélodie, le daemon a 2 % de chances de lancer une
+rencontre précomposée : `parade` en vague, `pluie` depuis le haut ou `vortex`
+sur place. Elles durent quelques secondes et réutilisent tes images, tes sons,
+ton volume et tes choix d'écran.
+
+```bash
+doot --events                         # noms et descriptions
+doot --event parade --ignore-season   # essai immédiat
+doot --event pluie --ignore-season
+doot --event vortex --ignore-season
+```
+
+Une chance seule pourrait ne rien donner pendant très longtemps. Le compteur
+de pitié force donc le centième déclenchement sans événement. Comme celui des
+mélodies, il vit dans `state.json` et survit aux redémarrages :
+
+```bash
+doot --event-chance 0.05     # un déclenchement sur vingt en moyenne
+doot --event-pity 50         # jamais plus de cinquante sans rencontre
+doot --no-event              # aucune rencontre automatique
+```
+
+Les événements passent avant les mélodies pour un déclenchement donné. Ils ne
+contournent jamais la saison et respectent `--no-sound`, `--no-image`,
+`--no-slide` et `--no-spin`.
+
+## 🎛️ Les profils persistants
+
+Un profil mémorise les options de comportement — fréquence, salves, formation,
+médias, animation, son, mélodies et événements — mais jamais une commande
+ponctuelle comme `--stop`, `--update` ou `--once`.
+
+```bash
+# Crée deux ambiances sans lancer le daemon
+doot --save-profile calme --min 3600 --max 10800 --no-sound --no-event
+doot --save-profile chaos --min 120 --max 600 --burst-min 3 --burst-max 6 \
+     --formation wave --event-chance 0.08
+
+doot --profiles                 # liste ; * marque le profil actif
+doot --profile chaos --once     # l'utilise seulement pour cette commande
+doot --activate-profile chaos   # devient le défaut des prochains lancements
+doot --deactivate-profile       # revient aux réglages historiques
+doot --delete-profile calme
+```
+
+Le profil actif est chargé par un simple `doot`, donc aussi par le daemon déjà
+installé au démarrage : inutile de rejouer l'installeur. Les options écrites sur
+la commande remplacent celles du profil. `--no-profile` permet de l'ignorer
+entièrement pour un lancement. Le fichier `profiles.json` reste lisible,
+modifiable et local ; `doot --paths` donne son emplacement.
 
 ## 🦴 Les trois façons d'arriver
 
@@ -627,7 +714,8 @@ le son est joué au centre plutôt que pas du tout.
 | Windows | `%LOCALAPPDATA%\doot` |
 
 Il contient `image/` et `sound/` (tes médias), `doot.wav` (le jingle en cache),
-`doot.log` (le journal) et `doot.pid`.
+`profiles.json` (tes profils), `state.json` (pitié et succès), `doot.log` (le
+journal) et `doot.pid`.
 
 ## 🕸️ Dépannage
 
@@ -701,14 +789,16 @@ des quatre installeurs.
 | `doot/overlay.py` | la boucle d'animation, partagée par les deux overlays |
 | `doot/sound.py` | synthèse du jingle, durée et lecture selon l'OS |
 | `doot/melodie.py` | les mélodies en doots : lecture RTTTL, accordage et rendu |
+| `doot/evenements.py` | les trois rencontres rares précomposées |
+| `doot/profiles.py` | le stockage et l'activation des profils persistants |
 | `doot/audio.py` | la sortie audio native (PulseAudio/PipeWire, ALSA) |
 | `doot/window.py` | l'overlay tkinter, la transparence, le fondu |
 | `doot/cli.py` | la CLI, la boucle aléatoire, l'instance unique |
 
 Le daemon tire un délai au hasard entre `--min` et `--max`, dort, vérifie que la
-saison est toujours ouverte, affiche la salve du déclenchement (un seul doot par
-défaut, sinon un nombre tiré entre `--burst-min` et `--burst-max`), recommence. Hors saison, il
-se contente de revérifier la date toutes les heures.
+saison est toujours ouverte, tire d'abord une rencontre rare, sinon une mélodie,
+sinon la salve ordinaire (un seul doot par défaut), puis recommence. Hors saison,
+il se contente de revérifier la date toutes les heures.
 
 ## 📜 Licence
 

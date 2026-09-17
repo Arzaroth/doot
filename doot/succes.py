@@ -65,6 +65,9 @@ CATALOGUE = (
            15, 3, _valeur("plus_grande_salve")),
     Succes("canon_a_os", "Canon a os", "Jouer une formation canon d'au moins 4 doots.",
            20, 1, _valeur("canons")),
+    Succes("choregraphe", "Choregraphe des cryptes",
+           "Jouer canon, wave, rain et vortex avec au moins 4 doots.",
+           35, 4, _nombre_dans_liste("formations")),
     Succes("ca_tourne", "Ca tourne", "Imposer un tour complet avec --spin.",
            10, 1, _valeur("tours_imposes")),
     Succes("quatre_coins", "Aux quatre coins",
@@ -86,6 +89,15 @@ CATALOGUE = (
     Succes("sept_jours", "Sept nuits de doot",
            "Jouer au moins une fois pendant 7 jours differents.",
            40, 7, _nombre_dans_liste("jours_actifs")),
+    Succes("premier_evenement", "Quelque chose cloche",
+           "Assister a un premier evenement rare.",
+           15, 1, _valeur("evenements")),
+    Succes("collection_evenements", "Cabinet de curiosites",
+           "Assister aux trois evenements rares differents.",
+           40, 3, _nombre_dans_liste("evenements_vus")),
+    Succes("profil_actif", "Costume sur mesure",
+           "Activer un profil persistant.",
+           10, 1, _nombre_dans_liste("profils_actifs")),
 )
 
 
@@ -132,11 +144,18 @@ def enregistrer(etat: dict, evenement: str, maintenant: datetime | None = None,
             )
             if details.get("formation") == "canon" and quantite >= 4:
                 _ajoute(stats, "canons")
+            formation = details.get("formation")
+            if formation in ("canon", "wave", "rain", "vortex") and quantite >= 4:
+                _ajoute_unique(stats, "formations", formation)
             if details.get("spin") is True:
                 _ajoute(stats, "tours_imposes")
             bord = details.get("bord")
             if bord in ("left", "right", "top", "bottom"):
                 _ajoute_unique(stats, "bords_imposes", bord)
+            rencontre = details.get("rencontre")
+            if isinstance(rencontre, str) and rencontre:
+                _ajoute(stats, "evenements")
+                _ajoute_unique(stats, "evenements_vus", rencontre)
             _jour_actif(stats, maintenant)
 
     elif evenement == "melodie":
@@ -156,6 +175,11 @@ def enregistrer(etat: dict, evenement: str, maintenant: datetime | None = None,
         if nom.casefold() == "rickroll":
             _ajoute(stats, "rickrolls")
         _jour_actif(stats, maintenant)
+
+    elif evenement == "profil":
+        nom = details.get("nom")
+        if isinstance(nom, str):
+            _ajoute_unique(stats, "profils_actifs", nom)
 
     acquis = etat.get("succes")
     if not isinstance(acquis, dict):
