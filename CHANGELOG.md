@@ -12,6 +12,20 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ajouté
+- `--sync-key-id` et `--sync-secret` posent les identifiants du seau dans la
+  fiche du poste, et `DOOT_S3_KEY_ID` / `DOOT_S3_SECRET` les nomment dans
+  l'environnement sans marcher sur les `AWS_*` d'un autre outil. `--sync-secret -`
+  lit le secret sur l'entrée standard plutôt que de le laisser dans `ps`.
+
+### Corrigé
+- Les installeurs posent `cryptography`, que le partage chiffré réclame depuis
+  la 1.18.0. Sans elle, `--sync-init` échouait sur toute machine dont le Python
+  ne l'avait pas déjà par ailleurs - y compris après un `doot --update`, qui
+  rejoue `install.sh`.
+- `replica.json` naît en `0600` et le reste. Il porte la clé qui ouvre toute la
+  flotte, et l'écriture atomique reposait les droits à `0644` à chaque cycle.
+
 ## [1.18.0] - 2026-09-17
 
 ### Ajouté

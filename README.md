@@ -325,7 +325,25 @@ Un seau compatible S3 marche aussi, R2, MinIO ou B2 compris :
 doot --sync-init s3://mon-seau/doot --sync-endpoint https://….r2.cloudflarestorage.com
 ```
 
-Les identifiants se lisent dans `AWS_ACCESS_KEY_ID` et `AWS_SECRET_ACCESS_KEY`.
+Les identifiants viennent du premier de ces trois endroits qui en porte :
+
+1. la fiche du poste, posée par `--sync-key-id` et `--sync-secret` ;
+2. `DOOT_S3_KEY_ID` et `DOOT_S3_SECRET` ;
+3. `AWS_ACCESS_KEY_ID` et `AWS_SECRET_ACCESS_KEY`.
+
+Les noms propres à doot existent pour une machine qui garde déjà des `AWS_*`
+pour autre chose : elle n'a ni à les partager, ni à jouer avec l'ordre de
+chargement de `environment.d` pour les séparer.
+
+```bash
+doot --sync-init s3://mon-seau/doot --sync-endpoint https://… \
+     --sync-key-id ID --sync-secret -
+```
+
+`--sync-secret -` lit le secret sur l'entrée standard : saisie invisible s'il y
+a un terminal, une ligne lue sinon, pour qu'il ne traîne ni dans `ps` ni dans
+l'historique du shell. Ce qui est posé ainsi vit dans `replica.json`, en `0600`
+comme la clé de chiffrement qui l'accompagne.
 
 #### Ce que voit celui qui héberge
 

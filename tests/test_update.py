@@ -8,6 +8,7 @@ refus. Le telechargement reel est remplace la ou il apparait.
 from __future__ import annotations
 
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -328,3 +329,43 @@ class InstallationSysteme(UpdateTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DependancesPosees(unittest.TestCase):
+    """Ce que `pyproject.toml` declare, les installeurs doivent le poser.
+
+    `cryptography` est arrivee avec le partage chiffre sans que ni `install.sh`
+    ni `install.ps1` ne s'en occupent : l'installation marchait partout ou le
+    python choisi l'avait deja par ailleurs, et nulle part ailleurs. L'erreur ne
+    se voyait qu'au premier `--sync-init`, sur une autre machine que celle du
+    developpeur.
+    """
+
+    def racine(self) -> Path:
+        return Path(__file__).resolve().parent.parent
+
+    def declarees(self) -> list:
+        """Les noms de `dependencies`, lus a la main.
+
+        `tomllib` n'arrive qu'en 3.11 et le projet tient jusqu'a la 3.8 ; le
+        bloc est court et litteral, une lecture au plus simple suffit.
+        """
+        texte = (self.racine() / "pyproject.toml").read_text(encoding="utf-8")
+        bloc = texte.split("dependencies = [", 1)[1].split("]", 1)[0]
+        noms = []
+        for morceau in bloc.split(","):
+            morceau = morceau.strip().strip('"').strip()
+            if morceau:
+                noms.append(re.split(r"[<>=@ ]", morceau, 1)[0].strip())
+        return [nom for nom in noms if nom]
+
+    def test_il_y_a_bien_des_dependances_a_verifier(self):
+        """Sinon le test ci-dessous passerait en ne regardant rien."""
+        self.assertIn("cryptography", self.declarees())
+
+    def test_les_installeurs_posent_chaque_dependance(self):
+        for installeur in ("install.sh", "install.ps1"):
+            texte = (self.racine() / installeur).read_text(encoding="utf-8")
+            for paquet in self.declarees():
+                with self.subTest(installeur=installeur, paquet=paquet):
+                    self.assertIn(paquet, texte)
