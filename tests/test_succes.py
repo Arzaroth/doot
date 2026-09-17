@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import unittest
 from datetime import datetime, timedelta
 
@@ -186,6 +187,86 @@ class EspecesDeStatistiques(unittest.TestCase):
         for cle in succes.ENSEMBLES:
             if cle in stats:
                 self.assertIsInstance(stats[cle], list, cle)
+
+
+class Fusion(unittest.TestCase):
+    """Deux machines qui se rejoignent, sans serveur ni horloge partagee."""
+
+    def poste(self, nom, doots=0, **details):
+        etat = {"machine": nom}
+        for _ in range(doots):
+            succes.enregistrer(etat, "doots", datetime(2026, 9, 17, 12, 0),
+                               quantite=1, **details)
+        return etat
+
+    def test_les_totaux_s_additionnent(self):
+        local = self.poste("portable", 60)
+        succes.fusionner(local, self.poste("fixe", 60))
+        self.assertEqual(succes.total(local, "doots"), 120)
+
+    def test_refaire_la_fusion_ne_change_rien(self):
+        """C'est ce que les parts par machine achetent, et tout le reste en depend."""
+        local = self.poste("portable", 60)
+        distant = self.poste("fixe", 60)
+        for _ in range(3):
+            succes.fusionner(local, distant)
+        self.assertEqual(succes.total(local, "doots"), 120)
+
+    def test_le_sens_de_la_fusion_ne_change_rien(self):
+        portable = self.poste("portable", 60, bord="left")
+        fixe = self.poste("fixe", 40, bord="right")
+
+        ici = copy.deepcopy(portable)
+        succes.fusionner(ici, fixe)
+        la_bas = copy.deepcopy(fixe)
+        succes.fusionner(la_bas, portable)
+
+        self.assertEqual(succes.total(ici, "doots"), succes.total(la_bas, "doots"))
+        self.assertEqual(ici["stats"]["bords_imposes"], la_bas["stats"]["bords_imposes"])
+
+    def test_les_maxima_se_comparent(self):
+        local = {"machine": "portable"}
+        succes.enregistrer(local, "doots", quantite=3)
+        distant = {"machine": "fixe"}
+        succes.enregistrer(distant, "doots", quantite=7)
+        succes.fusionner(local, distant)
+        self.assertEqual(local["stats"]["plus_grande_salve"], 7)
+
+    def test_les_ensembles_s_unissent(self):
+        local = self.poste("portable", 1, bord="left")
+        succes.fusionner(local, self.poste("fixe", 1, bord="right"))
+        self.assertEqual(local["stats"]["bords_imposes"], ["left", "right"])
+
+    def test_la_reunion_debloque_ce_qu_aucune_n_avait(self):
+        local = self.poste("portable", 60)
+        nouveaux = succes.fusionner(local, self.poste("fixe", 60))
+        self.assertIn("cent_doots", {item.identifiant for item in nouveaux})
+
+    def test_la_date_de_deblocage_la_plus_ancienne_gagne(self):
+        local = {"machine": "portable", "succes": {"premier_doot": "2026-09-17T12:00:00"}}
+        distant = {"machine": "fixe", "succes": {"premier_doot": "2026-09-01T08:00:00"}}
+        succes.fusionner(local, distant)
+        self.assertEqual(local["succes"]["premier_doot"], "2026-09-01T08:00:00")
+
+    def test_un_entier_d_avant_les_parts_se_fusionne_sans_doubler(self):
+        """Les etats deja sur les disques n'ont pas de parts : ils appartiennent
+        a la machine qui les a accumules."""
+        local = self.poste("portable", 60)
+        vieux = {"machine": "ancien", "stats": {"doots": 40}}
+        succes.fusionner(local, vieux)
+        succes.fusionner(local, vieux)
+        self.assertEqual(succes.total(local, "doots"), 100)
+
+    def test_un_etat_sans_machine_est_refuse(self):
+        """Sans identifiant stable, chaque fusion lui en inventerait un neuf et
+        rajouterait ses totaux."""
+        with self.assertRaises(ValueError):
+            succes.fusionner(self.poste("portable", 1), {"stats": {"doots": 5}})
+
+    def test_l_identifiant_de_machine_est_stable(self):
+        etat = {}
+        self.assertEqual(succes.machine(etat), succes.machine(etat))
+        self.assertNotEqual(succes.machine({}), succes.machine({}))
 
 
 if __name__ == "__main__":

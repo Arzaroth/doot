@@ -283,6 +283,33 @@ médaille mais coupe la fanfare. La commande affiche ensuite les succès acquis,
 objectifs encore verrouillés et leur progression. Le fichier reste du JSON lisible
 et peut être sauvegardé avec le reste du dossier de données.
 
+### Faire converger ses machines
+
+Les succès restent locaux, mais ils n'ont plus à rester sur une seule machine :
+
+```bash
+doot --export ~/Sync/doot     # dépose doot-<machine>.json dans le dossier
+doot --merge  ~/Sync/doot     # fait entrer les autres machines dans celle-ci
+```
+
+Chaque poste écrit son propre fichier et lit ceux des autres, donc rien ne se
+marche dessus : un dossier Syncthing, un dépôt git ou une clé USB font aussi
+bien l'affaire. `--export` accepte aussi un fichier, ou `-` pour la sortie
+standard.
+
+Refaire la fusion ne change rien, et le sens n'importe pas. Chaque total est
+rangé en parts, une par machine, et fusionner prend le maximum part par part
+au lieu d'additionner ; les maxima se comparent, les ensembles s'unissent, et
+les dates de déblocage gardent la plus ancienne. Réunir deux machines peut
+franchir un objectif qu'aucune n'avait atteint seule : soixante doots ici et
+soixante là-bas débloquent *Cent-os*.
+
+Les compteurs de pitié ne voyagent pas : ils décrivent le rythme d'un poste,
+pas ce qui y a été accompli.
+
+C'est de la convergence entre tes machines, pas un classement : le fichier
+reste éditable, et rien ici ne prétend le contraire.
+
 ### Et un classement en ligne ?
 
 Le score local prépare le terrain, mais l'envoi doit rester explicitement activé

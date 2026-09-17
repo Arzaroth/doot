@@ -1106,5 +1106,97 @@ class MelodieAuHasard(CliTestCase):
                 self.assertEqual(etat["depuis_melodie"], compteur)
 
 
+class ExportEtFusion(CliTestCase):
+    """Les deux commandes qui font converger des postes, sans serveur."""
+
+    def poste(self, nom, doots, **details):
+        from doot import succes
+        etat = {"machine": nom}
+        for _ in range(doots):
+            succes.enregistrer(etat, "doots", datetime(2026, 9, 17, 12, 0),
+                               quantite=1, **details)
+        return etat
+
+    def depose(self, nom, contenu):
+        chemin = Path(self._dir.name) / "partage" / nom
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        chemin.write_text(json.dumps(contenu), encoding="utf-8")
+        return chemin
+
+    def test_export_vers_un_dossier_nomme_d_apres_la_machine(self):
+        from doot import succes
+        cible = Path(self._dir.name) / "partage"
+        cible.mkdir()
+        self.assertEqual(self.run_cli("--export", str(cible)), 0)
+        fichiers = list(cible.glob("*.json"))
+        self.assertEqual(len(fichiers), 1)
+        contenu = json.loads(fichiers[0].read_text(encoding="utf-8"))
+        self.assertEqual(fichiers[0].name, f"doot-{contenu['machine']}.json")
+
+    def test_l_export_laisse_les_compteurs_de_pitie_derriere_lui(self):
+        """Ils decrivent le rythme d'un poste, pas ce qui y a ete accompli."""
+        cli.write_state({"depuis_melodie": 7, "depuis_evenement": 3,
+                         "stats": {"doots": {"ici": 4}}})
+        cible = Path(self._dir.name) / "part.json"
+        self.run_cli("--export", str(cible))
+        contenu = json.loads(cible.read_text(encoding="utf-8"))
+        self.assertEqual(set(contenu), {"machine", "stats", "succes"})
+
+    def test_l_identifiant_de_machine_survit_a_l_export(self):
+        cible = Path(self._dir.name) / "part.json"
+        self.run_cli("--export", str(cible))
+        premier = json.loads(cible.read_text(encoding="utf-8"))["machine"]
+        self.run_cli("--export", str(cible))
+        self.assertEqual(json.loads(cible.read_text(encoding="utf-8"))["machine"], premier)
+
+    def test_la_fusion_additionne_et_debloque(self):
+        from doot import succes
+        cli.write_state(self.poste("ici", 60))
+        self.depose("fixe.json", self.poste("fixe", 60))
+        self.assertEqual(self.run_cli("--merge", str(Path(self._dir.name) / "partage")), 0)
+        etat = cli.read_state()
+        self.assertEqual(succes.total(etat, "doots"), 120)
+        self.assertIn("cent_doots", etat["succes"])
+
+    def test_refaire_la_fusion_ne_change_rien(self):
+        from doot import succes
+        cli.write_state(self.poste("ici", 60))
+        dossier = str(Path(self._dir.name) / "partage")
+        self.depose("fixe.json", self.poste("fixe", 60))
+        self.run_cli("--merge", dossier)
+        self.run_cli("--merge", dossier)
+        self.assertEqual(succes.total(cli.read_state(), "doots"), 120)
+
+    def test_son_propre_fichier_est_reconnu_et_saute(self):
+        from doot import succes
+        etat = self.poste("ici", 10)
+        cli.write_state(etat)
+        self.depose("moi.json", {"machine": "ici", "stats": {"doots": {"ici": 999}}})
+        self.assertEqual(self.run_cli("--merge", str(Path(self._dir.name) / "partage")), 2)
+        self.assertEqual(succes.total(cli.read_state(), "doots"), 10)
+
+    def test_un_etat_sans_machine_est_refuse_sans_rien_casser(self):
+        from doot import succes
+        cli.write_state(self.poste("ici", 10))
+        self.depose("anonyme.json", {"stats": {"doots": 999}})
+        self.assertEqual(self.run_cli("--merge", str(Path(self._dir.name) / "partage")), 2)
+        self.assertEqual(succes.total(cli.read_state(), "doots"), 10)
+
+    def test_un_fichier_illisible_n_arrete_pas_les_autres(self):
+        from doot import succes
+        cli.write_state(self.poste("ici", 10))
+        dossier = Path(self._dir.name) / "partage"
+        dossier.mkdir(parents=True, exist_ok=True)
+        (dossier / "casse.json").write_text("ceci n'est pas du json", encoding="utf-8")
+        self.depose("fixe.json", self.poste("fixe", 5))
+        self.assertEqual(self.run_cli("--merge", str(dossier)), 0)
+        self.assertEqual(succes.total(cli.read_state(), "doots"), 15)
+
+    def test_rien_a_fusionner_sort_en_2(self):
+        dossier = Path(self._dir.name) / "vide"
+        dossier.mkdir()
+        self.assertEqual(self.run_cli("--merge", str(dossier)), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

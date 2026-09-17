@@ -12,6 +12,20 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ajouté
+- `doot --export` et `doot --merge` font converger les succès de plusieurs
+  machines sans serveur : chaque poste dépose son fichier dans un dossier
+  partagé et lit ceux des autres. Refaire la fusion ne change rien, et réunir
+  deux machines peut débloquer un succès qu'aucune n'avait atteint seule.
+
+### Modifié
+- Chaque statistique déclare comment elle se fusionne, et les totaux sont
+  rangés en parts par machine dans `state.json`. Sans cette distinction,
+  copier le fichier d'une machine à l'autre faussait déjà les chiffres en
+  silence, un total et un maximum étant indiscernables une fois écrits. Les
+  fichiers existants sont repris sans perte : leurs totaux reviennent à la
+  machine qui les a accumulés.
+
 ## [1.16.0] - 2026-09-17
 
 ### Ajouté
