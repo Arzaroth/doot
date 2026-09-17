@@ -1,13 +1,27 @@
-# doot
+<p align="center">
+  <img src="doot/assets/logo.png" width="220" alt="Logo de doot : un squelette joue de la trompette dans un croissant de lune" />
+</p>
 
-[![CI](https://github.com/boubou666/doot/actions/workflows/ci.yml/badge.svg)](https://github.com/boubou666/doot/actions/workflows/ci.yml)
+<h1 align="center">☠️ doot 🎺</h1>
 
-Un squelette trompettiste surgit au hasard sur ton écran, joue son petit air, puis disparaît.
+<p align="center">
+  <strong>Un squelette trompettiste surgit au hasard sur ton écran,<br />
+  joue son petit air, puis retourne dans sa crypte.</strong>
+</p>
 
-**Uniquement du 1er septembre au 31 octobre inclus.** Le reste de l'année, le programme
-tourne mais reste sagement endormi : le squelette range sa trompette.
+<p align="center">
+  <a href="https://github.com/boubou666/doot/actions/workflows/ci.yml"><img src="https://github.com/boubou666/doot/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+</p>
 
-```
+> [!IMPORTANT]
+> **La crypte ne s'ouvre que du 1er septembre au 31 octobre inclus.** Le reste
+> de l'année, le programme tourne mais reste sagement endormi : le squelette
+> range sa trompette.
+
+<details>
+<summary>🦴 Invoquer le trompettiste du terminal</summary>
+
+```text
                                         d    o    o    t   !
             .-"""""""-.
           .'           '.
@@ -22,6 +36,8 @@ tourne mais reste sagement endormi : le squelette range sa trompette.
              /|     |\                 '--.        ,'
             / |     | \                     '-----'
 ```
+
+</details>
 
 - **Multiplateforme** : Windows 10/11, macOS, Linux (Arch, Debian/Ubuntu, Fedora, openSUSE…)
 - **Zéro dépendance** : uniquement la bibliothèque standard de Python 3.8+
@@ -77,7 +93,7 @@ apparitions de 2 à 8 heures, et `--no-sound` le rend muet.
 
 ---
 
-## Installation
+## 🕯️ Installation
 
 ### Depuis GitHub, sur les trois systèmes
 
@@ -151,14 +167,14 @@ Démarrage. Aucun droit administrateur, aucun composant système modifié.
 uv run --no-project --with "desktop-overlay @ https://github.com/boubou666/desktop-overlay/releases/download/v0.2.1/desktop_overlay-0.2.1-py3-none-any.whl#sha256=c752c46c077390a1f6cc6569dae09df302a2d0810b6a555122366be38928c972" python -m doot --once --ignore-season
 ```
 
-## Versions
+## 📜 Versions
 
 Les évolutions sont consignées dans le [CHANGELOG](CHANGELOG.md), au format
 [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Chaque étiquette `vX.Y.Z`
 publie une [release](https://github.com/boubou666/doot/releases) automatiquement,
 avec les notes tirées du changelog et les paquets Python construits.
 
-## Mettre à jour
+## 🧪 Mettre à jour
 
 Une fois installé, doot se met à jour tout seul, sur les trois systèmes :
 
@@ -185,7 +201,7 @@ Si doot a été installé par un gestionnaire de paquets (le `PKGBUILD` d'Arch,
 par exemple), `--update` refuse et te renvoie vers `pacman -Syu` plutôt que
 d'écraser des fichiers qui ne lui appartiennent pas.
 
-## Utilisation
+## 🎺 Utilisation
 
 ```bash
 doot                         # lance le daemon (c'est ce que fait le démarrage auto)
@@ -194,6 +210,7 @@ doot --once --ignore-season  # idem, même hors saison : pratique pour tester
 doot --play spooky-scary-skeletons   # une mélodie en doots (voir --melodies)
 doot --rickroll              # raccourci de --play rickroll
 doot --melodies              # les mélodies jouables, les tiennes et les fournies
+doot --achievements          # les succès locaux, leur progression et le score
 doot --status                # saison, daemon, son et image utilisés
 doot --stop                  # arrête le daemon
 doot --paths                 # où sont les fichiers
@@ -235,7 +252,53 @@ doot --art                   # imprime le squelette dans le terminal
 | `--ignore-season` | — | ignore la fenêtre saisonnière (tests) |
 | `--quiet` | — | n'écrit que dans le journal |
 
-## Les médias
+## 🏆 Les succès
+
+Doot garde sa progression **uniquement en local**, dans le même `state.json` que
+le compteur de mélodies (`doot --paths` montre son emplacement). Aucun compte,
+aucune connexion et aucune télémétrie : les apparitions, les salves, les mélodies,
+les bords imposés et les jours actifs débloquent 14 succès pour un total de
+375 points.
+
+```bash
+doot --achievements     # alias français : doot --succes
+```
+
+Un succès est annoncé une seule fois dans le terminal et dans le journal. Il fait
+aussi apparaître une médaille illustrée en haut à droite, accompagnée d'une courte
+fanfare originale à deux voix jouée par le moteur RTTTL. `--no-sound` garde la
+médaille mais coupe la fanfare. La commande affiche ensuite les succès acquis, les
+objectifs encore verrouillés et leur progression. Le fichier reste du JSON lisible
+et peut être sauvegardé avec le reste du dossier de données.
+
+### Et un classement en ligne ?
+
+Le score local prépare le terrain, mais l'envoi doit rester explicitement activé
+par la personne. Une petite API suffit : le client envoie des **événements** munis
+d'un identifiant unique (`doot`, `melodie`, succès débloqué), et le serveur calcule
+lui-même le score au lieu d'accepter un total fourni par le client. Trois routes
+couvrent le besoin : inscription pseudonyme, envoi d'un lot d'événements et lecture
+du top de la saison.
+
+Une implémentation légère peut tenir dans un
+[Cloudflare Worker avec D1](https://developers.cloudflare.com/d1/get-started/), ou
+dans [Supabase avec des règles d'accès par ligne](https://supabase.com/docs/guides/database/postgres/row-level-security).
+Dans les deux cas il faut prévoir :
+
+- un pseudo public et un jeton secret local, sans adresse e-mail obligatoire ;
+- l'idempotence des événements, des limites de fréquence et un score recalculé
+  côté serveur ;
+- une saison dans la clé du classement, par exemple `2026`, afin de repartir
+  proprement chaque septembre ;
+- `--online` désactivé par défaut, une commande de suppression, et aucun envoi de
+  chemins de fichiers, noms de machines ou autres données privées ;
+- un classement présenté comme amical : un client open source exécuté en local ne
+  peut pas empêcher totalement la triche, même avec une validation serveur.
+
+Le stockage local reste utilisable hors ligne ; la synchronisation peut reprendre
+en envoyant les événements non encore accusés par le serveur.
+
+## 🖼️ Les médias
 
 doot est livré avec le squelette et le son qu'on attend : `doot/assets/doot.png`
 et `doot/assets/doot.mp3`, installés d'office. C'est le mème *skull trumpet*
@@ -266,7 +329,7 @@ tu peux les changer pendant que le daemon tourne. Pour revenir au dessin ASCII e
 au jingle synthétisé : `doot --no-image --regen-sound` (ou vide les deux dossiers
 et supprime `doot/assets/`).
 
-## Les salves
+## 💀 Les salves
 
 Un déclenchement peut en amener plusieurs. `--burst-min` et `--burst-max`
 donnent les bornes : le nombre est tiré au hasard entre les deux à **chaque**
@@ -322,7 +385,7 @@ le daemon revérifie après chaque attente.
 Par défaut `--burst-min` et `--burst-max` valent `1` : un déclenchement, un
 doot, comme avant.
 
-## Les trois façons d'arriver
+## 🦴 Les trois façons d'arriver
 
 Il y en a trois, tirées au sort à chaque apparition :
 
@@ -413,7 +476,7 @@ Il demande une **image PNG** : les GIF animés et le squelette ASCII restent
 droits, faute de pouvoir être pivotés (`doot/png.py` ne décode pas les GIF, et
 des glyphes à chasse fixe tournés d'un quart de tour ne veulent plus rien dire).
 
-## Les mélodies
+## 🎼 Les mélodies
 
 ```bash
 doot --melodies                        # ce qui est jouable
@@ -526,7 +589,7 @@ du bon squelette à chaque coup ; un GIF animé garde sa propre animation. La
 mélodie est rendue en un seul WAV, puis jouée une seule fois par le lecteur
 habituel, donc spatialisée comme le reste. Même règle de saison que `--once`.
 
-## Le son spatialisé
+## 🔊 Le son spatialisé
 
 Le doot sort du côté où le squelette est apparu. La position est calculée sur
 **tout le bureau virtuel**, pas sur un écran isolé : avec deux dalles côte à
@@ -553,7 +616,7 @@ le son est joué au centre plutôt que pas du tout.
 
 `--no-pan` désactive tout ça.
 
-## Où sont les fichiers
+## 🗝️ Où sont les fichiers
 
 `doot --paths` affiche tout. Par défaut :
 
@@ -566,7 +629,7 @@ le son est joué au centre plutôt que pas du tout.
 Il contient `image/` et `sound/` (tes médias), `doot.wav` (le jingle en cache),
 `doot.log` (le journal) et `doot.pid`.
 
-## Dépannage
+## 🕸️ Dépannage
 
 **Rien ne s'affiche** → `doot --status`. Si tkinter manque, installe le paquet
 du tableau ci-dessus. Sous Wayland, l'overlay passe par XWayland ; si ton
@@ -604,7 +667,7 @@ te dit la date de réouverture. Pour vérifier que tout marche :
 `systemctl --user status doot` (Linux), `launchctl list | grep doot` (macOS),
 ou vérifie le raccourci dans `shell:startup` (Windows).
 
-## Tests
+## ⚗️ Tests
 
 La suite est en `unittest`, donc elle tourne sans rien installer :
 
@@ -626,7 +689,7 @@ La CI rejoue tout ça sur Linux, Windows et macOS à chaque push et chaque pull
 request, vérifie qu'aucun doot ne s'affiche hors saison, et contrôle la syntaxe
 des quatre installeurs.
 
-## Comment ça marche
+## ⚙️ Comment ça marche
 
 | Fichier | Rôle |
 | --- | --- |
@@ -647,12 +710,12 @@ saison est toujours ouverte, affiche la salve du déclenchement (un seul doot pa
 défaut, sinon un nombre tiré entre `--burst-min` et `--burst-max`), recommence. Hors saison, il
 se contente de revérifier la date toutes les heures.
 
-## Licence
+## 📜 Licence
 
-Le **code** est sous licence MIT, ainsi que l'ASCII art et le jingle synthétisé,
-qui sont originaux.
+Le **code** est sous licence MIT, ainsi que l'ASCII art, le jingle synthétisé,
+la fanfare de succès, le logo et les badges illustrés, qui sont originaux.
 
-Les fichiers de `doot/assets/` sont l'exception : le mème *skull trumpet* n'est
-pas de moi et n'est pas couvert par la licence MIT du projet. Il est inclus par
-commodité ; retire-le si ton usage l'exige, et les médias que tu ajoutes toi-même
-restent soumis à leurs propres droits.
+Les médias historiques dérivés du mème *skull trumpet* (`doot.png`, `doot.mp3`
+et `doot-note.wav`) sont l'exception : ils ne sont pas couverts par la licence
+MIT du projet. Ils sont inclus par commodité ; retire-les si ton usage l'exige,
+et les médias que tu ajoutes toi-même restent soumis à leurs propres droits.

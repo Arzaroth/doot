@@ -37,10 +37,16 @@ class CliTestCase(unittest.TestCase):
             "state": root / "state.json",
         }
         self.shown = []
+        self.notifications = []
 
         patches = [
             mock.patch.object(cli, "paths", lambda: self.paths),
             mock.patch.object(window, "show", lambda **kwargs: self.shown.append(kwargs)),
+            mock.patch.object(
+                cli.notification,
+                "show",
+                lambda *args, **kwargs: self.notifications.append({"args": args, **kwargs}),
+            ),
         ]
         for patch in patches:
             patch.start()
@@ -495,8 +501,55 @@ class CommandesInformatives(CliTestCase):
         self.assertEqual(self.run_cli("--art"), 0)
         self.assertEqual(self.shown, [])
 
+    def test_succes(self):
+        self.assertEqual(self.run_cli("--achievements"), 0)
+        self.assertEqual(self.run_cli("--succes"), 0)
+        self.assertEqual(self.shown, [])
+
     def test_stop_sans_daemon(self):
         self.assertEqual(self.run_cli("--stop"), 1)
+
+
+class NotificationsDeSucces(CliTestCase):
+    """Une medaille illustree suit chaque deblocage, sans jamais casser doot."""
+
+    def setUp(self):
+        super().setUp()
+        patch = mock.patch.object(season, "in_season", lambda now=None: True)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_premier_succes_affiche_son_badge(self):
+        self.assertEqual(self.run_cli("--once", "--no-sound"), 0)
+        self.assertEqual(len(self.notifications), 1)
+        toast = self.notifications[0]
+        self.assertEqual(toast["args"][0], "Premier souffle")
+        self.assertEqual(toast["args"][2], 5)
+        self.assertEqual(toast["badge_path"].name, "premier_doot.png")
+        self.assertIsNone(toast["wav_path"])
+
+    def test_un_succes_n_est_pas_remontre(self):
+        self.run_cli("--once", "--no-sound")
+        self.run_cli("--once", "--no-sound")
+        self.assertEqual(len(self.notifications), 1)
+
+    def test_la_fanfare_rtttl_accompagne_le_toast(self):
+        rendue = Path(self._dir.name) / "victory-parade.wav"
+        with mock.patch.object(cli.notification, "render_victory", return_value=rendue) as render:
+            self.run_cli("--once")
+        render.assert_called_once_with(self.paths["data"] / "victory-parade.wav")
+        self.assertEqual(self.notifications[0]["wav_path"], rendue)
+
+    def test_no_sound_coupe_aussi_la_fanfare(self):
+        with mock.patch.object(cli.notification, "render_victory") as render:
+            self.run_cli("--once", "--no-sound")
+        render.assert_not_called()
+        self.assertIsNone(self.notifications[0]["wav_path"])
+
+    def test_un_toast_en_echec_ne_fait_pas_echouer_le_doot(self):
+        with mock.patch.object(cli.notification, "show", side_effect=RuntimeError("pas de toast")):
+            self.assertEqual(self.run_cli("--once", "--no-sound"), 0)
+        self.assertIn("notification de succes indisponible", self.paths["log"].read_text())
 
 
 class FauxKernel32:

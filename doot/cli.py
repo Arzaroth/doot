@@ -12,7 +12,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import __version__, art, image, season, sound
+from . import __version__, art, image, notification, season, sound, succes
 
 DEFAULT_MIN_SECONDS = 600     # 10 min
 DEFAULT_MAX_SECONDS = 3600    # 1 h
@@ -276,20 +276,31 @@ def emit_doots(args, journal: bool = False) -> int:
     total = burst_size(args)
     plan = formation_plan(args, total)
     joues = 0
-    for index in range(1, total + 1):
-        if index > 1:
-            if args.burst_delay > 0:
-                time.sleep(args.burst_delay)
-            if not args.ignore_season and not season.in_season():
-                if journal:
-                    log("la saison s'est fermee pendant la salve.", quiet=args.quiet)
-                break
-        wav, picture, duration = resolve_media(args)
-        window.show(wav_path=wav, duration=duration, image_path=picture,
-                    **display_options(args, plan[index - 1]))
-        joues += 1
-        if journal:
-            log("doot !" if total == 1 else f"doot {index}/{total} !", quiet=args.quiet)
+    try:
+        for index in range(1, total + 1):
+            if index > 1:
+                if args.burst_delay > 0:
+                    time.sleep(args.burst_delay)
+                if not args.ignore_season and not season.in_season():
+                    if journal:
+                        log("la saison s'est fermee pendant la salve.", quiet=args.quiet)
+                    break
+            wav, picture, duration = resolve_media(args)
+            window.show(wav_path=wav, duration=duration, image_path=picture,
+                        **display_options(args, plan[index - 1]))
+            joues += 1
+            if journal:
+                log("doot !" if total == 1 else f"doot {index}/{total} !", quiet=args.quiet)
+    finally:
+        if joues:
+            note_succes(
+                args,
+                "doots",
+                quantite=joues,
+                formation=args.formation,
+                spin=args.spin,
+                bord=args.side,
+            )
     return joues
 
 
@@ -331,11 +342,12 @@ def do_play(args, wanted: str) -> int:
         return 2
 
     emit_melodie(args, morceau)
+    note_melodie_jouee(args, fichier, morceau)
     return 0
 
 
 def read_state() -> dict:
-    """L'etat garde entre deux lancements. Vide si illisible : rien n'en depend.
+    """L'etat garde entre deux lancements. Vide si illisible pour ne jamais bloquer.
 
     Un JSON syntaxiquement valide n'est pas un etat valide : le fichier se
     modifie a la main, et une racine qui n'est pas un objet ferait echouer
@@ -362,12 +374,82 @@ def state_compteur(etat: dict, cle: str) -> int:
 
 
 def write_state(state: dict) -> None:
+    temporaire = None
     try:
         chemin = paths()["state"]
         chemin.parent.mkdir(parents=True, exist_ok=True)
-        chemin.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        temporaire = chemin.with_name(f".{chemin.name}.{os.getpid()}.tmp")
+        temporaire.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        os.replace(temporaire, chemin)
     except Exception:
         pass
+    finally:
+        if temporaire is not None:
+            try:
+                temporaire.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
+
+
+def note_succes(args, evenement: str, **details) -> None:
+    """Persiste un evenement et annonce seulement les nouveaux succes."""
+
+    etat = read_state()
+    nouveaux = succes.enregistrer(etat, evenement, **details)
+    write_state(etat)
+    wav = notification_sound(args) if nouveaux else None
+    for definition in nouveaux:
+        log(
+            f"SUCCES DEBLOQUE : {definition.titre} (+{definition.points} points) - "
+            f"{definition.description}",
+            quiet=args.quiet,
+        )
+        try:
+            notification.show(
+                definition.titre,
+                definition.description,
+                definition.points,
+                badge_path=succes.badge(definition),
+                wav_path=wav,
+            )
+        except Exception as exc:
+            log(f"notification de succes indisponible : {exc}", quiet=args.quiet)
+
+
+def notification_sound(args) -> Path | None:
+    """Micro-fanfare RTTTL, muette avec --no-sound et repliee sur le doot."""
+
+    if args.no_sound:
+        return None
+    try:
+        return notification.render_victory(paths()["data"] / "victory-parade.wav")
+    except Exception as exc:
+        log(f"fanfare de succes indisponible ({exc}), repli sur le doot.", quiet=args.quiet)
+        try:
+            p = paths()
+            return sound.pick_sound(p["wav"], p["sound"], args.volume)
+        except Exception:
+            return None
+
+
+def note_melodie_jouee(args, fichier: Path, morceau) -> None:
+    """Enregistre une melodie seulement apres son affichage reussi."""
+
+    from . import melodie
+
+    try:
+        fournie = fichier.resolve().parent == melodie.MELODIES_DIR.resolve()
+    except OSError:
+        fournie = False
+    note_succes(
+        args,
+        "melodie",
+        nom=fichier.stem,
+        fournie=fournie,
+        voix=len(morceau.voices),
+    )
 
 
 def melody_due(depuis: int, chance: float, pity: int, rng=random) -> bool:
@@ -437,6 +519,7 @@ def emit_melodie_tiree(args, fichier, journal: bool = False) -> bool:
         return False
 
     emit_melodie(args, morceau)
+    note_melodie_jouee(args, fichier, morceau)
     if journal:
         log(f"melodie : {morceau.name or fichier.stem} !", quiet=args.quiet)
     return True
@@ -498,6 +581,29 @@ def do_melodies(args) -> int:
                 detail = f"illisible : {exc}"
             print(f"  {fichier.stem:<28} {detail}")
     print("\nJouer : doot --play NOM   (ou un chemin vers un .rtttl)")
+    return 0
+
+
+def do_succes(args) -> int:
+    """Affiche le catalogue local, le score et la progression courante."""
+
+    etat = read_state()
+    acquis = succes.debloques(etat)
+    print(
+        f"Succes : {len(acquis)}/{len(succes.CATALOGUE)} debloques - "
+        f"{succes.score(etat)} points"
+    )
+    for definition in succes.CATALOGUE:
+        courant, objectif = succes.progression(etat, definition)
+        if definition.identifiant in acquis:
+            marque = "[x]"
+            detail = f"debloque le {acquis[definition.identifiant]}"
+        else:
+            marque = "[ ]"
+            detail = f"progression {courant}/{objectif}"
+        print(f"  {marque} {definition.titre} (+{definition.points})")
+        print(f"      {definition.description}  {detail}")
+    print(f"\nProgression locale : {paths()['state']}")
     return 0
 
 
@@ -585,6 +691,9 @@ def do_status(args) -> int:
     print(f"  etat        : {season.describe()}")
     print(f"  daemon      : {'actif (pid ' + str(pid) + ')' if pid else 'arrete'}")
     print(f"  donnees     : {p['data']}")
+    etat = read_state()
+    print(f"  succes      : {len(succes.debloques(etat))}/{len(succes.CATALOGUE)}, "
+          f"{succes.score(etat)} points")
 
     sounds = sound.custom_sounds(p["sound"])
     if sounds:
@@ -721,6 +830,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rickroll", action="store_true",
                         help="raccourci de --play rickroll")
     parser.add_argument("--melodies", action="store_true", help="liste les melodies jouables")
+    parser.add_argument("--achievements", "--succes", dest="succes", action="store_true",
+                        help="liste les succes locaux, leur score et leur progression")
     parser.add_argument("--transpose", type=int, default=0, metavar="DEMI-TONS",
                         help="decale la melodie de N demi-tons, en plus du recentrage "
                              "automatique sur la hauteur du doot (defaut 0)")
@@ -850,6 +961,8 @@ def main(argv: list[str] | None = None) -> int:
         return do_art(args)
     if args.melodies:
         return do_melodies(args)
+    if args.succes:
+        return do_succes(args)
 
     try:
         if args.play or args.rickroll:

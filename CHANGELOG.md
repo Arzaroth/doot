@@ -12,6 +12,21 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.15.0] - 2026-09-17
+
+### Ajouté
+
+- Quatorze succès locaux suivent les doots, salves, mélodies, formations et jours
+  actifs sans télémétrie. `doot --achievements` (ou `--succes`) affiche les succès,
+  leur progression et un score sur 375 points, conservés dans `state.json`. Chaque
+  déblocage affiche son badge illustré et joue une micro-fanfare RTTTL à deux voix ;
+  `--no-sound` conserve le toast sans le son.
+
+### Modifié
+
+- Le README prend des airs de grimoire d'Halloween et accueille un logo original
+  assorti aux badges de succès.
+
 ## [1.14.0] - 2026-09-16
 
 ### Ajouté
@@ -584,7 +599,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.14.0...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.15.0...HEAD
+[1.15.0]: https://github.com/boubou666/doot/compare/v1.14.0...v1.15.0
 [1.14.0]: https://github.com/boubou666/doot/compare/v1.13.1...v1.14.0
 [1.13.1]: https://github.com/boubou666/doot/compare/v1.13.0...v1.13.1
 [1.13.0]: https://github.com/boubou666/doot/compare/v1.12.0...v1.13.0
