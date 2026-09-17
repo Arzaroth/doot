@@ -195,7 +195,7 @@ il avait été installé, puis rejoue l'installeur avec les mêmes réglages. Le
 daemon est arrêté le temps de l'opération et redémarré derrière.
 
 Deux façons de récupérer le code, dans cet ordre : si le dépôt cloné est
-toujours là, un `git pull --ff-only` ; sinon l'archive de la branche
+toujours là, un `git pull --ff-only origin main` ; sinon l'archive de la branche
 principale est téléchargée depuis GitHub. La seconde voie ne demande ni git ni
 le clone d'origine, donc une installation dont tu as effacé le dossier depuis
 se met à jour quand même.

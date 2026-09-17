@@ -169,11 +169,15 @@ class ChoixDeLaVoie(UpdateTestCase):
         (depot / ".git").mkdir(parents=True)
         faux = mock.Mock(returncode=0, stdout="", stderr="")
         with mock.patch.object(update.shutil, "which", lambda n: "/usr/bin/git"), \
-             mock.patch.object(update.subprocess, "run", return_value=faux):
+             mock.patch.object(update.subprocess, "run", return_value=faux) as lance:
             source, voie = update.refresh_source({"source": str(depot)}, self.root,
                                                  verbose=lambda *a: None)
         self.assertEqual(voie, "git pull")
         self.assertEqual(source, depot)
+        lance.assert_called_once_with(
+            ["git", "-C", str(depot), "pull", "--ff-only", "origin", "main"],
+            capture_output=True, text=True, timeout=120,
+        )
 
     def test_git_en_echec_bascule_sur_l_archive(self):
         depot = self.root / "clone"

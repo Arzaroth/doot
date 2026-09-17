@@ -12,6 +12,13 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.18.1] - 2026-09-17
+
+### Corrigé
+- `doot --update` tire maintenant explicitement `origin/main` au lieu de la
+  branche laissée checkoutée dans le dépôt source, afin de ne plus annoncer une
+  mise à jour réussie tout en réinstallant une ancienne version.
+
 ## [1.18.0] - 2026-09-17
 
 ### Ajouté
@@ -683,7 +690,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.18.0...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.18.1...HEAD
+[1.18.1]: https://github.com/boubou666/doot/compare/v1.18.0...v1.18.1
 [1.18.0]: https://github.com/boubou666/doot/compare/v1.17.1...v1.18.0
 [1.17.1]: https://github.com/boubou666/doot/compare/v1.17.0...v1.17.1
 [1.17.0]: https://github.com/boubou666/doot/compare/v1.16.0...v1.17.0
