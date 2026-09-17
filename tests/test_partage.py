@@ -112,7 +112,7 @@ class Lectures(unittest.TestCase):
             self.depose("fixe.json", {"machine": "fixe", "stats": {}}),
         ]
         lectures = partage.lire_parts(etat, fichiers)
-        refus = {lecture.chemin.name: lecture.refus for lecture in lectures}
+        refus = {lecture.nom: lecture.refus for lecture in lectures}
         self.assertIn("illisible", refus["casse.json"])
         self.assertIn("pas un etat doot", refus["liste.json"])
         self.assertIn("cette machine", refus["moi.json"])
@@ -135,3 +135,131 @@ class Lectures(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Coffre(unittest.TestCase):
+    """La cle, l'enveloppe, et le nom des objets."""
+
+    def test_la_cle_fait_l_aller_retour(self):
+        from doot import coffre
+        cle = coffre.creer()
+        self.assertEqual(coffre.depuis_texte(coffre.en_texte(cle)), cle)
+        self.assertTrue(coffre.en_texte(cle).startswith(coffre.PREFIXE))
+
+    def test_une_cle_de_travers_est_refusee(self):
+        from doot import coffre
+        for texte in ("", "bonjour", "dootsync1", "dootsync1aaaa"):
+            with self.subTest(cle=texte):
+                with self.assertRaises(coffre.CoffreError):
+                    coffre.depuis_texte(texte)
+
+    def test_le_nom_d_objet_est_stable_et_opaque(self):
+        from doot import coffre
+        cle = coffre.creer()
+        self.assertEqual(coffre.nom_objet(cle, "abc"), coffre.nom_objet(cle, "abc"))
+        self.assertNotIn("abc", coffre.nom_objet(cle, "abc"))
+        self.assertNotEqual(coffre.nom_objet(cle, "abc"),
+                            coffre.nom_objet(coffre.creer(), "abc"))
+
+    def test_les_copies_de_conflit_ne_sont_pas_des_objets(self):
+        from doot import coffre
+        cle = coffre.creer()
+        vrai = coffre.nom_objet(cle, "abc")
+        self.assertTrue(coffre.est_un_objet(vrai))
+        for faux in (vrai[:-9] + ".sync-conflict-20260918.dootsync",
+                     vrai + ".tmp", "notes.txt", "zz" + vrai[2:]):
+            with self.subTest(nom=faux):
+                self.assertFalse(coffre.est_un_objet(faux))
+
+    def test_l_enveloppe_se_rouvre(self):
+        from doot import coffre
+        cle = coffre.creer()
+        clair = b'{"machine": "abc"}' * 40
+        scelle = coffre.fermer(cle, clair)
+        self.assertEqual(coffre.ouvrir(cle, scelle), clair)
+        self.assertLess(len(scelle), len(clair), "le gzip doit servir")
+
+    def test_une_autre_cle_est_reconnue_avant_de_dechiffrer(self):
+        from doot import coffre
+        scelle = coffre.fermer(coffre.creer(), b"x")
+        with self.assertRaisesRegex(coffre.CoffreError, "autre cle"):
+            coffre.ouvrir(coffre.creer(), scelle)
+
+    def test_un_octet_retourne_est_refuse(self):
+        from doot import coffre
+        cle = coffre.creer()
+        scelle = bytearray(coffre.fermer(cle, b"charge"))
+        scelle[-1] ^= 1
+        with self.assertRaisesRegex(coffre.CoffreError, "abimee|falsifiee"):
+            coffre.ouvrir(cle, bytes(scelle))
+
+    def test_ce_qui_n_est_pas_une_enveloppe_est_refuse(self):
+        from doot import coffre
+        with self.assertRaises(coffre.CoffreError):
+            coffre.ouvrir(coffre.creer(), b"pas une enveloppe du tout")
+
+
+class TransportDossier(unittest.TestCase):
+    def setUp(self):
+        dossier = tempfile.TemporaryDirectory()
+        self.addCleanup(dossier.cleanup)
+        self.racine = Path(dossier.name)
+
+    def test_les_quatre_gestes(self):
+        from doot import coffre, transport
+        depot = transport.Dossier(self.racine)
+        nom = coffre.nom_objet(coffre.creer(), "abc")
+        self.assertEqual(depot.lister(), [])
+        depot.deposer(nom, b"charge")
+        self.assertEqual([o.nom for o in depot.lister()], [nom])
+        self.assertEqual(depot.reprendre(depot.lister()[0]), b"charge")
+        depot.effacer(nom)
+        self.assertEqual(depot.lister(), [])
+
+    def test_seuls_les_objets_sont_listes(self):
+        from doot import coffre, transport
+        depot = transport.Dossier(self.racine)
+        nom = coffre.nom_objet(coffre.creer(), "abc")
+        depot.deposer(nom, b"x")
+        (depot.racine / "notes.txt").write_bytes(b"x")
+        (depot.racine / f"{nom[:-9]}.sync-conflict-20260918.dootsync").write_bytes(b"x")
+        self.assertEqual([o.nom for o in depot.lister()], [nom])
+
+    def test_l_ecriture_ne_laisse_pas_de_tampon(self):
+        from doot import coffre, transport
+        depot = transport.Dossier(self.racine)
+        depot.deposer(coffre.nom_objet(coffre.creer(), "abc"), b"x")
+        self.assertEqual([p.name for p in depot.racine.iterdir() if p.name.startswith(".")], [])
+
+
+class SignatureS3(unittest.TestCase):
+    """Les trois etages de la signature version 4."""
+
+    def signeur(self):
+        from doot import transport
+        return transport.S3("https://s3.us-east-1.amazonaws.com", "us-east-1", "doots",
+                            cle_acces="AKIAIOSFODNN7EXAMPLE",
+                            secret="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+
+    def test_les_en_tetes_signes_sont_ceux_attendus(self):
+        entetes, _ = self.signeur()._signer("GET", "/doots", {}, b"")
+        self.assertEqual(sorted(n for n in entetes if n != "Authorization"),
+                         ["host", "x-amz-content-sha256", "x-amz-date"])
+
+    def test_la_charge_entre_dans_la_signature(self):
+        signeur = self.signeur()
+        vide, _ = signeur._signer("PUT", "/doots/x", {}, b"")
+        plein, _ = signeur._signer("PUT", "/doots/x", {}, b"charge")
+        self.assertNotEqual(vide["x-amz-content-sha256"], plein["x-amz-content-sha256"])
+
+    def test_la_requete_entre_dans_la_signature(self):
+        signeur = self.signeur()
+        sans, _ = signeur._signer("GET", "/doots", {}, b"")
+        avec, query = signeur._signer("GET", "/doots", {"list-type": "2"}, b"")
+        self.assertEqual(query, "list-type=2")
+        self.assertNotEqual(sans["Authorization"], avec["Authorization"])
+
+    def test_la_portee_porte_region_et_service(self):
+        entetes, _ = self.signeur()._signer("GET", "/doots", {}, b"")
+        portee = entetes["Authorization"].split("Credential=")[1].split(",")[0]
+        self.assertIn("/us-east-1/s3/aws4_request", portee)

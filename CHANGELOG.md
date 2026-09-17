@@ -13,6 +13,24 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 ## [Non publié]
 
 ### Ajouté
+- Le partage des succès traverse désormais un stockage qu'on ne contrôle pas :
+  chaque poste publie un objet **chiffré** (ChaCha20-Poly1305), nommé par un
+  `HMAC(clé, identité)` pour que l'hébergeur ne puisse pas le relier à une
+  machine. Une seule clé symétrique, recopiée d'un poste à l'autre par
+  `doot --sync-join`, sans révocation et en le disant.
+- Un **seau compatible S3** comme dépôt, R2, MinIO et B2 compris, signé en
+  SigV4 sans SDK : `doot --sync-init s3://seau/prefixe --sync-endpoint URL`.
+- `--sync-force` frappe une clé neuve, `--sync-endpoint` et `--sync-region`
+  décrivent le seau.
+
+### Modifié
+- Les objets sont écrits **atomiquement** et nommés strictement, ce qui écarte
+  les copies de conflit qu'un outil de synchronisation laisse derrière lui et
+  évite qu'un pair lise un fichier à moitié écrit.
+- Les réglages du partage, clé comprise, vivent dans `replica.json` et non dans
+  `state.json`, que la documentation invite à sauvegarder et à copier.
+
+### Ajouté
 - `doot --sync-init CHEMIN` : le démon publie ses succès et relit ceux des
   autres machines à chaque doot, par un dossier partagé. Une panne du dossier
   n'interrompt jamais un doot, elle se lit dans `doot --succes`.
