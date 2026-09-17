@@ -30,6 +30,13 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 - Les réglages du partage, clé comprise, vivent dans `replica.json` et non dans
   `state.json`, que la documentation invite à sauvegarder et à copier.
 
+## [1.17.1] - 2026-09-17
+
+### Corrigé
+- La molette et les trackpads font maintenant défiler la galerie des commandes
+  et les réglages, même lorsque le pointeur survole un bouton, un libellé ou un
+  champ enfant.
+
 ## [1.17.0] - 2026-09-17
 
 ### Ajouté
@@ -671,7 +678,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.17.0...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.17.1...HEAD
+[1.17.1]: https://github.com/boubou666/doot/compare/v1.17.0...v1.17.1
 [1.17.0]: https://github.com/boubou666/doot/compare/v1.16.0...v1.17.0
 [1.16.0]: https://github.com/boubou666/doot/compare/v1.15.0...v1.16.0
 [1.15.0]: https://github.com/boubou666/doot/compare/v1.14.0...v1.15.0

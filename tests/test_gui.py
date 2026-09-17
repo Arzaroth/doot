@@ -91,6 +91,44 @@ class EntreeCli(unittest.TestCase):
         lancer.assert_called_once_with()
 
 
+class DefilementGraphique(unittest.TestCase):
+    class Widget:
+        def __init__(self, master=None):
+            self.master = master
+
+    class Canvas(Widget):
+        def __init__(self, master=None):
+            super().__init__(master)
+            self.scrolls = []
+
+        def yview_scroll(self, amount, units):
+            self.scrolls.append((amount, units))
+
+    def test_les_petites_valeurs_de_trackpad_ne_sont_pas_perdues(self):
+        self.assertEqual(gui.wheel_units(1), -1)
+        self.assertEqual(gui.wheel_units(-1), 1)
+        self.assertEqual(gui.wheel_units(240), -2)
+
+    def test_la_molette_sur_un_widget_enfant_fait_defiler_son_canevas(self):
+        canvas = self.Canvas()
+        enfant = self.Widget(self.Widget(canvas))
+        app = gui.DootApp.__new__(gui.DootApp)
+        app.wheel_canvases = [canvas]
+        event = mock.Mock(widget=enfant, delta=-120, num=0)
+
+        self.assertEqual(app._dispatch_wheel(event), "break")
+        self.assertEqual(canvas.scrolls, [(1, "units")])
+
+    def test_la_molette_hors_des_zones_defilables_est_ignoree(self):
+        canvas = self.Canvas()
+        app = gui.DootApp.__new__(gui.DootApp)
+        app.wheel_canvases = [canvas]
+        event = mock.Mock(widget=self.Widget(), delta=-120, num=0)
+
+        self.assertIsNone(app._dispatch_wheel(event))
+        self.assertEqual(canvas.scrolls, [])
+
+
 class ParametresFacultatifs(unittest.TestCase):
     """Un dossier local ne doit pas reclamer les reglages d'un seau."""
 
