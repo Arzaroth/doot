@@ -6,7 +6,7 @@ rafraichir la source puis rejouer l'installeur avec les memes reglages.
 
 Deux facons de rafraichir la source, dans cet ordre :
 
-  1. si le depot clone est toujours la, `git pull --ff-only` ;
+  1. si le depot clone est toujours la, `git pull --ff-only origin main` ;
   2. sinon, l'archive de la branche principale est telechargee depuis GitHub
      et depliee dans un dossier temporaire.
 
@@ -170,7 +170,7 @@ def refresh_source(fiche: dict, travail: Path, verbose=print) -> tuple[Path, str
         if (depot / ".git").exists() and shutil.which("git"):
             verbose(f"  source      : {depot} (depot git)")
             out = subprocess.run(
-                ["git", "-C", str(depot), "pull", "--ff-only"],
+                ["git", "-C", str(depot), "pull", "--ff-only", "origin", BRANCHE],
                 capture_output=True, text=True, timeout=120,
             )
             if out.returncode == 0:
