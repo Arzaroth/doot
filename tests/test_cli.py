@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
-from doot import cli, season, window
+from doot import cli, partage, season, window
 
 
 class CliTestCase(unittest.TestCase):
@@ -39,6 +39,8 @@ class CliTestCase(unittest.TestCase):
         self.shown = []
         self.notifications = []
 
+        partage._connues.clear()
+        self.addCleanup(partage._connues.clear)
         patches = [
             mock.patch.object(cli, "paths", lambda: self.paths),
             mock.patch.object(window, "show", lambda **kwargs: self.shown.append(kwargs)),
@@ -46,6 +48,13 @@ class CliTestCase(unittest.TestCase):
                 cli.notification,
                 "show",
                 lambda *args, **kwargs: self.notifications.append({"args": args, **kwargs}),
+            ),
+            # Sans ce faux, tout test qui debloque plusieurs succes d'un coup
+            # ouvre une vraie carte et attend qu'elle s'efface.
+            mock.patch.object(
+                cli.notification,
+                "show_lot",
+                lambda *args, **kwargs: self.notifications.append({"lot": args, **kwargs}),
             ),
         ]
         for patch in patches:
@@ -1079,6 +1088,7 @@ class MelodieAuHasard(CliTestCase):
                 cli.write_state({"depuis_melodie": 5})
                 appels = []
                 sommeils = []
+                tours = []
 
                 def dors(_duree):
                     sommeils.append(1)
@@ -1098,12 +1108,268 @@ class MelodieAuHasard(CliTestCase):
                         mock.patch.object(cli, "emit_doots",
                                           lambda a, journal=False: appels.append("doots")), \
                         mock.patch.object(cli, "emit_melodie_tiree", joue_melodie), \
+                        mock.patch.object(cli, "sync_tour",
+                                          lambda a: tours.append(True)), \
                         mock.patch.object(cli.time, "sleep", dors):
                     self.run_cli("--ignore-season", "--quiet")
 
                 self.assertEqual(appels, [attendu])
                 etat = json.loads(self.paths["state"].read_text(encoding="utf-8"))
                 self.assertEqual(etat["depuis_melodie"], compteur)
+                self.assertEqual(tours, [True],
+                                 "le daemon doit jouer un tour de synchronisation")
+
+
+class ExportEtFusion(CliTestCase):
+    """Les deux commandes qui font converger des postes, sans serveur."""
+
+    def poste(self, nom, doots, **details):
+        from doot import succes
+        etat = {"machine": nom}
+        for _ in range(doots):
+            succes.enregistrer(etat, "doots", datetime(2026, 9, 17, 12, 0),
+                               quantite=1, **details)
+        return etat
+
+    def depose(self, nom, contenu):
+        chemin = Path(self._dir.name) / "partage" / nom
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        chemin.write_text(json.dumps(contenu), encoding="utf-8")
+        return chemin
+
+    def test_export_vers_un_dossier_nomme_d_apres_la_machine(self):
+        from doot import succes
+        cible = Path(self._dir.name) / "partage"
+        cible.mkdir()
+        self.assertEqual(self.run_cli("--export", str(cible)), 0)
+        fichiers = list(cible.glob("*.json"))
+        self.assertEqual(len(fichiers), 1)
+        contenu = json.loads(fichiers[0].read_text(encoding="utf-8"))
+        self.assertEqual(fichiers[0].name, f"doot-{contenu['machine']}.json")
+
+    def test_l_export_laisse_les_compteurs_de_pitie_derriere_lui(self):
+        """Ils decrivent le rythme d'un poste, pas ce qui y a ete accompli."""
+        cli.write_state({"depuis_melodie": 7, "depuis_evenement": 3,
+                         "stats": {"doots": {"ici": 4}}})
+        cible = Path(self._dir.name) / "part.json"
+        self.run_cli("--export", str(cible))
+        contenu = json.loads(cible.read_text(encoding="utf-8"))
+        self.assertEqual(set(contenu), {"machine", "stats", "succes"})
+
+    def test_l_identifiant_de_machine_survit_a_l_export(self):
+        cible = Path(self._dir.name) / "part.json"
+        self.run_cli("--export", str(cible))
+        premier = json.loads(cible.read_text(encoding="utf-8"))["machine"]
+        self.run_cli("--export", str(cible))
+        self.assertEqual(json.loads(cible.read_text(encoding="utf-8"))["machine"], premier)
+
+    def test_la_fusion_additionne_et_debloque(self):
+        from doot import succes
+        cli.write_state(self.poste("ici", 60))
+        self.depose("fixe.json", self.poste("fixe", 60))
+        self.assertEqual(self.run_cli("--merge", str(Path(self._dir.name) / "partage")), 0)
+        etat = cli.read_state()
+        self.assertEqual(succes.total(etat, "doots"), 120)
+        self.assertIn("cent_doots", etat["succes"])
+
+    def test_refaire_la_fusion_ne_change_rien(self):
+        from doot import succes
+        cli.write_state(self.poste("ici", 60))
+        dossier = str(Path(self._dir.name) / "partage")
+        self.depose("fixe.json", self.poste("fixe", 60))
+        self.run_cli("--merge", dossier)
+        self.run_cli("--merge", dossier)
+        self.assertEqual(succes.total(cli.read_state(), "doots"), 120)
+
+    def test_son_propre_fichier_est_reconnu_et_saute(self):
+        from doot import succes
+        etat = self.poste("ici", 10)
+        cli.write_state(etat)
+        ici = cli.read_state()["machine"]
+        self.depose("moi.json", {"machine": ici, "stats": {"doots": {ici: 999}}})
+        self.assertEqual(self.run_cli("--merge", str(Path(self._dir.name) / "partage")), 2)
+        self.assertEqual(succes.total(cli.read_state(), "doots"), 10)
+
+    def test_un_etat_sans_machine_est_refuse_sans_rien_casser(self):
+        from doot import succes
+        cli.write_state(self.poste("ici", 10))
+        self.depose("anonyme.json", {"stats": {"doots": 999}})
+        self.assertEqual(self.run_cli("--merge", str(Path(self._dir.name) / "partage")), 2)
+        self.assertEqual(succes.total(cli.read_state(), "doots"), 10)
+
+    def test_un_fichier_illisible_n_arrete_pas_les_autres(self):
+        from doot import succes
+        cli.write_state(self.poste("ici", 10))
+        dossier = Path(self._dir.name) / "partage"
+        dossier.mkdir(parents=True, exist_ok=True)
+        (dossier / "casse.json").write_text("ceci n'est pas du json", encoding="utf-8")
+        self.depose("fixe.json", self.poste("fixe", 5))
+        self.assertEqual(self.run_cli("--merge", str(dossier)), 0)
+        self.assertEqual(succes.total(cli.read_state(), "doots"), 15)
+
+    def test_rien_a_fusionner_sort_en_2(self):
+        dossier = Path(self._dir.name) / "vide"
+        dossier.mkdir()
+        self.assertEqual(self.run_cli("--merge", str(dossier)), 2)
+
+
+class SynchronisationAutomatique(CliTestCase):
+    """Le cycle que le daemon joue a chaque doot : publier, relire, fusionner."""
+
+    def poste(self, nom, doots):
+        from doot import succes
+        etat = {"machine": nom}
+        for _ in range(doots):
+            succes.enregistrer(etat, "doots", datetime(2026, 9, 17, 12, 0), quantite=1)
+        return etat
+
+    def dossier(self):
+        return Path(self._dir.name) / "partage"
+
+    def depose(self, etat):
+        cible = self.dossier()
+        cible.mkdir(parents=True, exist_ok=True)
+        (cible / f"doot-{etat['machine']}.json").write_text(
+            json.dumps(partage.part_exportable(etat)), encoding="utf-8")
+
+    def args_daemon(self):
+        return cli.build_parser().parse_args(["--quiet"])
+
+    def test_sans_dossier_configure_le_tour_ne_fait_rien(self):
+        cli.write_state(self.poste("ici", 10))
+        cli.sync_tour(self.args_daemon())
+        self.assertNotIn("sync_note", cli.read_state())
+
+    def test_le_cycle_publie_puis_fusionne(self):
+        from doot import succes
+        etat = self.poste("ici", 60)
+        etat["sync"] = str(self.dossier())
+        self.depose(self.poste("fixe", 60))
+        partage.cycle(etat)
+        self.assertEqual(succes.total(etat, "doots"), 120)
+        self.assertTrue((self.dossier() / "doot-ici.json").is_file())
+        self.assertEqual(etat["sync_note"]["pairs"], 1)
+
+    def test_un_dossier_impossible_ne_leve_jamais(self):
+        """Un doot ne doit pas dependre de la synchronisation.
+
+        Le chemin barre par un fichier vaut sur les trois systemes, la ou un
+        `/proc/...` ne barrait que Linux.
+        """
+        from doot import succes
+        bloque = Path(self._dir.name) / "bloque"
+        bloque.write_text("je ne suis pas un dossier", encoding="utf-8")
+
+        etat = self.poste("ici", 10)
+        etat["sync"] = str(bloque / "dedans")
+        self.assertEqual(partage.cycle(etat), [])
+        self.assertIn("erreur", etat["sync_note"])
+        self.assertEqual(succes.total(etat, "doots"), 10)
+
+    def test_le_tour_est_idempotent(self):
+        from doot import succes
+        etat = self.poste("ici", 60)
+        etat["sync"] = str(self.dossier())
+        cli.write_state(etat)
+        self.depose(self.poste("fixe", 60))
+        for _ in range(3):
+            cli.sync_tour(self.args_daemon())
+        self.assertEqual(succes.total(cli.read_state(), "doots"), 120)
+
+    def test_ce_qu_un_poste_a_appris_se_transmet(self):
+        """Deux machines jamais reveillees ensemble se rejoignent par une troisieme."""
+        from doot import succes
+        relais = self.poste("relais", 0)
+        relais["sync"] = str(self.dossier())
+        self.depose(self.poste("portable", 40))
+        partage.cycle(relais)
+
+        fixe = self.poste("fixe", 5)
+        fixe["sync"] = str(self.dossier())
+        partage.cycle(fixe)
+        self.assertEqual(succes.total(fixe, "doots"), 45,
+                         "le fixe doit recevoir le portable par le relais")
+
+    def test_sync_init_retient_le_dossier_et_publie(self):
+        cli.write_state(self.poste("ici", 10))
+        self.assertEqual(self.run_cli("--sync-init", str(self.dossier())), 0)
+        etat = cli.read_state()
+        self.assertEqual(etat["sync"], str(self.dossier()))
+        self.assertTrue(list(self.dossier().glob("doot-*.json")))
+
+    def test_sync_init_off_coupe_tout(self):
+        cli.write_state(self.poste("ici", 10))
+        self.run_cli("--sync-init", str(self.dossier()))
+        self.assertEqual(self.run_cli("--sync-init", "off"), 0)
+        etat = cli.read_state()
+        self.assertNotIn("sync", etat)
+        self.assertNotIn("sync_note", etat)
+
+    def test_la_fusion_automatique_annonce_ses_succes(self):
+        cli.write_state({**self.poste("ici", 60), "sync": str(self.dossier())})
+        self.depose(self.poste("fixe", 60))
+        cli.sync_tour(self.args_daemon())
+        journal = self.paths["log"].read_text(encoding="utf-8")
+        self.assertIn("Cent-os", journal)
+        self.assertTrue(self.notifications, "un succes gagne par fusion vaut sa medaille")
+
+
+class AnnoncesGroupees(CliTestCase):
+    """Plusieurs succes tombes ensemble tiennent sur une seule carte."""
+
+    def args_quiet(self):
+        return cli.build_parser().parse_args(["--quiet"])
+
+    def succes_du_catalogue(self, combien):
+        from doot import succes
+        return list(succes.CATALOGUE[:combien])
+
+    def test_un_seul_succes_garde_sa_carte(self):
+        cli.annoncer_succes(self.args_quiet(), self.succes_du_catalogue(1))
+        self.assertEqual(len(self.notifications), 1)
+        self.assertIn("args", self.notifications[0], "carte simple attendue")
+
+    def test_plusieurs_succes_ne_font_qu_une_carte(self):
+        """Cinq cartes a la suite bloquaient le daemon dix-sept secondes."""
+        lot = self.succes_du_catalogue(5)
+        cli.annoncer_succes(self.args_quiet(), lot)
+        self.assertEqual(len(self.notifications), 1, "une carte, pas cinq")
+        carte = self.notifications[0]
+        self.assertIn("lot", carte, "carte groupee attendue")
+        titres, points = carte["lot"][0], carte["lot"][1]
+        self.assertEqual(titres, [item.titre for item in lot])
+        self.assertEqual(points, sum(item.points for item in lot))
+
+    def test_chaque_succes_garde_sa_ligne_de_journal(self):
+        lot = self.succes_du_catalogue(3)
+        cli.annoncer_succes(self.args_quiet(), lot)
+        journal = self.paths["log"].read_text(encoding="utf-8")
+        for definition in lot:
+            self.assertIn(definition.titre, journal)
+
+    def test_aucun_succes_n_annonce_rien(self):
+        cli.annoncer_succes(self.args_quiet(), [])
+        self.assertEqual(self.notifications, [])
+
+
+class IdentiteDeReplique(CliTestCase):
+    """L'etat charge porte l'identite du poste, jamais celle du fichier."""
+
+    def test_l_etat_charge_prend_l_identite_du_poste(self):
+        cli.write_state({"machine": "venue-d-ailleurs", "stats": {"doots": {"x": 5}}})
+        etat = cli.read_state()
+        self.assertNotEqual(etat["machine"], "venue-d-ailleurs")
+        self.assertEqual(etat["machine"], partage.identite(self.paths["data"]))
+
+    def test_les_parts_de_l_etat_copie_ne_sont_pas_perdues(self):
+        """Elles restent a la machine qui les a gagnees ; seules les suivantes
+        vont a la nouvelle identite."""
+        from doot import succes
+        cli.write_state({"machine": "venue-d-ailleurs", "stats": {"doots": {"souche": 10}}})
+        etat = cli.read_state()
+        succes.enregistrer(etat, "doots", datetime(2026, 9, 18), quantite=5)
+        self.assertEqual(succes.total(etat, "doots"), 15)
+        self.assertEqual(etat["stats"]["doots"]["souche"], 10)
 
 
 if __name__ == "__main__":

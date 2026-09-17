@@ -283,6 +283,58 @@ médaille mais coupe la fanfare. La commande affiche ensuite les succès acquis,
 objectifs encore verrouillés et leur progression. Le fichier reste du JSON lisible
 et peut être sauvegardé avec le reste du dossier de données.
 
+### Faire converger ses machines
+
+Les succès restent locaux, mais ils n'ont plus à rester sur une seule machine.
+Une fois pour toutes, sur chaque poste :
+
+```bash
+doot --sync-init ~/Sync/doot
+```
+
+Le démon publie alors sa part et relit celle des autres à chaque doot. Rien
+d'autre à lancer, et rien à surveiller : un dossier absent ou un disque plein
+laissent la progression locale intacte et l'ennui dans `doot --succes`, parce
+qu'un doot ne doit jamais dépendre de la synchronisation.
+
+Les deux commandes manuelles restent, pour un transfert ponctuel ou une clé
+USB :
+
+```bash
+doot --export ~/Sync/doot     # dépose doot-<machine>.json dans le dossier
+doot --merge  ~/Sync/doot     # fait entrer les autres machines dans celle-ci
+```
+
+Chaque poste écrit son propre fichier et lit ceux des autres, donc rien ne se
+marche dessus : un dossier Syncthing, un dépôt git ou une clé USB font aussi
+bien l'affaire. `--export` accepte aussi un fichier, ou `-` pour la sortie
+standard.
+
+Refaire la fusion ne change rien, et le sens n'importe pas. Chaque total est
+rangé en parts, une par machine, et fusionner prend le maximum part par part
+au lieu d'additionner ; les maxima se comparent, les ensembles s'unissent, et
+les dates de déblocage gardent la plus ancienne. Réunir deux machines peut
+franchir un objectif qu'aucune n'avait atteint seule : soixante doots ici et
+soixante là-bas débloquent *Cent-os*.
+
+Les compteurs de pitié ne voyagent pas : ils décrivent le rythme d'un poste,
+pas ce qui y a été accompli.
+
+L'identité de chaque poste vit dans `replica.json`, à côté de `state.json` mais
+pas dedans, parce que `state.json` se sauvegarde et se copie. Deux installations
+qui partageraient une identité verraient leurs progressions fusionnées par
+maximum au lieu d'être additionnées. Un dossier de données restauré ailleurs se
+voit donc attribuer une identité neuve : les parts déjà gagnées restent à la
+machine qui les a gagnées, les suivantes vont à la nouvelle.
+
+Ce qu'un poste publie porte aussi ce qu'il a appris des autres. Deux machines
+jamais allumées en même temps se rejoignent donc par l'intermédiaire d'une
+troisième, ce que les parts rendent sans danger puisque fusionner prend le
+maximum part par part, jamais une somme.
+
+C'est de la convergence entre tes machines, pas un classement : le fichier
+reste éditable, et rien ici ne prétend le contraire.
+
 ### Et un classement en ligne ?
 
 Le score local prépare le terrain, mais l'envoi doit rester explicitement activé

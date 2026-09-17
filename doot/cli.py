@@ -12,7 +12,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import __version__, art, image, notification, profiles, season, sound, succes
+from . import __version__, art, image, notification, partage, profiles, season, sound, succes
 
 DEFAULT_MIN_SECONDS = 600     # 10 min
 DEFAULT_MAX_SECONDS = 3600    # 1 h
@@ -395,8 +395,14 @@ def read_state() -> dict:
     try:
         etat = json.loads(paths()["state"].read_text(encoding="utf-8"))
     except Exception:
-        return {}
-    return etat if isinstance(etat, dict) else {}
+        etat = {}
+    if not isinstance(etat, dict):
+        etat = {}
+    # L'identite de replique vient du poste et jamais du fichier : un
+    # state.json copie ou restaure ne doit pas faire croire a deux
+    # installations qu'elles n'en sont qu'une.
+    etat["machine"] = partage.identite(paths()["data"])
+    return etat
 
 
 def state_compteur(etat: dict, cle: str) -> int:
@@ -406,10 +412,7 @@ def state_compteur(etat: dict, cle: str) -> int:
     repart de zero : perdre un cycle de pitie vaut mieux que perdre tous les
     declenchements suivants.
     """
-    valeur = etat.get(cle, 0)
-    if isinstance(valeur, bool) or not isinstance(valeur, int):
-        return 0
-    return max(0, valeur)
+    return succes.entier(etat.get(cle, 0))
 
 
 def write_state(state: dict) -> None:
@@ -438,23 +441,42 @@ def note_succes(args, evenement: str, **details) -> None:
     etat = read_state()
     nouveaux = succes.enregistrer(etat, evenement, **details)
     write_state(etat)
-    wav = notification_sound(args) if nouveaux else None
+    annoncer_succes(args, nouveaux)
+
+
+def annoncer_succes(args, nouveaux) -> None:
+    """Journalise chaque succes tombe, et n'en montre qu'une carte.
+
+    Un seul chemin pour le jeu et pour la fusion : un succes gagne en reunissant
+    deux machines vaut le sien, il n'y a pas de raison qu'il se contente d'une
+    ligne de texte.
+    """
+    if not nouveaux:
+        return
+
     for definition in nouveaux:
         log(
             f"SUCCES DEBLOQUE : {definition.titre} (+{definition.points} points) - "
             f"{definition.description}",
             quiet=args.quiet,
         )
-        try:
+
+    wav = notification_sound(args)
+    try:
+        if len(nouveaux) == 1:
+            seul = nouveaux[0]
             notification.show(
-                definition.titre,
-                definition.description,
-                definition.points,
-                badge_path=succes.badge(definition),
-                wav_path=wav,
+                seul.titre, seul.description, seul.points,
+                badge_path=succes.badge(seul), wav_path=wav,
             )
-        except Exception as exc:
-            log(f"notification de succes indisponible : {exc}", quiet=args.quiet)
+        else:
+            notification.show_lot(
+                [definition.titre for definition in nouveaux],
+                sum(definition.points for definition in nouveaux),
+                badge_path=succes.badge(nouveaux[0]), wav_path=wav,
+            )
+    except Exception as exc:
+        log(f"notification de succes indisponible : {exc}", quiet=args.quiet)
 
 
 def notification_sound(args) -> Path | None:
@@ -695,6 +717,85 @@ def do_melodies(args) -> int:
     return 0
 
 
+def sync_tour(args) -> None:
+    """Un tour complet, annonces comprises, pour le daemon."""
+    etat = read_state()
+    if partage.dossier_partage(etat) is None:
+        return
+    nouveaux = partage.cycle(etat)
+    write_state(etat)
+    annoncer_succes(args, nouveaux)
+
+
+def do_sync_init(args, cible: str) -> int:
+    """Retient le dossier partage et publie tout de suite."""
+    etat = read_state()
+    if cible in ("", "off", "-"):
+        etat.pop("sync", None)
+        etat.pop("sync_note", None)
+        write_state(etat)
+        print("doot : synchronisation coupee.")
+        return 0
+
+    dossier = Path(cible).expanduser()
+    etat["sync"] = str(dossier)
+    nouveaux = partage.cycle(etat)
+    write_state(etat)
+
+    note = etat.get("sync_note", {})
+    if note.get("erreur"):
+        print(f"doot : {dossier} inutilisable, {note['erreur']}")
+        return 2
+    print(f"doot : synchronisation par {dossier}")
+    print(f"  {note.get('pairs', 0)} autre(s) machine(s) deja presente(s)")
+    print("  le daemon publiera et relira a chaque doot")
+    annoncer_succes(args, nouveaux)
+    return 0
+
+
+def do_exporter(args, cible: str) -> int:
+    """Ecrit de quoi rejoindre cette machine depuis une autre."""
+    etat = read_state()
+    write_state(etat)
+
+    if cible == "-":
+        print(json.dumps(partage.part_exportable(etat), indent=2, ensure_ascii=False))
+        return 0
+
+    try:
+        chemin = partage.ecrire_part(etat, Path(cible).expanduser())
+    except OSError as exc:
+        print(f"doot : ecriture impossible, {exc}")
+        return 2
+    print(f"doot : etat exporte dans {chemin}")
+    return 0
+
+
+def do_fusionner(args, sources) -> int:
+    """Fait entrer les succes d'autres machines dans celle-ci."""
+    etat = read_state()
+    avant_doots = succes.total(etat, "doots")
+    avant_score = succes.score(etat)
+
+    lectures = partage.lire_parts(etat, partage.fichiers_de(sources))
+    for lecture in lectures:
+        detail = f"machine {lecture.machine}" if lecture.fusionnee else lecture.refus
+        print(f"  {lecture.chemin.name} : {detail}")
+    lus = sum(1 for lecture in lectures if lecture.fusionnee)
+    nouveaux = [item for lecture in lectures for item in lecture.debloques]
+
+    if not lus:
+        print("doot : rien a fusionner.")
+        return 2
+
+    write_state(etat)
+    print(f"\n{lus} machine(s) fusionnee(s).")
+    print(f"  doots : {avant_doots} -> {succes.total(etat, 'doots')}")
+    print(f"  score : {avant_score} -> {succes.score(etat)} points")
+    annoncer_succes(args, nouveaux)
+    return 0
+
+
 def do_succes(args) -> int:
     """Affiche le catalogue local, le score et la progression courante."""
 
@@ -715,6 +816,15 @@ def do_succes(args) -> int:
         print(f"  {marque} {definition.titre} (+{definition.points})")
         print(f"      {definition.description}  {detail}")
     print(f"\nProgression locale : {paths()['state']}")
+    dossier = partage.dossier_partage(etat)
+    if dossier is None:
+        print("Synchronisation     : aucune (doot --sync-init CHEMIN)")
+    else:
+        note = etat.get("sync_note") or {}
+        detail = (f"erreur, {note['erreur']}" if note.get("erreur")
+                  else f"{note.get('pairs', 0)} autre(s) machine(s)")
+        quand = note.get("quand", "jamais")
+        print(f"Synchronisation     : {dossier}  ({detail}, dernier tour {quand})")
     return 0
 
 
@@ -858,6 +968,7 @@ def do_daemon(args) -> int:
                 if not args.no_event:
                     note_evenement(evenement_joue)
                 note_melodie(melodie_jouee)
+                sync_tour(args)
             except window.TkinterMissing as exc:
                 log(str(exc), quiet=args.quiet)
                 return 4
@@ -1025,6 +1136,18 @@ def build_parser(profile_defaults: dict | None = None) -> argparse.ArgumentParse
     parser.add_argument("--rickroll", action="store_true",
                         help="raccourci de --play rickroll")
     parser.add_argument("--melodies", action="store_true", help="liste les melodies jouables")
+    parser.add_argument("--sync-init", dest="sync_init", default=None, metavar="CHEMIN",
+                        help="synchronise les succes par ce dossier partage, et "
+                             "publie tout de suite (`off` pour arreter)")
+    parser.add_argument("--export", "--exporter", dest="exporter", default=None,
+                        metavar="CHEMIN",
+                        help="ecrit les succes de cette machine dans un fichier "
+                             "(un dossier recoit doot-<machine>.json, `-` ecrit "
+                             "sur la sortie standard)")
+    parser.add_argument("--merge", "--fusionner", dest="fusionner", default=None,
+                        nargs="+", metavar="CHEMIN",
+                        help="fait entrer les succes d'autres machines dans "
+                             "celle-ci ; un dossier apporte tous ses .json")
     parser.add_argument("--achievements", "--succes", dest="succes", action="store_true",
                         help="liste les succes locaux, leur score et leur progression")
     parser.add_argument("--events", action="store_true",
@@ -1241,6 +1364,12 @@ def main(argv: list[str] | None = None) -> int:
         return do_melodies(args)
     if args.succes:
         return do_succes(args)
+    if args.sync_init is not None:
+        return do_sync_init(args, args.sync_init)
+    if args.exporter is not None:
+        return do_exporter(args, args.exporter)
+    if args.fusionner:
+        return do_fusionner(args, args.fusionner)
     if args.events:
         return do_events(args)
 

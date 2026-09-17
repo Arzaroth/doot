@@ -84,12 +84,40 @@ def _badge_photo(tk, badge_path: Path | None):
 
 def show(title: str, description: str, points: int, badge_path: Path | None = None,
          wav_path: Path | None = None, duration: float = DEFAULT_DURATION) -> None:
-    """Affiche une medaille en haut a droite et joue la fanfare fournie.
+    """Affiche une medaille en haut a droite et joue la fanfare fournie."""
 
-    Le toast est volontairement bloquant, comme l'overlay principal : plusieurs
-    succes gagnes ensemble sont ainsi montres dans l'ordre et ne se recouvrent pas.
-    L'appelant absorbe l'exception si tkinter manque, afin qu'un probleme de toast
-    ne puisse jamais annuler le doot qui vient d'etre joue.
+    _afficher(
+        f"SUCCES DEBLOQUE  \u00b7  +{points} POINTS", title, description,
+        badge_path=badge_path, wav_path=wav_path, duration=duration,
+    )
+
+
+def show_lot(titres: list, points: int, badge_path: Path | None = None,
+             wav_path: Path | None = None, duration: float = DEFAULT_DURATION) -> None:
+    """Une seule carte pour tout un lot de succes.
+
+    Cinq succes gagnes ensemble faisaient cinq toasts a la suite, et le daemon
+    n'avancait plus pendant dix-sept secondes. La carte les annonce ensemble,
+    une fanfare pour tous, avec juste de quoi lire une ligne de plus.
+    """
+
+    lignes = "\n".join(f"\u00b7 {titre}" for titre in titres)
+    _afficher(
+        f"{len(titres)} SUCCES DEBLOQUES  \u00b7  +{points} POINTS",
+        "Tableau de chasse", lignes,
+        badge_path=badge_path, wav_path=wav_path,
+        duration=duration + 0.6 * (len(titres) - 1),
+    )
+
+
+def _afficher(entete: str, titre: str, corps: str, badge_path: Path | None = None,
+              wav_path: Path | None = None, duration: float = DEFAULT_DURATION) -> None:
+    """Le toast lui-meme, quel que soit ce qu'il annonce.
+
+    Volontairement bloquant, comme l'overlay principal : deux toasts ne se
+    recouvrent jamais. L'appelant absorbe l'exception si tkinter manque, afin
+    qu'un probleme de toast ne puisse jamais annuler le doot qui vient d'etre
+    joue.
     """
 
     tk, tkfont = overlay_window.import_tk()
@@ -123,7 +151,7 @@ def show(title: str, description: str, points: int, badge_path: Path | None = No
         gauche = (0, 16) if photo is not None else (18, 18)
         tk.Label(
             panel,
-            text=f"SUCCES DEBLOQUE  ·  +{points} POINTS",
+            text=entete,
             bg=PANEL_BG,
             fg=ACCENT_COLOR,
             font=_font(tkfont, 9, "bold"),
@@ -131,7 +159,7 @@ def show(title: str, description: str, points: int, badge_path: Path | None = No
         ).grid(row=0, column=colonne, sticky="sw", padx=gauche, pady=(14, 2))
         tk.Label(
             panel,
-            text=title,
+            text=titre,
             bg=PANEL_BG,
             fg=TITLE_COLOR,
             font=_font(tkfont, 15, "bold"),
@@ -139,7 +167,7 @@ def show(title: str, description: str, points: int, badge_path: Path | None = No
         ).grid(row=1, column=colonne, sticky="w", padx=gauche, pady=0)
         tk.Label(
             panel,
-            text=description,
+            text=corps,
             bg=PANEL_BG,
             fg=TEXT_COLOR,
             font=_font(tkfont, 10),
