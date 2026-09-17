@@ -200,6 +200,14 @@ set "PYTHONPATH=$AppDir;%PYTHONPATH%"
 "@ | Set-Content -Path $cmdPath -Encoding ASCII
 Write-Item "commande    : $cmdPath"
 
+$guiCmdPath = Join-Path $BinDir 'doot-gui.cmd'
+@"
+@echo off
+set "PYTHONPATH=$AppDir;%PYTHONPATH%"
+start "" "$pythonw" -m doot --gui %*
+"@ | Set-Content -Path $guiCmdPath -Encoding ASCII
+Write-Item "interface   : $guiCmdPath"
+
 # PATH utilisateur (pas de PATH machine, pas d'admin)
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 if ($userPath -notlike "*$BinDir*") {
