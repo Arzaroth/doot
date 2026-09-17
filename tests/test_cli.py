@@ -1351,6 +1351,76 @@ class PartageAutomatique(CliTestCase):
         restants = list((self.depot() / "v1").iterdir())
         self.assertEqual(len(restants), 1, f"reste {[p.name for p in restants]}")
 
+    def objets(self):
+        return {chemin.name for chemin in (self.depot() / "v1").iterdir()}
+
+    def rotation_ratee(self, *commande):
+        """Joue une commande qui change de cle pendant que le depot refuse d'ecrire."""
+        from doot import transport
+        self.run_cli("--sync-init", str(self.depot()))
+        avant, cle = self.objets(), partage.reglage(self.paths["data"])["cle"]
+        with mock.patch.object(partage, "publier",
+                               side_effect=transport.TransportError("disque plein")):
+            self.assertEqual(self.run_cli(*commande), 2)
+        return cle, avant
+
+    def test_une_rotation_ratee_retient_la_cle_quittee(self):
+        """Sans la marque, plus personne ne sait quel objet retirer."""
+        cle, avant = self.rotation_ratee("--sync-init", str(self.depot()), "--sync-force")
+        fiche = partage.reglage(self.paths["data"])
+        self.assertEqual(fiche["cle_precedente"], cle)
+        self.assertNotEqual(fiche["cle"], cle)
+        self.assertEqual(self.objets(), avant)
+
+    def test_le_cycle_suivant_solde_une_rotation_ratee(self):
+        _, avant = self.rotation_ratee("--sync-init", str(self.depot()), "--sync-force")
+        cli.sync_tour(cli.build_parser().parse_args(["--quiet"]))
+        self.assertEqual(len(self.objets()), 1)
+        self.assertFalse(self.objets() & avant)
+        self.assertNotIn("cle_precedente", partage.reglage(self.paths["data"]))
+
+    def test_rejoindre_apres_une_publication_ratee_solde_aussi(self):
+        from doot import coffre
+        cle, avant = self.rotation_ratee("--sync-join", coffre.en_texte(coffre.creer()))
+        self.assertEqual(partage.reglage(self.paths["data"])["cle_precedente"], cle)
+        cli.sync_tour(cli.build_parser().parse_args(["--quiet"]))
+        self.assertEqual(len(self.objets()), 1)
+        self.assertFalse(self.objets() & avant)
+        self.assertNotIn("cle_precedente", partage.reglage(self.paths["data"]))
+
+    def test_relancer_sync_init_solde_une_rotation_ratee(self):
+        """Refrapper la commande sur le meme depot ne doit pas perdre la marque."""
+        _, avant = self.rotation_ratee("--sync-init", str(self.depot()), "--sync-force")
+        self.assertEqual(self.run_cli("--sync-init", str(self.depot())), 0)
+        self.assertEqual(len(self.objets()), 1)
+        self.assertFalse(self.objets() & avant)
+
+    def test_un_retrait_impossible_garde_la_marque(self):
+        """Tant que l'objet quitte est la, la marque doit survivre au cycle."""
+        from doot import transport
+        cle, avant = self.rotation_ratee("--sync-init", str(self.depot()), "--sync-force")
+        with mock.patch.object(transport.Dossier, "effacer",
+                               side_effect=transport.TransportError("lecture seule")):
+            cli.sync_tour(cli.build_parser().parse_args(["--quiet"]))
+        self.assertEqual(partage.reglage(self.paths["data"])["cle_precedente"], cle)
+        cli.sync_tour(cli.build_parser().parse_args(["--quiet"]))
+        self.assertEqual(len(self.objets()), 1)
+        self.assertFalse(self.objets() & avant)
+
+    def test_une_publication_ratee_rend_quand_meme_ce_qui_a_fusionne(self):
+        """La fusion a eu lieu : un depot muet ne doit pas avaler les succes."""
+        from doot import succes, transport
+        cle = self.regle()
+        self.publie_un_pair(self.poste("fixe", 60), cle)
+        etat = cli.read_state()
+        for _ in range(60):
+            succes.enregistrer(etat, "doots", datetime(2026, 9, 17), quantite=1)
+        with mock.patch.object(partage, "publier",
+                               side_effect=transport.TransportError("disque plein")):
+            nouveaux = partage.cycle(etat, self.paths["data"])
+        self.assertIn("cent_doots", [item.identifiant for item in nouveaux])
+        self.assertIn("erreur", etat["sync_note"])
+
     def test_sync_init_off_coupe_tout(self):
         self.regle()
         self.assertEqual(self.run_cli("--sync-init", "off"), 0)

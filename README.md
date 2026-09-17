@@ -347,6 +347,13 @@ de la flotte tant que toutes les autres n'ont pas été rechiffrées à la main 
 supprimés. Mieux vaut le dire que laisser croire que « chiffré » veut dire
 « révocable ».
 
+Changer de clé se fait en deux temps : le poste retient celle qu'il quitte,
+publie sa part sous la neuve, et ne retire l'objet de l'ancienne qu'ensuite. Si
+le dépôt est injoignable pendant l'opération, la marque survit dans
+`replica.json` et le premier cycle qui aboutit fait le ménage. Sans elle l'objet
+resterait là pour toujours : son nom ne se calcule que depuis la clé qui l'a
+fermé.
+
 La possession de la clé est la seule authentification. Une machine ne peut pas
 prouver laquelle elle est au-delà de détenir la clé, ce qui est le bon niveau
 pour les machines d'une personne et le mauvais pour une équipe.
