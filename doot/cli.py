@@ -714,31 +714,77 @@ def do_melodies(args) -> int:
     return 0
 
 
-def do_exporter(args, cible: str) -> int:
-    """Ecrit de quoi rejoindre cette machine depuis une autre.
+def part_exportable(etat: dict) -> dict:
+    """Ce qui voyage d'une machine a l'autre.
 
-    Les compteurs de pitie ne partent pas : ils decrivent le rythme de ce
-    poste, pas ce qui y a ete accompli.
+    Les compteurs de pitie restent : ils decrivent le rythme de ce poste, pas
+    ce qui y a ete accompli.
     """
-    etat = read_state()
-    part = {
+    return {
         "machine": succes.machine(etat),
         "stats": etat.get("stats", {}),
         "succes": etat.get("succes", {}),
     }
+
+
+def ecrire_part(etat: dict, cible: Path) -> Path:
+    """Depose la part de ce poste ; un dossier recoit doot-<machine>.json."""
+    part = part_exportable(etat)
+    chemin = cible / f"doot-{part['machine']}.json" if cible.is_dir() else cible
+    chemin.parent.mkdir(parents=True, exist_ok=True)
+    chemin.write_text(json.dumps(part, indent=2, ensure_ascii=False) + "\n",
+                      encoding="utf-8")
+    return chemin
+
+
+def fusionner_fichiers(etat: dict, fichiers, bavard: bool = False) -> tuple:
+    """Fait entrer les parts lisibles ; renvoie (nombre lu, succes debloques).
+
+    Un fichier illisible, anonyme ou venu de ce poste est saute sans arreter
+    les autres.
+    """
+    ici = succes.machine(etat)
+    lus = 0
+    nouveaux = []
+    for chemin in fichiers:
+        try:
+            distant = json.loads(chemin.read_text(encoding="utf-8"))
+        except Exception as exc:
+            if bavard:
+                print(f"  {chemin.name} : illisible, {exc}")
+            continue
+        if not isinstance(distant, dict):
+            if bavard:
+                print(f"  {chemin.name} : ce n'est pas un etat doot")
+            continue
+        if distant.get("machine") == ici:
+            if bavard:
+                print(f"  {chemin.name} : c'est cette machine, ignore")
+            continue
+        try:
+            nouveaux.extend(succes.fusionner(etat, distant))
+        except ValueError as exc:
+            if bavard:
+                print(f"  {chemin.name} : {exc}")
+            continue
+        lus += 1
+        if bavard:
+            print(f"  {chemin.name} : machine {distant.get('machine')}")
+    return lus, nouveaux
+
+
+def do_exporter(args, cible: str) -> int:
+    """Ecrit de quoi rejoindre cette machine depuis une autre."""
+    etat = read_state()
+    part = part_exportable(etat)
     write_state(etat)
-    texte = json.dumps(part, indent=2, ensure_ascii=False)
 
     if cible == "-":
-        print(texte)
+        print(json.dumps(part, indent=2, ensure_ascii=False))
         return 0
 
-    chemin = Path(cible).expanduser()
-    if chemin.is_dir():
-        chemin = chemin / f"doot-{part['machine']}.json"
     try:
-        chemin.parent.mkdir(parents=True, exist_ok=True)
-        chemin.write_text(texte + "\n", encoding="utf-8")
+        chemin = ecrire_part(etat, Path(cible).expanduser())
     except OSError as exc:
         print(f"doot : ecriture impossible, {exc}")
         return 2
@@ -761,31 +807,10 @@ def _etats_a_fusionner(sources) -> list:
 def do_fusionner(args, sources) -> int:
     """Fait entrer les succes d'autres machines dans celle-ci."""
     etat = read_state()
-    ici = succes.machine(etat)
     avant_doots = succes.total(etat, "doots")
     avant_score = succes.score(etat)
 
-    lus = 0
-    nouveaux = []
-    for chemin in _etats_a_fusionner(sources):
-        try:
-            distant = json.loads(chemin.read_text(encoding="utf-8"))
-        except Exception as exc:
-            print(f"  {chemin.name} : illisible, {exc}")
-            continue
-        if not isinstance(distant, dict):
-            print(f"  {chemin.name} : ce n'est pas un etat doot")
-            continue
-        if distant.get("machine") == ici:
-            print(f"  {chemin.name} : c'est cette machine, ignore")
-            continue
-        try:
-            nouveaux.extend(succes.fusionner(etat, distant))
-        except ValueError as exc:
-            print(f"  {chemin.name} : {exc}")
-            continue
-        lus += 1
-        print(f"  {chemin.name} : machine {distant.get('machine')}")
+    lus, nouveaux = fusionner_fichiers(etat, _etats_a_fusionner(sources), bavard=True)
 
     if not lus:
         print("doot : rien a fusionner.")
