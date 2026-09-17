@@ -695,6 +695,92 @@ def do_melodies(args) -> int:
     return 0
 
 
+def do_exporter(args, cible: str) -> int:
+    """Ecrit de quoi rejoindre cette machine depuis une autre.
+
+    Les compteurs de pitie ne partent pas : ils decrivent le rythme de ce
+    poste, pas ce qui y a ete accompli.
+    """
+    etat = read_state()
+    part = {
+        "machine": succes.machine(etat),
+        "stats": etat.get("stats", {}),
+        "succes": etat.get("succes", {}),
+    }
+    write_state(etat)
+    texte = json.dumps(part, indent=2, ensure_ascii=False)
+
+    if cible == "-":
+        print(texte)
+        return 0
+
+    chemin = Path(cible).expanduser()
+    if chemin.is_dir():
+        chemin = chemin / f"doot-{part['machine']}.json"
+    try:
+        chemin.parent.mkdir(parents=True, exist_ok=True)
+        chemin.write_text(texte + "\n", encoding="utf-8")
+    except OSError as exc:
+        print(f"doot : ecriture impossible, {exc}")
+        return 2
+    print(f"doot : etat exporte dans {chemin}")
+    return 0
+
+
+def _etats_a_fusionner(sources) -> list:
+    """Les fichiers a lire ; un dossier apporte tous ses .json."""
+    fichiers = []
+    for source in sources:
+        chemin = Path(source).expanduser()
+        if chemin.is_dir():
+            fichiers.extend(sorted(chemin.glob("*.json")))
+        else:
+            fichiers.append(chemin)
+    return fichiers
+
+
+def do_fusionner(args, sources) -> int:
+    """Fait entrer les succes d'autres machines dans celle-ci."""
+    etat = read_state()
+    ici = succes.machine(etat)
+    avant_doots = succes.total(etat, "doots")
+    avant_score = succes.score(etat)
+
+    lus = 0
+    nouveaux = []
+    for chemin in _etats_a_fusionner(sources):
+        try:
+            distant = json.loads(chemin.read_text(encoding="utf-8"))
+        except Exception as exc:
+            print(f"  {chemin.name} : illisible, {exc}")
+            continue
+        if not isinstance(distant, dict):
+            print(f"  {chemin.name} : ce n'est pas un etat doot")
+            continue
+        if distant.get("machine") == ici:
+            print(f"  {chemin.name} : c'est cette machine, ignore")
+            continue
+        try:
+            nouveaux.extend(succes.fusionner(etat, distant))
+        except ValueError as exc:
+            print(f"  {chemin.name} : {exc}")
+            continue
+        lus += 1
+        print(f"  {chemin.name} : machine {distant.get('machine')}")
+
+    if not lus:
+        print("doot : rien a fusionner.")
+        return 2
+
+    write_state(etat)
+    print(f"\n{lus} machine(s) fusionnee(s).")
+    print(f"  doots : {avant_doots} -> {succes.total(etat, 'doots')}")
+    print(f"  score : {avant_score} -> {succes.score(etat)} points")
+    for definition in nouveaux:
+        print(f"  SUCCES DEBLOQUE : {definition.titre} (+{definition.points} points)")
+    return 0
+
+
 def do_succes(args) -> int:
     """Affiche le catalogue local, le score et la progression courante."""
 
@@ -1025,6 +1111,15 @@ def build_parser(profile_defaults: dict | None = None) -> argparse.ArgumentParse
     parser.add_argument("--rickroll", action="store_true",
                         help="raccourci de --play rickroll")
     parser.add_argument("--melodies", action="store_true", help="liste les melodies jouables")
+    parser.add_argument("--export", "--exporter", dest="exporter", default=None,
+                        metavar="CHEMIN",
+                        help="ecrit les succes de cette machine dans un fichier "
+                             "(un dossier recoit doot-<machine>.json, `-` ecrit "
+                             "sur la sortie standard)")
+    parser.add_argument("--merge", "--fusionner", dest="fusionner", default=None,
+                        nargs="+", metavar="CHEMIN",
+                        help="fait entrer les succes d'autres machines dans "
+                             "celle-ci ; un dossier apporte tous ses .json")
     parser.add_argument("--achievements", "--succes", dest="succes", action="store_true",
                         help="liste les succes locaux, leur score et leur progression")
     parser.add_argument("--events", action="store_true",
@@ -1241,6 +1336,10 @@ def main(argv: list[str] | None = None) -> int:
         return do_melodies(args)
     if args.succes:
         return do_succes(args)
+    if args.exporter is not None:
+        return do_exporter(args, args.exporter)
+    if args.fusionner:
+        return do_fusionner(args, args.fusionner)
     if args.events:
         return do_events(args)
 
