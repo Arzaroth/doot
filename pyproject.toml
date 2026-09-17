@@ -36,7 +36,8 @@ classifiers = [
     "Topic :: Games/Entertainment",
     "Topic :: Multimedia :: Graphics",
 ]
-dependencies = ["desktop-overlay @ https://github.com/boubou666/desktop-overlay/releases/download/v0.2.1/desktop_overlay-0.2.1-py3-none-any.whl#sha256=c752c46c077390a1f6cc6569dae09df302a2d0810b6a555122366be38928c972"]
+dependencies = ["desktop-overlay @ https://github.com/boubou666/desktop-overlay/releases/download/v0.2.1/desktop_overlay-0.2.1-py3-none-any.whl#sha256=c752c46c077390a1f6cc6569dae09df302a2d0810b6a555122366be38928c972",
+                "cryptography>=42"]
 
 [project.scripts]
 doot = "doot.cli:main"

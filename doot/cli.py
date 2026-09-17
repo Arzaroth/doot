@@ -12,7 +12,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import __version__, art, image, notification, partage, profiles, season, sound, succes
+from . import __version__, art, coffre, image, notification, partage, profiles, season, sound, succes
 
 DEFAULT_MIN_SECONDS = 600     # 10 min
 DEFAULT_MAX_SECONDS = 3600    # 1 h
@@ -719,36 +719,96 @@ def do_melodies(args) -> int:
 
 def sync_tour(args) -> None:
     """Un tour complet, annonces comprises, pour le daemon."""
-    etat = read_state()
-    if partage.dossier_partage(etat) is None:
+    if not partage.reglage(paths()["data"]).get("cle"):
         return
-    nouveaux = partage.cycle(etat)
+    etat = read_state()
+    nouveaux = partage.cycle(etat, paths()["data"])
     write_state(etat)
     annoncer_succes(args, nouveaux)
 
 
 def do_sync_init(args, cible: str) -> int:
-    """Retient le dossier partage et publie tout de suite."""
-    etat = read_state()
+    """Frappe une cle et retient ou publier. `off` coupe tout."""
+    p = paths()
     if cible in ("", "off", "-"):
-        etat.pop("sync", None)
+        partage.poser_reglage(p["data"], None)
+        etat = read_state()
         etat.pop("sync_note", None)
         write_state(etat)
         print("doot : synchronisation coupee.")
         return 0
 
-    dossier = Path(cible).expanduser()
-    etat["sync"] = str(dossier)
-    nouveaux = partage.cycle(etat)
+    fiche = dict(partage.reglage(p["data"]))
+    if cible.startswith("s3://"):
+        reste = cible[5:]
+        seau, _, prefixe = reste.partition("/")
+        fiche.update({"seau": seau, "prefixe": prefixe,
+                      "endpoint": args.sync_endpoint or fiche.get("endpoint", ""),
+                      "region": args.sync_region or fiche.get("region", "auto")})
+        fiche.pop("dossier", None)
+        if not fiche["endpoint"]:
+            print("doot : un seau demande --sync-endpoint https://...")
+            return 2
+    else:
+        # La cle survit au changement de depot : la refrapper orphelinerait la
+        # flotte, chaque autre poste continuant a publier sous l'ancienne. Le
+        # reste de la fiche decrivait un seau et ne decrit plus rien.
+        gardees = {champ: fiche[champ]
+                   for champ in ("cle", "cles_quittees", "cle_precedente")
+                   if fiche.get(champ)}
+        fiche = {"dossier": str(Path(cible).expanduser()), **gardees}
+
+    if not fiche.get("cle") or args.sync_force:
+        fiche = partage.poser_cle(p["data"], fiche, coffre.en_texte(coffre.creer()))
+    else:
+        partage.poser_reglage(p["data"], fiche)
+    etat = read_state()
+    nouveaux = partage.cycle(etat, p["data"])
     write_state(etat)
 
     note = etat.get("sync_note", {})
     if note.get("erreur"):
-        print(f"doot : {dossier} inutilisable, {note['erreur']}")
+        print(f"doot : depot inutilisable, {note['erreur']}")
         return 2
-    print(f"doot : synchronisation par {dossier}")
+
+    print(f"doot : partage par {note.get('depot', cible)}")
     print(f"  {note.get('pairs', 0)} autre(s) machine(s) deja presente(s)")
     print("  le daemon publiera et relira a chaque doot")
+    print(f"\n  Sur les autres postes :  doot --sync-join {fiche['cle']}")
+    print("  Cette cle ouvre toute la flotte. Elle ne se revoque pas :")
+    print("  une machine perdue lit tout jusqu'a ce que les autres soient rechiffrees.")
+    annoncer_succes(args, nouveaux)
+    return 0
+
+
+def do_sync_join(args, texte: str) -> int:
+    """Rejoint une flotte avec la cle recopiee depuis le premier poste."""
+    p = paths()
+    try:
+        coffre.depuis_texte(texte)
+    except coffre.CoffreError as exc:
+        print(f"doot : {exc}")
+        return 2
+
+    fiche = dict(partage.reglage(p["data"]))
+    if not fiche.get("dossier") and not fiche.get("seau"):
+        print("doot : dis d'abord ou publier (doot --sync-init CHEMIN)")
+        return 2
+
+    # L'objet publie sous l'ancienne cle ne serait plus lisible par personne :
+    # `poser_cle` retient lesquelles, et le cycle les retire une fois la part
+    # republiee sous la neuve.
+    fiche = partage.poser_cle(p["data"], fiche, texte.strip())
+    etat = read_state()
+    nouveaux = partage.cycle(etat, p["data"])
+    write_state(etat)
+
+    note = etat.get("sync_note", {})
+    if note.get("erreur"):
+        print(f"doot : depot inutilisable, {note['erreur']}")
+        return 2
+
+    print(f"doot : flotte rejointe, {note.get('pairs', 0)} autre(s) machine(s)")
     annoncer_succes(args, nouveaux)
     return 0
 
@@ -780,7 +840,7 @@ def do_fusionner(args, sources) -> int:
     lectures = partage.lire_parts(etat, partage.fichiers_de(sources))
     for lecture in lectures:
         detail = f"machine {lecture.machine}" if lecture.fusionnee else lecture.refus
-        print(f"  {lecture.chemin.name} : {detail}")
+        print(f"  {lecture.nom} : {detail}")
     lus = sum(1 for lecture in lectures if lecture.fusionnee)
     nouveaux = [item for lecture in lectures for item in lecture.debloques]
 
@@ -816,15 +876,16 @@ def do_succes(args) -> int:
         print(f"  {marque} {definition.titre} (+{definition.points})")
         print(f"      {definition.description}  {detail}")
     print(f"\nProgression locale : {paths()['state']}")
-    dossier = partage.dossier_partage(etat)
-    if dossier is None:
-        print("Synchronisation     : aucune (doot --sync-init CHEMIN)")
+    fiche = partage.reglage(paths()["data"])
+    if not fiche.get("cle"):
+        print("Partage             : aucun (doot --sync-init DEPOT)")
     else:
         note = etat.get("sync_note") or {}
         detail = (f"erreur, {note['erreur']}" if note.get("erreur")
                   else f"{note.get('pairs', 0)} autre(s) machine(s)")
-        quand = note.get("quand", "jamais")
-        print(f"Synchronisation     : {dossier}  ({detail}, dernier tour {quand})")
+        depot = note.get("depot") or fiche.get("dossier") or fiche.get("seau", "?")
+        print(f"Partage             : {depot}  ({detail}, "
+              f"dernier tour {note.get('quand', 'jamais')})")
     return 0
 
 
@@ -1138,9 +1199,18 @@ def build_parser(profile_defaults: dict | None = None) -> argparse.ArgumentParse
     parser.add_argument("--rickroll", action="store_true",
                         help="raccourci de --play rickroll")
     parser.add_argument("--melodies", action="store_true", help="liste les melodies jouables")
-    parser.add_argument("--sync-init", dest="sync_init", default=None, metavar="CHEMIN",
-                        help="synchronise les succes par ce dossier partage, et "
-                             "publie tout de suite (`off` pour arreter)")
+    parser.add_argument("--sync-init", dest="sync_init", default=None, metavar="DEPOT",
+                        help="partage les succes par ce dossier, ou par un seau "
+                             "`s3://seau/prefixe` ; frappe une cle et publie tout "
+                             "de suite (`off` pour arreter)")
+    parser.add_argument("--sync-join", dest="sync_join", default=None, metavar="CLE",
+                        help="rejoint la flotte avec la cle donnee par --sync-init")
+    parser.add_argument("--sync-endpoint", dest="sync_endpoint", default="", metavar="URL",
+                        help="point d'acces du seau (R2, MinIO, B2, S3)")
+    parser.add_argument("--sync-region", dest="sync_region", default="", metavar="REGION",
+                        help="region du seau (defaut auto)")
+    parser.add_argument("--sync-force", dest="sync_force", action="store_true",
+                        help="frappe une cle neuve meme s'il y en avait une")
     parser.add_argument("--export", "--exporter", dest="exporter", default=None,
                         metavar="CHEMIN",
                         help="ecrit les succes de cette machine dans un fichier "
@@ -1373,6 +1443,8 @@ def main(argv: list[str] | None = None) -> int:
         return do_succes(args)
     if args.sync_init is not None:
         return do_sync_init(args, args.sync_init)
+    if args.sync_join is not None:
+        return do_sync_join(args, args.sync_join)
     if args.exporter is not None:
         return do_exporter(args, args.exporter)
     if args.fusionner:

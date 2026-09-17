@@ -30,6 +30,7 @@ class ParameterSpec:
     label: str
     hint: str
     multiple: bool = False
+    requis: bool = True
 
 
 @dataclass(frozen=True)
@@ -145,10 +146,23 @@ COMMANDS: tuple[CommandSpec, ...] = (
         image="success/profil_actif.png",
     ),
     CommandSpec(
-        "sync-init", "Configurer la synchro",
-        "Synchronise les succes par un dossier partage ; utilise 'off' pour l'arreter.",
-        parameters=(ParameterSpec("--sync-init", "Dossier partage", "chemin du dossier, ou off"),),
+        "sync-init", "Ouvrir le partage",
+        "Partage les succes par un dossier ou un seau S3, et frappe une cle a "
+        "recopier sur les autres postes ; utilise 'off' pour l'arreter.",
+        parameters=(
+            ParameterSpec("--sync-init", "Depot", "dossier, s3://seau/prefixe, ou off"),
+            ParameterSpec("--sync-endpoint", "Point d'acces",
+                          "https://... pour un seau", requis=False),
+            ParameterSpec("--sync-region", "Region",
+                          "region du seau, defaut auto", requis=False),
+        ),
         image="success/canon_a_os.png",
+    ),
+    CommandSpec(
+        "sync-join", "Rejoindre le partage",
+        "Rejoint une flotte avec la cle affichee par l'ouverture du partage.",
+        parameters=(ParameterSpec("--sync-join", "Cle", "dootsync1..."),),
+        image="success/choregraphe.png",
     ),
     CommandSpec(
         "export", "Exporter les succes",
@@ -270,6 +284,8 @@ def build_command_argv(
     for parameter in command.parameters:
         raw = str(parameter_values.get(parameter.option, "")).strip()
         if not raw:
+            if not parameter.requis:
+                continue
             if strict:
                 raise ValueError(f"Le champ « {parameter.label} » est obligatoire.")
             argv.extend((parameter.option, f"<{parameter.hint}>"))

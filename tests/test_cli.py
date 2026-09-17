@@ -1213,8 +1213,8 @@ class ExportEtFusion(CliTestCase):
         self.assertEqual(self.run_cli("--merge", str(dossier)), 2)
 
 
-class SynchronisationAutomatique(CliTestCase):
-    """Le cycle que le daemon joue a chaque doot : publier, relire, fusionner."""
+class PartageAutomatique(CliTestCase):
+    """Le cycle que le daemon joue a chaque doot : reprendre, fusionner, publier."""
 
     def poste(self, nom, doots):
         from doot import succes
@@ -1223,95 +1223,266 @@ class SynchronisationAutomatique(CliTestCase):
             succes.enregistrer(etat, "doots", datetime(2026, 9, 17, 12, 0), quantite=1)
         return etat
 
-    def dossier(self):
-        return Path(self._dir.name) / "partage"
+    def depot(self):
+        return Path(self._dir.name) / "depot"
 
-    def depose(self, etat):
-        cible = self.dossier()
-        cible.mkdir(parents=True, exist_ok=True)
-        (cible / f"doot-{etat['machine']}.json").write_text(
-            json.dumps(partage.part_exportable(etat)), encoding="utf-8")
+    def regle(self, cle=None):
+        from doot import coffre
+        fiche = {"dossier": str(self.depot()), "cle": cle or coffre.en_texte(coffre.creer())}
+        partage.poser_reglage(self.paths["data"], fiche)
+        return fiche["cle"]
 
-    def args_daemon(self):
-        return cli.build_parser().parse_args(["--quiet"])
+    def publie_un_pair(self, etat, cle_texte):
+        from doot import coffre, transport
+        cle = coffre.depuis_texte(cle_texte)
+        partage.publier(etat, transport.Dossier(self.depot()), cle)
 
-    def test_sans_dossier_configure_le_tour_ne_fait_rien(self):
+    def test_sans_cle_le_tour_ne_fait_rien(self):
         cli.write_state(self.poste("ici", 10))
-        cli.sync_tour(self.args_daemon())
+        cli.sync_tour(cli.build_parser().parse_args(["--quiet"]))
         self.assertNotIn("sync_note", cli.read_state())
 
-    def test_le_cycle_publie_puis_fusionne(self):
-        from doot import succes
-        etat = self.poste("ici", 60)
-        etat["sync"] = str(self.dossier())
-        self.depose(self.poste("fixe", 60))
-        partage.cycle(etat)
+    def test_le_cycle_reprend_fusionne_et_publie(self):
+        from doot import coffre, succes, transport
+        cle = self.regle()
+        self.publie_un_pair(self.poste("fixe", 60), cle)
+
+        etat = cli.read_state()
+        etat.update(self.poste(etat["machine"], 0))
+        for _ in range(60):
+            succes.enregistrer(etat, "doots", datetime(2026, 9, 17), quantite=1)
+        partage.cycle(etat, self.paths["data"])
+
         self.assertEqual(succes.total(etat, "doots"), 120)
-        self.assertTrue((self.dossier() / "doot-ici.json").is_file())
         self.assertEqual(etat["sync_note"]["pairs"], 1)
+        noms = [o.nom for o in transport.Dossier(self.depot()).lister()]
+        self.assertIn(coffre.nom_objet(coffre.depuis_texte(cle), etat["machine"]), noms)
 
-    def test_un_dossier_impossible_ne_leve_jamais(self):
-        """Un doot ne doit pas dependre de la synchronisation.
+    def test_ce_qui_est_publie_est_chiffre(self):
+        from doot import coffre
+        cle = self.regle()
+        etat = cli.read_state()
+        partage.cycle(etat, self.paths["data"])
+        octets = next((self.depot() / "v1").iterdir()).read_bytes()
+        self.assertTrue(octets.startswith(coffre.MAGIC))
+        self.assertNotIn(b"doots", octets)
+        self.assertNotIn(etat["machine"].encode(), octets)
 
-        Le chemin barre par un fichier vaut sur les trois systemes, la ou un
-        `/proc/...` ne barrait que Linux.
-        """
-        from doot import succes
+    def test_une_autre_cle_ne_lit_rien(self):
+        from doot import coffre
+        cle = self.regle()
+        self.publie_un_pair(self.poste("fixe", 60), cle)
+        self.regle(coffre.en_texte(coffre.creer()))
+
+        etat = cli.read_state()
+        partage.cycle(etat, self.paths["data"])
+        self.assertEqual(etat["sync_note"]["pairs"], 0)
+        self.assertIn("autre cle", " ".join(etat["sync_note"]["ecartes"]))
+
+    def test_un_depot_impossible_ne_leve_jamais(self):
+        """Un doot ne doit pas dependre du partage."""
+        from doot import coffre, succes
         bloque = Path(self._dir.name) / "bloque"
         bloque.write_text("je ne suis pas un dossier", encoding="utf-8")
-
+        partage.poser_reglage(self.paths["data"],
+                              {"dossier": str(bloque / "dedans"),
+                               "cle": coffre.en_texte(coffre.creer())})
         etat = self.poste("ici", 10)
-        etat["sync"] = str(bloque / "dedans")
-        self.assertEqual(partage.cycle(etat), [])
+        self.assertEqual(partage.cycle(etat, self.paths["data"]), [])
         self.assertIn("erreur", etat["sync_note"])
         self.assertEqual(succes.total(etat, "doots"), 10)
 
     def test_le_tour_est_idempotent(self):
         from doot import succes
-        etat = self.poste("ici", 60)
-        etat["sync"] = str(self.dossier())
+        cle = self.regle()
+        self.publie_un_pair(self.poste("fixe", 60), cle)
+        etat = cli.read_state()
+        for _ in range(60):
+            succes.enregistrer(etat, "doots", datetime(2026, 9, 17), quantite=1)
         cli.write_state(etat)
-        self.depose(self.poste("fixe", 60))
         for _ in range(3):
-            cli.sync_tour(self.args_daemon())
+            cli.sync_tour(cli.build_parser().parse_args(["--quiet"]))
         self.assertEqual(succes.total(cli.read_state(), "doots"), 120)
 
-    def test_ce_qu_un_poste_a_appris_se_transmet(self):
-        """Deux machines jamais reveillees ensemble se rejoignent par une troisieme."""
-        from doot import succes
-        relais = self.poste("relais", 0)
-        relais["sync"] = str(self.dossier())
-        self.depose(self.poste("portable", 40))
-        partage.cycle(relais)
-
-        fixe = self.poste("fixe", 5)
-        fixe["sync"] = str(self.dossier())
-        partage.cycle(fixe)
-        self.assertEqual(succes.total(fixe, "doots"), 45,
-                         "le fixe doit recevoir le portable par le relais")
-
-    def test_sync_init_retient_le_dossier_et_publie(self):
+    def test_sync_init_frappe_une_cle_et_publie(self):
+        from doot import coffre
         cli.write_state(self.poste("ici", 10))
-        self.assertEqual(self.run_cli("--sync-init", str(self.dossier())), 0)
+        self.assertEqual(self.run_cli("--sync-init", str(self.depot())), 0)
+        fiche = partage.reglage(self.paths["data"])
+        self.assertTrue(fiche["cle"].startswith(coffre.PREFIXE))
+        self.assertTrue(list((self.depot() / "v1").iterdir()))
+
+    def test_sync_init_garde_la_cle_existante(self):
+        cle = self.regle()
+        self.run_cli("--sync-init", str(self.depot()))
+        self.assertEqual(partage.reglage(self.paths["data"])["cle"], cle)
+
+    def test_sync_force_en_frappe_une_neuve(self):
+        cle = self.regle()
+        self.run_cli("--sync-init", str(self.depot()), "--sync-force")
+        self.assertNotEqual(partage.reglage(self.paths["data"])["cle"], cle)
+
+    def test_sync_join_refuse_une_cle_de_travers(self):
+        self.regle()
+        self.assertEqual(self.run_cli("--sync-join", "pas-une-cle"), 2)
+
+    def test_sync_join_retient_la_cle_donnee(self):
+        from doot import coffre
+        self.regle()
+        autre = coffre.en_texte(coffre.creer())
+        self.assertEqual(self.run_cli("--sync-join", autre), 0)
+        self.assertEqual(partage.reglage(self.paths["data"])["cle"], autre)
+
+    def test_rejoindre_retire_l_objet_de_l_ancienne_cle(self):
+        """Sinon le depot garde un objet que plus personne ne sait ouvrir."""
+        from doot import coffre
+        self.regle()
+        self.run_cli("--sync-init", str(self.depot()))
+        avant = {p.name for p in (self.depot() / "v1").iterdir()}
+        self.run_cli("--sync-join", coffre.en_texte(coffre.creer()))
+        apres = {p.name for p in (self.depot() / "v1").iterdir()}
+        self.assertEqual(len(apres), 1, f"reste {apres - avant | avant - apres}")
+
+    def test_la_rotation_retire_l_objet_de_l_ancienne_cle(self):
+        """Symetrique de celui de --sync-join : la cle neuve ne laisse pas de dechet."""
+        self.run_cli("--sync-init", str(self.depot()))
+        self.assertEqual(len(list((self.depot() / "v1").iterdir())), 1)
+        self.run_cli("--sync-init", str(self.depot()), "--sync-force")
+        restants = list((self.depot() / "v1").iterdir())
+        self.assertEqual(len(restants), 1, f"reste {[p.name for p in restants]}")
+
+    def objets(self):
+        return {chemin.name for chemin in (self.depot() / "v1").iterdir()}
+
+    def rotation_ratee(self, *commande):
+        """Joue une commande qui change de cle pendant que le depot refuse d'ecrire."""
+        from doot import transport
+        self.run_cli("--sync-init", str(self.depot()))
+        avant, cle = self.objets(), partage.reglage(self.paths["data"])["cle"]
+        with mock.patch.object(partage, "publier",
+                               side_effect=transport.TransportError("disque plein")):
+            self.assertEqual(self.run_cli(*commande), 2)
+        return cle, avant
+
+    def test_une_rotation_ratee_retient_la_cle_quittee(self):
+        """Sans la marque, plus personne ne sait quel objet retirer."""
+        cle, avant = self.rotation_ratee("--sync-init", str(self.depot()), "--sync-force")
+        fiche = partage.reglage(self.paths["data"])
+        self.assertIn(cle, fiche["cles_quittees"])
+        self.assertNotEqual(fiche["cle"], cle)
+        self.assertEqual(self.objets(), avant)
+
+    def test_le_cycle_suivant_solde_une_rotation_ratee(self):
+        _, avant = self.rotation_ratee("--sync-init", str(self.depot()), "--sync-force")
+        cli.sync_tour(cli.build_parser().parse_args(["--quiet"]))
+        self.assertEqual(len(self.objets()), 1)
+        self.assertFalse(self.objets() & avant)
+        self.assertNotIn("cles_quittees", partage.reglage(self.paths["data"]))
+
+    def test_rejoindre_apres_une_publication_ratee_solde_aussi(self):
+        from doot import coffre
+        cle, avant = self.rotation_ratee("--sync-join", coffre.en_texte(coffre.creer()))
+        self.assertIn(cle, partage.reglage(self.paths["data"])["cles_quittees"])
+        cli.sync_tour(cli.build_parser().parse_args(["--quiet"]))
+        self.assertEqual(len(self.objets()), 1)
+        self.assertFalse(self.objets() & avant)
+        self.assertNotIn("cles_quittees", partage.reglage(self.paths["data"]))
+
+    def test_relancer_sync_init_solde_une_rotation_ratee(self):
+        """Refrapper la commande sur le meme depot ne doit pas perdre la marque."""
+        _, avant = self.rotation_ratee("--sync-init", str(self.depot()), "--sync-force")
+        self.assertEqual(self.run_cli("--sync-init", str(self.depot())), 0)
+        self.assertEqual(len(self.objets()), 1)
+        self.assertFalse(self.objets() & avant)
+
+    def test_un_retrait_impossible_garde_la_marque(self):
+        """Tant que l'objet quitte est la, la marque doit survivre au cycle."""
+        from doot import transport
+        cle, avant = self.rotation_ratee("--sync-init", str(self.depot()), "--sync-force")
+        with mock.patch.object(transport.Dossier, "effacer",
+                               side_effect=transport.TransportError("lecture seule")):
+            cli.sync_tour(cli.build_parser().parse_args(["--quiet"]))
+        self.assertIn(cle, partage.reglage(self.paths["data"])["cles_quittees"])
+        cli.sync_tour(cli.build_parser().parse_args(["--quiet"]))
+        self.assertEqual(len(self.objets()), 1)
+        self.assertFalse(self.objets() & avant)
+
+    def test_refrapper_la_rotation_ratee_n_oublie_pas_la_premiere_cle(self):
+        """Le geste naturel apres un echec : rejouer la meme commande.
+
+        La cle de la tentative ratee n'a jamais rien publie ; si elle chassait
+        celle d'avant, l'objet de celle-ci resterait la pour toujours.
+        """
+        _, avant = self.rotation_ratee("--sync-init", str(self.depot()), "--sync-force")
+        self.assertEqual(self.run_cli("--sync-init", str(self.depot()), "--sync-force"), 0)
+        self.assertEqual(len(self.objets()), 1)
+        self.assertFalse(self.objets() & avant)
+        self.assertNotIn("cles_quittees", partage.reglage(self.paths["data"]))
+
+    def test_deux_cles_peuvent_attendre_leur_retrait(self):
+        """Une rotation dont le retrait echoue, puis une autre : deux objets restent."""
+        from doot import transport
+        self.run_cli("--sync-init", str(self.depot()))
+        avant = self.objets()
+        with mock.patch.object(transport.Dossier, "effacer",
+                               side_effect=transport.TransportError("lecture seule")):
+            self.assertEqual(self.run_cli("--sync-init", str(self.depot()), "--sync-force"), 0)
+        self.assertEqual(len(self.objets()), 2)
+        avant |= self.objets()
+
+        self.assertEqual(self.run_cli("--sync-init", str(self.depot()), "--sync-force"), 0)
+        restants = self.objets()
+        self.assertEqual(len(restants), 1, f"reste {restants}")
+        self.assertFalse(restants & avant)
+
+    def test_revenir_a_une_cle_quittee_ne_retire_pas_son_objet(self):
+        """Elle est redevenue courante : la solder effacerait la part du jour."""
+        from doot import coffre
+        cle, _ = self.rotation_ratee("--sync-init", str(self.depot()), "--sync-force")
+        self.assertEqual(self.run_cli("--sync-join", cle), 0)
         etat = cli.read_state()
-        self.assertEqual(etat["sync"], str(self.dossier()))
-        self.assertTrue(list(self.dossier().glob("doot-*.json")))
+        attendu = coffre.nom_objet(coffre.depuis_texte(cle), etat["machine"])
+        self.assertEqual(self.objets(), {attendu})
+
+    def test_une_fiche_a_l_ancienne_marque_est_reprise(self):
+        """Quand la marque n'en tenait qu'une, elle designait deja un objet."""
+        from doot import coffre
+        self.run_cli("--sync-init", str(self.depot()))
+        avant = self.objets()
+        partage.poser_reglage(self.paths["data"],
+                              {"dossier": str(self.depot()),
+                               "cle": coffre.en_texte(coffre.creer()),
+                               "cle_precedente": partage.reglage(self.paths["data"])["cle"]})
+        cli.sync_tour(cli.build_parser().parse_args(["--quiet"]))
+        self.assertEqual(len(self.objets()), 1)
+        self.assertFalse(self.objets() & avant)
+
+    def test_une_publication_ratee_rend_quand_meme_ce_qui_a_fusionne(self):
+        """La fusion a eu lieu : un depot muet ne doit pas avaler les succes."""
+        from doot import succes, transport
+        cle = self.regle()
+        self.publie_un_pair(self.poste("fixe", 60), cle)
+        etat = cli.read_state()
+        for _ in range(60):
+            succes.enregistrer(etat, "doots", datetime(2026, 9, 17), quantite=1)
+        with mock.patch.object(partage, "publier",
+                               side_effect=transport.TransportError("disque plein")):
+            nouveaux = partage.cycle(etat, self.paths["data"])
+        self.assertIn("cent_doots", [item.identifiant for item in nouveaux])
+        self.assertIn("erreur", etat["sync_note"])
 
     def test_sync_init_off_coupe_tout(self):
-        cli.write_state(self.poste("ici", 10))
-        self.run_cli("--sync-init", str(self.dossier()))
+        self.regle()
         self.assertEqual(self.run_cli("--sync-init", "off"), 0)
-        etat = cli.read_state()
-        self.assertNotIn("sync", etat)
-        self.assertNotIn("sync_note", etat)
+        self.assertEqual(partage.reglage(self.paths["data"]), {})
 
-    def test_la_fusion_automatique_annonce_ses_succes(self):
-        cli.write_state({**self.poste("ici", 60), "sync": str(self.dossier())})
-        self.depose(self.poste("fixe", 60))
-        cli.sync_tour(self.args_daemon())
-        journal = self.paths["log"].read_text(encoding="utf-8")
-        self.assertIn("Cent-os", journal)
-        self.assertTrue(self.notifications, "un succes gagne par fusion vaut sa medaille")
+    def test_le_secret_ne_part_pas_dans_l_etat(self):
+        """La cle vit dans replica.json, que l'etat copiable n'emporte pas."""
+        self.regle()
+        etat = cli.read_state()
+        cli.write_state(etat)
+        self.assertNotIn("sync", etat)
+        self.assertNotIn("cle", json.dumps(etat))
 
 
 class AnnoncesGroupees(CliTestCase):
