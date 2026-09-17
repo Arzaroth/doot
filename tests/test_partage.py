@@ -298,11 +298,10 @@ class IdentifiantsDuSeau(unittest.TestCase):
         return transport.S3("https://exemple.invalid", "auto", "seau", **kwargs)
 
     def sans_variables(self, **posees):
-        return mock.patch.dict("os.environ",
-                               {v: "" for v in ("DOOT_S3_KEY_ID", "AWS_ACCESS_KEY_ID",
-                                                "DOOT_S3_SECRET", "AWS_SECRET_ACCESS_KEY",
-                                                "DOOT_S3_SESSION_TOKEN", "AWS_SESSION_TOKEN")}
-                               | posees)
+        vides = {v: "" for v in ("DOOT_S3_KEY_ID", "AWS_ACCESS_KEY_ID",
+                                 "DOOT_S3_SECRET", "AWS_SECRET_ACCESS_KEY",
+                                 "DOOT_S3_SESSION_TOKEN", "AWS_SESSION_TOKEN")}
+        return mock.patch.dict("os.environ", dict(vides, **posees))
 
     def test_les_noms_propres_a_doot_priment_sur_aws(self):
         """Une machine qui garde deja des AWS_* pour autre chose les garde."""
