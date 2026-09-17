@@ -100,6 +100,23 @@ def poser_reglage(dossier: Path, valeur: dict | None) -> None:
     _ecrire_fiche(dossier, note)
 
 
+def poser_cle(dossier: Path, fiche: dict, cle_texte: str) -> dict:
+    """Pose une cle neuve et retient celle qu'elle remplace.
+
+    Le nom d'un objet se calcule depuis la cle qui l'a ferme. Oublier l'ancienne
+    avant d'avoir retire son objet le laisserait dans le depot pour toujours,
+    illisible et que rien ne remplacera : la marque est donc ecrite en meme
+    temps que la cle neuve, et survit a une premiere publication ratee.
+    """
+    fiche = dict(fiche)
+    ancienne = fiche.get("cle", "")
+    fiche["cle"] = cle_texte
+    if ancienne and ancienne != cle_texte:
+        fiche["cle_precedente"] = ancienne
+    poser_reglage(dossier, fiche)
+    return fiche
+
+
 def part_exportable(etat: dict) -> dict:
     """Ce qui voyage d'une machine a l'autre.
 
@@ -223,17 +240,25 @@ def publier(etat: dict, depot, cle: bytes) -> str:
     return nom
 
 
-def oublier_sous(etat: dict, fiche: dict, cle_texte: str) -> None:
-    """Retire l'objet publie sous une cle qu'on vient de quitter.
+def solder_cle_precedente(etat: dict, dossier: Path, fiche: dict, depot) -> None:
+    """Retire l'objet de la cle quittee, maintenant que la neuve est publiee.
 
-    Sans ca, changer de cle laisse dans le depot un objet que plus personne ne
-    sait ouvrir, et que rien ne viendra jamais remplacer.
+    Apres `publier` et seulement apres : le depot ne doit a aucun instant se
+    retrouver sans objet de cette machine. La marque n'est levee que si le
+    retrait a abouti, faute de quoi le cycle suivant reessaie.
     """
+    precedente = fiche.get("cle_precedente")
+    if not precedente:
+        return
     try:
-        cle = coffre.depuis_texte(cle_texte)
-        transport.ouvrir(fiche).effacer(coffre.nom_objet(cle, succes.machine(etat)))
-    except Exception:
-        pass
+        cle = coffre.depuis_texte(precedente)
+    except coffre.CoffreError:
+        pass   # marque illisible : elle ne designera jamais d'objet
+    else:
+        depot.effacer(coffre.nom_objet(cle, succes.machine(etat)))
+    fiche = dict(fiche)
+    fiche.pop("cle_precedente", None)
+    poser_reglage(dossier, fiche)
 
 
 def cycle(etat: dict, dossier: Path) -> list:
@@ -241,7 +266,9 @@ def cycle(etat: dict, dossier: Path) -> list:
 
     Ne leve jamais : un depot injoignable, un disque plein ou un objet a moitie
     ecrit laissent la progression locale intacte et l'ennui dans `sync_note`.
-    Un doot ne doit pas dependre de la synchronisation.
+    Un doot ne doit pas dependre de la synchronisation. Ce qui a ete fusionne
+    est retenu avant de publier, pour qu'une panne d'ecriture ne fasse pas
+    perdre les succes que la lecture venait de debloquer.
     """
     fiche = reglage(dossier)
     if not fiche or not fiche.get("cle"):
@@ -254,10 +281,11 @@ def cycle(etat: dict, dossier: Path) -> list:
         depot = transport.ouvrir(fiche)
         note["depot"] = depot.decrire()
         lectures = lire_objets(etat, depot, cle, depot.lister())
-        publier(etat, depot, cle)
         note["pairs"] = sum(1 for lecture in lectures if lecture.fusionnee)
         note["ecartes"] = [lecture.refus for lecture in lectures if lecture.refus]
         nouveaux = [item for lecture in lectures for item in lecture.debloques]
+        publier(etat, depot, cle)
+        solder_cle_precedente(etat, dossier, fiche, depot)
     except Exception as exc:
         note["erreur"] = str(exc)
     etat["sync_note"] = note

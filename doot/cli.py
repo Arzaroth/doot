@@ -751,14 +751,16 @@ def do_sync_init(args, cible: str) -> int:
             return 2
     else:
         # La cle survit au changement de depot : la refrapper orphelinerait la
-        # flotte, chaque autre poste continuant a publier sous l'ancienne.
-        fiche = {"dossier": str(Path(cible).expanduser()), "cle": fiche.get("cle", "")}
+        # flotte, chaque autre poste continuant a publier sous l'ancienne. Le
+        # reste de la fiche decrivait un seau et ne decrit plus rien.
+        gardees = {champ: fiche[champ]
+                   for champ in ("cle", "cle_precedente") if fiche.get(champ)}
+        fiche = {"dossier": str(Path(cible).expanduser()), **gardees}
 
-    ancienne = fiche.get("cle")
-    if not ancienne or args.sync_force:
-        fiche["cle"] = coffre.en_texte(coffre.creer())
-
-    partage.poser_reglage(p["data"], fiche)
+    if not fiche.get("cle") or args.sync_force:
+        fiche = partage.poser_cle(p["data"], fiche, coffre.en_texte(coffre.creer()))
+    else:
+        partage.poser_reglage(p["data"], fiche)
     etat = read_state()
     nouveaux = partage.cycle(etat, p["data"])
     write_state(etat)
@@ -767,11 +769,6 @@ def do_sync_init(args, cible: str) -> int:
     if note.get("erreur"):
         print(f"doot : depot inutilisable, {note['erreur']}")
         return 2
-
-    # Apres publication seulement : l'objet de l'ancienne cle ne serait plus
-    # lisible par personne, et chaque cycle le signalerait comme etranger.
-    if ancienne and ancienne != fiche["cle"]:
-        partage.oublier_sous(etat, fiche, ancienne)
 
     print(f"doot : partage par {note.get('depot', cible)}")
     print(f"  {note.get('pairs', 0)} autre(s) machine(s) deja presente(s)")
@@ -798,10 +795,9 @@ def do_sync_join(args, texte: str) -> int:
         return 2
 
     # L'objet publie sous l'ancienne cle ne serait plus lisible par personne :
-    # on le retire plutot que de laisser un dechet chiffre dans le depot.
-    ancienne = fiche.get("cle")
-    fiche["cle"] = texte.strip()
-    partage.poser_reglage(p["data"], fiche)
+    # `poser_cle` retient laquelle, et le cycle le retire une fois la part
+    # republiee sous la neuve.
+    fiche = partage.poser_cle(p["data"], fiche, texte.strip())
     etat = read_state()
     nouveaux = partage.cycle(etat, p["data"])
     write_state(etat)
@@ -811,8 +807,6 @@ def do_sync_join(args, texte: str) -> int:
         print(f"doot : depot inutilisable, {note['erreur']}")
         return 2
 
-    if ancienne and ancienne != fiche["cle"]:
-        partage.oublier_sous(etat, fiche, ancienne)
     print(f"doot : flotte rejointe, {note.get('pairs', 0)} autre(s) machine(s)")
     annoncer_succes(args, nouveaux)
     return 0
