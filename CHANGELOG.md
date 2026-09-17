@@ -12,6 +12,8 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.18.0] - 2026-09-17
+
 ### Ajouté
 - Le partage des succès traverse désormais un stockage qu'on ne contrôle pas :
   chaque poste publie un objet **chiffré** (ChaCha20-Poly1305), nommé par un
@@ -681,7 +683,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.17.1...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.18.0...HEAD
+[1.18.0]: https://github.com/boubou666/doot/compare/v1.17.1...v1.18.0
 [1.17.1]: https://github.com/boubou666/doot/compare/v1.17.0...v1.17.1
 [1.17.0]: https://github.com/boubou666/doot/compare/v1.16.0...v1.17.0
 [1.16.0]: https://github.com/boubou666/doot/compare/v1.15.0...v1.16.0
