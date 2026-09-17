@@ -92,6 +92,24 @@ def show(title: str, description: str, points: int, badge_path: Path | None = No
     )
 
 
+def show_lot(titres: list, points: int, badge_path: Path | None = None,
+             wav_path: Path | None = None, duration: float = DEFAULT_DURATION) -> None:
+    """Une seule carte pour tout un lot de succes.
+
+    Cinq succes gagnes ensemble faisaient cinq toasts a la suite, et le daemon
+    n'avancait plus pendant dix-sept secondes. La carte les annonce ensemble,
+    une fanfare pour tous, avec juste de quoi lire une ligne de plus.
+    """
+
+    lignes = "\n".join(f"\u00b7 {titre}" for titre in titres)
+    _afficher(
+        f"{len(titres)} SUCCES DEBLOQUES  \u00b7  +{points} POINTS",
+        "Tableau de chasse", lignes,
+        badge_path=badge_path, wav_path=wav_path,
+        duration=duration + 0.6 * (len(titres) - 1),
+    )
+
+
 def _afficher(entete: str, titre: str, corps: str, badge_path: Path | None = None,
               wav_path: Path | None = None, duration: float = DEFAULT_DURATION) -> None:
     """Le toast lui-meme, quel que soit ce qu'il annonce.

@@ -438,23 +438,42 @@ def note_succes(args, evenement: str, **details) -> None:
     etat = read_state()
     nouveaux = succes.enregistrer(etat, evenement, **details)
     write_state(etat)
-    wav = notification_sound(args) if nouveaux else None
+    annoncer_succes(args, nouveaux)
+
+
+def annoncer_succes(args, nouveaux) -> None:
+    """Journalise chaque succes tombe, et n'en montre qu'une carte.
+
+    Un seul chemin pour le jeu et pour la fusion : un succes gagne en reunissant
+    deux machines vaut le sien, il n'y a pas de raison qu'il se contente d'une
+    ligne de texte.
+    """
+    if not nouveaux:
+        return
+
     for definition in nouveaux:
         log(
             f"SUCCES DEBLOQUE : {definition.titre} (+{definition.points} points) - "
             f"{definition.description}",
             quiet=args.quiet,
         )
-        try:
+
+    wav = notification_sound(args)
+    try:
+        if len(nouveaux) == 1:
+            seul = nouveaux[0]
             notification.show(
-                definition.titre,
-                definition.description,
-                definition.points,
-                badge_path=succes.badge(definition),
-                wav_path=wav,
+                seul.titre, seul.description, seul.points,
+                badge_path=succes.badge(seul), wav_path=wav,
             )
-        except Exception as exc:
-            log(f"notification de succes indisponible : {exc}", quiet=args.quiet)
+        else:
+            notification.show_lot(
+                [definition.titre for definition in nouveaux],
+                sum(definition.points for definition in nouveaux),
+                badge_path=succes.badge(nouveaux[0]), wav_path=wav,
+            )
+    except Exception as exc:
+        log(f"notification de succes indisponible : {exc}", quiet=args.quiet)
 
 
 def notification_sound(args) -> Path | None:
@@ -776,8 +795,7 @@ def do_fusionner(args, sources) -> int:
     print(f"\n{lus} machine(s) fusionnee(s).")
     print(f"  doots : {avant_doots} -> {succes.total(etat, 'doots')}")
     print(f"  score : {avant_score} -> {succes.score(etat)} points")
-    for definition in nouveaux:
-        print(f"  SUCCES DEBLOQUE : {definition.titre} (+{definition.points} points)")
+    annoncer_succes(args, nouveaux)
     return 0
 
 

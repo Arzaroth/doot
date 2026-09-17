@@ -47,6 +47,13 @@ class CliTestCase(unittest.TestCase):
                 "show",
                 lambda *args, **kwargs: self.notifications.append({"args": args, **kwargs}),
             ),
+            # Sans ce faux, tout test qui debloque plusieurs succes d'un coup
+            # ouvre une vraie carte et attend qu'elle s'efface.
+            mock.patch.object(
+                cli.notification,
+                "show_lot",
+                lambda *args, **kwargs: self.notifications.append({"lot": args, **kwargs}),
+            ),
         ]
         for patch in patches:
             patch.start()
