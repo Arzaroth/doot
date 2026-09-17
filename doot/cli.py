@@ -225,7 +225,7 @@ def display_options(args, step: dict | None = None) -> dict:
             options["side"] = step["side"]
             if options["slide"]:
                 options["slide_chance"] = 1.0
-        if step.get("force_spin") and args.side is None:
+        if step.get("force_spin"):
             options["slide"] = False
             options["side"] = None
             if options["spin"]:
@@ -1169,10 +1169,19 @@ def parse_args(argv: list[str] | None = None):
     # Les valeurs par defaut d'un groupe mutuellement exclusif ne comptent pas
     # comme une option argparse. Une demande explicite doit pourtant battre le
     # profil charge dans les deux sens.
-    if any(option == "--side" or option.startswith("--side=") for option in raw):
+    explicit_side = any(
+        option == "--side" or option.startswith("--side=") for option in raw
+    )
+    if explicit_side:
         args.spin = False
+        if "--no-slide" not in raw:
+            args.no_slide = False
     if "--spin" in raw:
         args.side = None
+        if "--no-spin" not in raw:
+            args.no_spin = False
+    if "--no-spin" in raw:
+        args.spin = False
     args._profile_loaded = selected
     return args
 

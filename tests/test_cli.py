@@ -514,6 +514,14 @@ class SalvesChoreographiees(CliTestCase):
         self.assertTrue(all(not call["slide"] for call in self.shown))
         self.assertTrue(all(call["spin_chance"] == 1.0 for call in self.shown))
 
+    def test_vortex_considere_side_random_comme_non_verrouille(self):
+        self.run_cli(
+            "--once", "--no-sound", "--side", "random", "--burst-min", "2",
+            "--burst-max", "2", "--burst-delay", "0", "--formation", "vortex",
+        )
+        self.assertTrue(all(not call["slide"] for call in self.shown))
+        self.assertTrue(all(call["spin_chance"] == 1.0 for call in self.shown))
+
     def test_no_spin_garde_le_vortex_sur_place_mais_droit(self):
         self.run_cli(
             "--once", "--no-sound", "--no-spin", "--burst-min", "2",
@@ -612,6 +620,24 @@ class ProfilsPersistants(CliTestCase):
 
         self.assertEqual(args.side, "left")
         self.assertFalse(args.spin)
+
+    def test_no_spin_remplace_le_spin_du_profil(self):
+        self.run_cli("--save-profile", "toupie", "--spin", "--no-sound")
+        self.run_cli("--activate-profile", "toupie", "--no-sound")
+
+        args = cli.parse_args(["--once", "--no-spin"])
+
+        self.assertFalse(args.spin)
+        self.assertTrue(args.no_spin)
+
+    def test_side_remplace_no_slide_du_profil(self):
+        self.run_cli("--save-profile", "statue", "--no-slide", "--no-sound")
+        self.run_cli("--activate-profile", "statue", "--no-sound")
+
+        args = cli.parse_args(["--once", "--side", "right"])
+
+        self.assertEqual(args.side, "right")
+        self.assertFalse(args.no_slide)
 
     def test_no_profile_retrouve_les_defauts(self):
         self.run_cli(

@@ -58,7 +58,7 @@
 - **Chorégraphies** : les salves peuvent défiler en canon, onduler entre les
   écrans, tomber du haut ou tournoyer sur place.
 - **Rencontres rares** : parade, pluie d'os et vortex interrompent parfois la
-  routine ; un compteur de pitié garantit que les trois finissent par sortir.
+  routine ; un compteur de pitié garantit qu'une rencontre finit par sortir.
 - **Profils persistants** : sauvegarde plusieurs ambiances et active celle que
   le daemon doit reprendre automatiquement, y compris après une mise à jour.
 - **Prêt à l'emploi** : le squelette et son *doot* sont livrés avec ; dépose ton
