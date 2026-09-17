@@ -320,6 +320,13 @@ soixante là-bas débloquent *Cent-os*.
 Les compteurs de pitié ne voyagent pas : ils décrivent le rythme d'un poste,
 pas ce qui y a été accompli.
 
+L'identité de chaque poste vit dans `replica.json`, à côté de `state.json` mais
+pas dedans, parce que `state.json` se sauvegarde et se copie. Deux installations
+qui partageraient une identité verraient leurs progressions fusionnées par
+maximum au lieu d'être additionnées. Un dossier de données restauré ailleurs se
+voit donc attribuer une identité neuve : les parts déjà gagnées restent à la
+machine qui les a gagnées, les suivantes vont à la nouvelle.
+
 Ce qu'un poste publie porte aussi ce qu'il a appris des autres. Deux machines
 jamais allumées en même temps se rejoignent donc par l'intermédiaire d'une
 troisième, ce que les parts rendent sans danger puisque fusionner prend le

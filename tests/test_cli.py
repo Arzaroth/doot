@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
-from doot import cli, season, window
+from doot import cli, partage, season, window
 
 
 class CliTestCase(unittest.TestCase):
@@ -39,6 +39,8 @@ class CliTestCase(unittest.TestCase):
         self.shown = []
         self.notifications = []
 
+        partage._connues.clear()
+        self.addCleanup(partage._connues.clear)
         patches = [
             mock.patch.object(cli, "paths", lambda: self.paths),
             mock.patch.object(window, "show", lambda **kwargs: self.shown.append(kwargs)),
@@ -1183,7 +1185,8 @@ class ExportEtFusion(CliTestCase):
         from doot import succes
         etat = self.poste("ici", 10)
         cli.write_state(etat)
-        self.depose("moi.json", {"machine": "ici", "stats": {"doots": {"ici": 999}}})
+        ici = cli.read_state()["machine"]
+        self.depose("moi.json", {"machine": ici, "stats": {"doots": {ici: 999}}})
         self.assertEqual(self.run_cli("--merge", str(Path(self._dir.name) / "partage")), 2)
         self.assertEqual(succes.total(cli.read_state(), "doots"), 10)
 
@@ -1224,11 +1227,10 @@ class SynchronisationAutomatique(CliTestCase):
         return Path(self._dir.name) / "partage"
 
     def depose(self, etat):
-        from doot import cli as module
         cible = self.dossier()
         cible.mkdir(parents=True, exist_ok=True)
         (cible / f"doot-{etat['machine']}.json").write_text(
-            json.dumps(module.part_exportable(etat)), encoding="utf-8")
+            json.dumps(partage.part_exportable(etat)), encoding="utf-8")
 
     def args_daemon(self):
         return cli.build_parser().parse_args(["--quiet"])
@@ -1243,7 +1245,7 @@ class SynchronisationAutomatique(CliTestCase):
         etat = self.poste("ici", 60)
         etat["sync"] = str(self.dossier())
         self.depose(self.poste("fixe", 60))
-        cli.sync_cycle(self.args_daemon(), etat)
+        partage.cycle(etat)
         self.assertEqual(succes.total(etat, "doots"), 120)
         self.assertTrue((self.dossier() / "doot-ici.json").is_file())
         self.assertEqual(etat["sync_note"]["pairs"], 1)
@@ -1260,7 +1262,7 @@ class SynchronisationAutomatique(CliTestCase):
 
         etat = self.poste("ici", 10)
         etat["sync"] = str(bloque / "dedans")
-        self.assertEqual(cli.sync_cycle(self.args_daemon(), etat), [])
+        self.assertEqual(partage.cycle(etat), [])
         self.assertIn("erreur", etat["sync_note"])
         self.assertEqual(succes.total(etat, "doots"), 10)
 
@@ -1280,11 +1282,11 @@ class SynchronisationAutomatique(CliTestCase):
         relais = self.poste("relais", 0)
         relais["sync"] = str(self.dossier())
         self.depose(self.poste("portable", 40))
-        cli.sync_cycle(self.args_daemon(), relais)
+        partage.cycle(relais)
 
         fixe = self.poste("fixe", 5)
         fixe["sync"] = str(self.dossier())
-        cli.sync_cycle(self.args_daemon(), fixe)
+        partage.cycle(fixe)
         self.assertEqual(succes.total(fixe, "doots"), 45,
                          "le fixe doit recevoir le portable par le relais")
 
@@ -1348,6 +1350,26 @@ class AnnoncesGroupees(CliTestCase):
     def test_aucun_succes_n_annonce_rien(self):
         cli.annoncer_succes(self.args_quiet(), [])
         self.assertEqual(self.notifications, [])
+
+
+class IdentiteDeReplique(CliTestCase):
+    """L'etat charge porte l'identite du poste, jamais celle du fichier."""
+
+    def test_l_etat_charge_prend_l_identite_du_poste(self):
+        cli.write_state({"machine": "venue-d-ailleurs", "stats": {"doots": {"x": 5}}})
+        etat = cli.read_state()
+        self.assertNotEqual(etat["machine"], "venue-d-ailleurs")
+        self.assertEqual(etat["machine"], partage.identite(self.paths["data"]))
+
+    def test_les_parts_de_l_etat_copie_ne_sont_pas_perdues(self):
+        """Elles restent a la machine qui les a gagnees ; seules les suivantes
+        vont a la nouvelle identite."""
+        from doot import succes
+        cli.write_state({"machine": "venue-d-ailleurs", "stats": {"doots": {"souche": 10}}})
+        etat = cli.read_state()
+        succes.enregistrer(etat, "doots", datetime(2026, 9, 18), quantite=5)
+        self.assertEqual(succes.total(etat, "doots"), 15)
+        self.assertEqual(etat["stats"]["doots"]["souche"], 10)
 
 
 if __name__ == "__main__":

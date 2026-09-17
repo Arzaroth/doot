@@ -22,6 +22,11 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
   deux machines peut débloquer un succès qu'aucune n'avait atteint seule.
 
 ### Modifié
+- L'identité de chaque poste vit dans `replica.json` et non plus dans
+  `state.json`, que la documentation invite à sauvegarder et à copier. Deux
+  installations qui la partageaient voyaient leurs progressions fusionnées par
+  maximum : dix doots communs, puis cinq ici et sept là-bas, donnaient dix-sept
+  au lieu de vingt-deux.
 - Plusieurs succès gagnés d'un coup tiennent désormais sur une seule carte, au
   lieu d'une par succès. Cinq succès peuvent tomber sur le même doot, ce qui
   faisait cinq cartes bloquantes à la suite et dix-sept secondes sans rien

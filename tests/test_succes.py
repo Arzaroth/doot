@@ -263,10 +263,11 @@ class Fusion(unittest.TestCase):
         with self.assertRaises(ValueError):
             succes.fusionner(self.poste("portable", 1), {"stats": {"doots": 5}})
 
-    def test_l_identifiant_de_machine_est_stable(self):
-        etat = {}
-        self.assertEqual(succes.machine(etat), succes.machine(etat))
-        self.assertNotEqual(succes.machine({}), succes.machine({}))
+    def test_machine_ne_fait_que_lire(self):
+        """L'identite appartient au poste, pas au module : `partage` la pose."""
+        self.assertEqual(succes.machine({}), "")
+        self.assertEqual(succes.machine({"machine": 42}), "")
+        self.assertEqual(succes.machine({"machine": "abc"}), "abc")
 
 
 if __name__ == "__main__":
