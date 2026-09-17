@@ -175,6 +175,17 @@ with zipfile.ZipFile(io.BytesIO(wheel)) as archive:
 PY
 say "moteur      : desktop-overlay $ENGINE_VERSION"
 
+# Le partage chiffre des succes en depend. L'echec n'arrete pas l'installation :
+# doot s'affiche et joue sans, et ne reclame le paquet qu'au premier --sync-init.
+if "$PYTHON" -m pip install --quiet --disable-pip-version-check \
+        --target "$APP_DIR" "cryptography>=42" >/dev/null 2>&1; then
+    say "chiffrement : cryptography"
+else
+    say "chiffrement : cryptography n'a pas pu etre pose"
+    say "              doot marche ; le partage des succes le demandera :"
+    say "              $PYTHON -m pip install --target $APP_DIR 'cryptography>=42'"
+fi
+
 cat > "$BIN_DIR/doot" <<EOF
 #!/usr/bin/env bash
 # Lanceur genere par install.sh
