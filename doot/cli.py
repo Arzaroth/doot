@@ -12,7 +12,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import __version__, art, image, notification, profiles, season, sound, succes
+from . import __version__, art, image, notification, partage, profiles, season, sound, succes
 
 DEFAULT_MIN_SECONDS = 600     # 10 min
 DEFAULT_MAX_SECONDS = 3600    # 1 h
@@ -395,8 +395,14 @@ def read_state() -> dict:
     try:
         etat = json.loads(paths()["state"].read_text(encoding="utf-8"))
     except Exception:
-        return {}
-    return etat if isinstance(etat, dict) else {}
+        etat = {}
+    if not isinstance(etat, dict):
+        etat = {}
+    # L'identite de replique vient du poste et jamais du fichier : un
+    # state.json copie ou restaure ne doit pas faire croire a deux
+    # installations qu'elles n'en sont qu'une.
+    etat["machine"] = partage.identite(paths()["data"])
+    return etat
 
 
 def state_compteur(etat: dict, cle: str) -> int:
@@ -406,10 +412,7 @@ def state_compteur(etat: dict, cle: str) -> int:
     repart de zero : perdre un cycle de pitie vaut mieux que perdre tous les
     declenchements suivants.
     """
-    valeur = etat.get(cle, 0)
-    if isinstance(valeur, bool) or not isinstance(valeur, int):
-        return 0
-    return max(0, valeur)
+    return succes.entier(etat.get(cle, 0))
 
 
 def write_state(state: dict) -> None:
@@ -714,108 +717,12 @@ def do_melodies(args) -> int:
     return 0
 
 
-def part_exportable(etat: dict) -> dict:
-    """Ce qui voyage d'une machine a l'autre.
-
-    Les compteurs de pitie restent : ils decrivent le rythme de ce poste, pas
-    ce qui y a ete accompli.
-    """
-    return {
-        "machine": succes.machine(etat),
-        "stats": etat.get("stats", {}),
-        "succes": etat.get("succes", {}),
-    }
-
-
-def ecrire_part(etat: dict, cible: Path) -> Path:
-    """Depose la part de ce poste ; un dossier recoit doot-<machine>.json."""
-    part = part_exportable(etat)
-    chemin = cible / f"doot-{part['machine']}.json" if cible.is_dir() else cible
-    chemin.parent.mkdir(parents=True, exist_ok=True)
-    chemin.write_text(json.dumps(part, indent=2, ensure_ascii=False) + "\n",
-                      encoding="utf-8")
-    return chemin
-
-
-def fusionner_fichiers(etat: dict, fichiers, bavard: bool = False) -> tuple:
-    """Fait entrer les parts lisibles ; renvoie (nombre lu, succes debloques).
-
-    Un fichier illisible, anonyme ou venu de ce poste est saute sans arreter
-    les autres.
-    """
-    ici = succes.machine(etat)
-    lus = 0
-    nouveaux = []
-    for chemin in fichiers:
-        try:
-            distant = json.loads(chemin.read_text(encoding="utf-8"))
-        except Exception as exc:
-            if bavard:
-                print(f"  {chemin.name} : illisible, {exc}")
-            continue
-        if not isinstance(distant, dict):
-            if bavard:
-                print(f"  {chemin.name} : ce n'est pas un etat doot")
-            continue
-        if distant.get("machine") == ici:
-            if bavard:
-                print(f"  {chemin.name} : c'est cette machine, ignore")
-            continue
-        try:
-            nouveaux.extend(succes.fusionner(etat, distant))
-        except ValueError as exc:
-            if bavard:
-                print(f"  {chemin.name} : {exc}")
-            continue
-        lus += 1
-        if bavard:
-            print(f"  {chemin.name} : machine {distant.get('machine')}")
-    return lus, nouveaux
-
-
-def sync_dossier(etat: dict):
-    """Le dossier partage, s'il y en a un."""
-    valeur = etat.get("sync")
-    if isinstance(valeur, str) and valeur:
-        return Path(valeur).expanduser()
-    return None
-
-
-def sync_cycle(args, etat: dict) -> list:
-    """Prend ce que les autres ont publie, fusionne, republie.
-
-    Ne leve jamais : un dossier absent, un disque plein ou un fichier a moitie
-    ecrit laissent l'etat local intact et l'ennui dans `sync_note`. Un doot ne
-    doit pas dependre de la synchronisation.
-
-    Le fichier publie porte aussi ce que ce poste a appris des autres. Deux
-    machines jamais reveillees en meme temps se rejoignent donc par
-    l'intermediaire d'une troisieme, ce que les parts par machine rendent sans
-    danger : fusionner prend le maximum part par part, jamais une somme.
-    """
-    dossier = sync_dossier(etat)
-    if dossier is None:
-        return []
-
-    note = {"quand": datetime.now().isoformat(timespec="seconds")}
-    nouveaux = []
-    try:
-        dossier.mkdir(parents=True, exist_ok=True)
-        lus, nouveaux = fusionner_fichiers(etat, sorted(dossier.glob("doot-*.json")))
-        ecrire_part(etat, dossier)
-        note["pairs"] = lus
-    except Exception as exc:
-        note["erreur"] = str(exc)
-    etat["sync_note"] = note
-    return nouveaux
-
-
 def sync_tour(args) -> None:
     """Un tour complet, annonces comprises, pour le daemon."""
     etat = read_state()
-    if sync_dossier(etat) is None:
+    if partage.dossier_partage(etat) is None:
         return
-    nouveaux = sync_cycle(args, etat)
+    nouveaux = partage.cycle(etat)
     write_state(etat)
     annoncer_succes(args, nouveaux)
 
@@ -832,7 +739,7 @@ def do_sync_init(args, cible: str) -> int:
 
     dossier = Path(cible).expanduser()
     etat["sync"] = str(dossier)
-    nouveaux = sync_cycle(args, etat)
+    nouveaux = partage.cycle(etat)
     write_state(etat)
 
     note = etat.get("sync_note", {})
@@ -849,32 +756,19 @@ def do_sync_init(args, cible: str) -> int:
 def do_exporter(args, cible: str) -> int:
     """Ecrit de quoi rejoindre cette machine depuis une autre."""
     etat = read_state()
-    part = part_exportable(etat)
     write_state(etat)
 
     if cible == "-":
-        print(json.dumps(part, indent=2, ensure_ascii=False))
+        print(json.dumps(partage.part_exportable(etat), indent=2, ensure_ascii=False))
         return 0
 
     try:
-        chemin = ecrire_part(etat, Path(cible).expanduser())
+        chemin = partage.ecrire_part(etat, Path(cible).expanduser())
     except OSError as exc:
         print(f"doot : ecriture impossible, {exc}")
         return 2
     print(f"doot : etat exporte dans {chemin}")
     return 0
-
-
-def _etats_a_fusionner(sources) -> list:
-    """Les fichiers a lire ; un dossier apporte tous ses .json."""
-    fichiers = []
-    for source in sources:
-        chemin = Path(source).expanduser()
-        if chemin.is_dir():
-            fichiers.extend(sorted(chemin.glob("*.json")))
-        else:
-            fichiers.append(chemin)
-    return fichiers
 
 
 def do_fusionner(args, sources) -> int:
@@ -883,7 +777,12 @@ def do_fusionner(args, sources) -> int:
     avant_doots = succes.total(etat, "doots")
     avant_score = succes.score(etat)
 
-    lus, nouveaux = fusionner_fichiers(etat, _etats_a_fusionner(sources), bavard=True)
+    lectures = partage.lire_parts(etat, partage.fichiers_de(sources))
+    for lecture in lectures:
+        detail = f"machine {lecture.machine}" if lecture.fusionnee else lecture.refus
+        print(f"  {lecture.chemin.name} : {detail}")
+    lus = sum(1 for lecture in lectures if lecture.fusionnee)
+    nouveaux = [item for lecture in lectures for item in lecture.debloques]
 
     if not lus:
         print("doot : rien a fusionner.")
@@ -917,7 +816,7 @@ def do_succes(args) -> int:
         print(f"  {marque} {definition.titre} (+{definition.points})")
         print(f"      {definition.description}  {detail}")
     print(f"\nProgression locale : {paths()['state']}")
-    dossier = sync_dossier(etat)
+    dossier = partage.dossier_partage(etat)
     if dossier is None:
         print("Synchronisation     : aucune (doot --sync-init CHEMIN)")
     else:

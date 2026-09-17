@@ -8,7 +8,6 @@ memes identifiants de succes sans changer le format du fichier.
 
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -45,40 +44,48 @@ class Succes:
     progression: Progression
 
 
-def _entier(valeur) -> int:
+def entier(valeur) -> int:
+    """Un entier positif, quoi qu'on lui donne : le reste repart de zero."""
     if isinstance(valeur, bool) or not isinstance(valeur, int):
         return 0
     return max(0, valeur)
 
 
 def machine(etat: dict) -> str:
-    """L'identifiant de cette installation, cree au premier besoin.
-
-    Il ne sert qu'a garder separees les parts de chaque machine, ce qui rend la
-    fusion idempotente. Il ne quitte le poste que par un export demande.
-    """
+    """L'identifiant de la replique. C'est `partage` qui le pose dans l'etat."""
     valeur = etat.get("machine")
-    if isinstance(valeur, str) and valeur:
-        return valeur
-    valeur = uuid.uuid4().hex[:12]
-    etat["machine"] = valeur
-    return valeur
+    return valeur if isinstance(valeur, str) else ""
 
 
-def _parts(stats: dict, cle: str, origine: str) -> dict:
-    """Les parts d'un total, par machine. Un entier d'avant revient a `origine`."""
+def _normaliser(etat: dict) -> dict:
+    """Range les totaux en parts, une fois, pour que les lecteurs l'ignorent.
+
+    Un entier d'avant les parts revient a la machine qui l'a accumule. Faire ce
+    rangement ici evite de trainer l'origine dans chaque lecture.
+    """
+    stats = _stats(etat)
+    origine = machine(etat) or "inconnue"
+    for cle in TOTAUX:
+        valeur = stats.get(cle)
+        if valeur is not None and not isinstance(valeur, dict):
+            valeur = entier(valeur)
+            stats[cle] = {origine: valeur} if valeur else {}
+    return stats
+
+
+def _parts(stats: dict, cle: str) -> dict:
+    """Les parts d'un total, par machine."""
     valeur = stats.get(cle)
-    if isinstance(valeur, dict):
-        return {str(nom): _entier(part) for nom, part in valeur.items()}
-    entier = _entier(valeur)
-    return {origine: entier} if entier else {}
+    if not isinstance(valeur, dict):
+        return {}
+    return {str(nom): entier(part) for nom, part in valeur.items()}
 
 
 def _compteur(stats: dict, cle: str) -> int:
     valeur = stats.get(cle, 0)
     if isinstance(valeur, dict):
-        return sum(_entier(part) for part in valeur.values())
-    return _entier(valeur)
+        return sum(entier(part) for part in valeur.values())
+    return entier(valeur)
 
 
 def _liste(stats: dict, cle: str) -> list[str]:
@@ -157,8 +164,8 @@ def _ajoute(stats: dict, cle: str, origine: str, quantite: int = 1) -> None:
     quantite = max(0, quantite)
     if not quantite:
         return
-    parts = _parts(stats, cle, origine)
-    parts[origine] = _entier(parts.get(origine)) + quantite
+    parts = _parts(stats, cle)
+    parts[origine] = entier(parts.get(origine)) + quantite
     stats[cle] = parts
 
 
@@ -178,8 +185,8 @@ def enregistrer(etat: dict, evenement: str, maintenant: datetime | None = None,
     """Enregistre un evenement reel et renvoie les succes nouvellement debloques."""
 
     maintenant = maintenant or datetime.now()
-    stats = _stats(etat)
-    origine = machine(etat)
+    stats = _normaliser(etat)
+    origine = machine(etat) or "inconnue"
 
     if evenement == "doots":
         quantite = details.get("quantite", 0)
@@ -252,6 +259,49 @@ def _debloquer(etat: dict, maintenant: datetime) -> list[Succes]:
     return nouveaux
 
 
+def _fondre_parts(ici: dict, la_bas: dict, cle: str) -> dict:
+    """Maximum part par part : refaire la fusion ne rajoute rien."""
+    parts = dict(_parts(ici, cle))
+    for nom, part in _parts(la_bas, cle).items():
+        parts[nom] = max(entier(parts.get(nom)), part)
+    return parts
+
+
+def _fondre_maximum(ici: dict, la_bas: dict, cle: str) -> int:
+    return max(_compteur(ici, cle), _compteur(la_bas, cle))
+
+
+def _fondre_union(ici: dict, la_bas: dict, cle: str) -> list:
+    return sorted(set(_liste(ici, cle)) | set(_liste(la_bas, cle)))
+
+
+# La table dit desormais comment chaque statistique se fusionne, et non plus
+# seulement de quelle espece elle est : une clef ajoutee apporte sa regle avec
+# elle, au lieu de la laisser dans une boucle a part.
+FUSION = {
+    **{cle: _fondre_parts for cle in TOTAUX},
+    **{cle: _fondre_maximum for cle in MAXIMA},
+    **{cle: _fondre_union for cle in ENSEMBLES},
+}
+
+
+def _dates_les_plus_anciennes(local: dict, distant: dict) -> None:
+    """Un succes garde la date ou il a ete gagne en premier."""
+    acquis = local.get("succes")
+    if not isinstance(acquis, dict):
+        acquis = {}
+        local["succes"] = acquis
+    autres = distant.get("succes")
+    if not isinstance(autres, dict):
+        return
+    for identifiant, date in autres.items():
+        if not isinstance(date, str):
+            continue
+        ancienne = acquis.get(identifiant)
+        if not isinstance(ancienne, str) or date < ancienne:
+            acquis[identifiant] = date
+
+
 def fusionner(local: dict, distant: dict, maintenant: datetime | None = None) -> list[Succes]:
     """Fait entrer l'etat d'une autre machine dans celui-ci.
 
@@ -263,41 +313,17 @@ def fusionner(local: dict, distant: dict, maintenant: datetime | None = None) ->
     machines n'avait forcement atteints seule.
     """
     maintenant = maintenant or datetime.now()
-    venue = distant.get("machine")
-    if not isinstance(venue, str) or not venue:
+    if not machine(distant):
         raise ValueError("l'etat a fusionner ne dit pas de quelle machine il vient")
 
-    ici = _stats(local)
-    la_bas = distant.get("stats")
-    if isinstance(la_bas, dict):
-        for cle in TOTAUX:
-            parts = _parts(ici, cle, machine(local))
-            for nom, part in _parts(la_bas, cle, venue).items():
-                parts[nom] = max(_entier(parts.get(nom)), part)
-            if parts:
-                ici[cle] = parts
-        for cle in MAXIMA:
-            valeur = max(_compteur(ici, cle), _compteur(la_bas, cle))
-            if valeur:
-                ici[cle] = valeur
-        for cle in ENSEMBLES:
-            reunion = sorted(set(_liste(ici, cle)) | set(_liste(la_bas, cle)))
-            if reunion:
-                ici[cle] = reunion
+    ici = _normaliser(local)
+    la_bas = _normaliser(distant)
+    for cle, fondre in FUSION.items():
+        valeur = fondre(ici, la_bas, cle)
+        if valeur:
+            ici[cle] = valeur
 
-    acquis = local.get("succes")
-    if not isinstance(acquis, dict):
-        acquis = {}
-        local["succes"] = acquis
-    autres = distant.get("succes")
-    if isinstance(autres, dict):
-        for identifiant, date in autres.items():
-            if not isinstance(date, str):
-                continue
-            ancienne = acquis.get(identifiant)
-            if not isinstance(ancienne, str) or date < ancienne:
-                acquis[identifiant] = date
-
+    _dates_les_plus_anciennes(local, distant)
     return _debloquer(local, maintenant)
 
 
