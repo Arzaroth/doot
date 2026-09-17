@@ -483,6 +483,184 @@ class SalvesChoreographiees(CliTestCase):
         self.assertEqual([call["side"] for call in self.shown], ["left", "left"])
         self.assertEqual([call["slide"] for call in self.shown], [False, False])
 
+    def test_wave_fait_l_aller_retour_et_alterne_les_cotes(self):
+        with mock.patch.object(
+            window, "active_monitors", return_value=[object(), object(), object()]
+        ):
+            self.run_cli(
+                "--once", "--no-sound", "--burst-min", "5", "--burst-max", "5",
+                "--burst-delay", "0", "--formation", "wave",
+            )
+
+        self.assertEqual([call["screen"] for call in self.shown], ["0", "1", "2", "1", "0"])
+        self.assertEqual(
+            [call["side"] for call in self.shown],
+            ["left", "right", "left", "right", "left"],
+        )
+
+    def test_rain_tombe_du_haut(self):
+        self.run_cli(
+            "--once", "--no-sound", "--burst-min", "4", "--burst-max", "4",
+            "--burst-delay", "0", "--formation", "rain",
+        )
+        self.assertEqual([call["side"] for call in self.shown], ["top"] * 4)
+        self.assertTrue(all(call["slide"] for call in self.shown))
+
+    def test_vortex_tourne_sur_place(self):
+        self.run_cli(
+            "--once", "--no-sound", "--burst-min", "4", "--burst-max", "4",
+            "--burst-delay", "0", "--formation", "vortex",
+        )
+        self.assertTrue(all(not call["slide"] for call in self.shown))
+        self.assertTrue(all(call["spin_chance"] == 1.0 for call in self.shown))
+
+    def test_vortex_considere_side_random_comme_non_verrouille(self):
+        self.run_cli(
+            "--once", "--no-sound", "--side", "random", "--burst-min", "2",
+            "--burst-max", "2", "--burst-delay", "0", "--formation", "vortex",
+        )
+        self.assertTrue(all(not call["slide"] for call in self.shown))
+        self.assertTrue(all(call["spin_chance"] == 1.0 for call in self.shown))
+
+    def test_no_spin_garde_le_vortex_sur_place_mais_droit(self):
+        self.run_cli(
+            "--once", "--no-sound", "--no-spin", "--burst-min", "2",
+            "--burst-max", "2", "--burst-delay", "0", "--formation", "vortex",
+        )
+        self.assertTrue(all(not call["slide"] for call in self.shown))
+        self.assertTrue(all(not call["spin"] for call in self.shown))
+
+
+class EvenementsRares(CliTestCase):
+    def setUp(self):
+        super().setUp()
+        patch = mock.patch.object(season, "in_season", lambda now=None: True)
+        patch.start()
+        self.addCleanup(patch.stop)
+        patch = mock.patch.object(cli.time, "sleep")
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def args(self, *options):
+        return cli.build_parser().parse_args(list(options))
+
+    def test_chance_et_pitie(self):
+        rng = random.Random(0)
+        self.assertFalse(cli.event_due(98, 0.0, 100, rng))
+        self.assertTrue(cli.event_due(99, 0.0, 100, rng))
+        self.assertTrue(cli.event_due(0, 1.0, 0, rng))
+
+    def test_no_event_coupe_le_tirage(self):
+        args = self.args("--no-event", "--event-chance", "1")
+        self.assertIsNone(cli.event_roll(args, random.Random(0)))
+
+    def test_un_evenement_force_joue_sa_choregraphie(self):
+        code = self.run_cli("--event", "parade", "--no-sound")
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.shown), 6)
+        self.assertEqual(
+            [call["side"] for call in self.shown],
+            ["left", "right", "left", "right", "left", "right"],
+        )
+        self.assertTrue(all(call["duration"] == 1.15 for call in self.shown))
+
+    def test_evenement_inconnu_est_refuse(self):
+        self.assertEqual(self.run_cli("--event", "ectoplasme", "--no-sound"), 2)
+        self.assertEqual(self.shown, [])
+
+    def test_compteur_d_evenement_survit_dans_l_etat(self):
+        cli.note_evenement(False)
+        cli.note_evenement(False)
+        self.assertEqual(cli.read_state()["depuis_evenement"], 2)
+        cli.note_evenement(True)
+        self.assertEqual(cli.read_state()["depuis_evenement"], 0)
+
+
+class ProfilsPersistants(CliTestCase):
+    def setUp(self):
+        super().setUp()
+        patch = mock.patch.object(season, "in_season", lambda now=None: True)
+        patch.start()
+        self.addCleanup(patch.stop)
+        patch = mock.patch.object(cli.time, "sleep")
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_sauvegarde_activation_et_chargement_automatique(self):
+        self.assertEqual(self.run_cli(
+            "--save-profile", "chaos", "--formation", "rain",
+            "--burst-min", "4", "--burst-max", "4", "--burst-delay", "0",
+            "--no-sound",
+        ), 0)
+        self.assertEqual(self.run_cli("--activate-profile", "chaos", "--no-sound"), 0)
+
+        self.assertEqual(self.run_cli("--once"), 0)
+        self.assertEqual(len(self.shown), 4)
+        self.assertEqual([call["side"] for call in self.shown], ["top"] * 4)
+        self.assertTrue(all(call["wav_path"] is None for call in self.shown))
+
+    def test_cli_remplace_les_valeurs_du_profil(self):
+        self.run_cli(
+            "--save-profile", "chaos", "--formation", "rain",
+            "--burst-min", "4", "--burst-max", "4", "--no-sound",
+        )
+        self.run_cli("--activate-profile", "chaos", "--no-sound")
+        self.run_cli(
+            "--once", "--formation", "wave", "--burst-min", "2",
+            "--burst-max", "2", "--burst-delay", "0",
+        )
+        self.assertEqual(len(self.shown), 2)
+        self.assertEqual([call["side"] for call in self.shown], ["left", "right"])
+
+    def test_side_avec_syntaxe_egale_remplace_le_spin_du_profil(self):
+        self.run_cli("--save-profile", "toupie", "--spin", "--no-sound")
+        self.run_cli("--activate-profile", "toupie", "--no-sound")
+
+        args = cli.parse_args(["--once", "--side=left"])
+
+        self.assertEqual(args.side, "left")
+        self.assertFalse(args.spin)
+
+    def test_no_spin_remplace_le_spin_du_profil(self):
+        self.run_cli("--save-profile", "toupie", "--spin", "--no-sound")
+        self.run_cli("--activate-profile", "toupie", "--no-sound")
+
+        args = cli.parse_args(["--once", "--no-spin"])
+
+        self.assertFalse(args.spin)
+        self.assertTrue(args.no_spin)
+
+    def test_side_remplace_no_slide_du_profil(self):
+        self.run_cli("--save-profile", "statue", "--no-slide", "--no-sound")
+        self.run_cli("--activate-profile", "statue", "--no-sound")
+
+        args = cli.parse_args(["--once", "--side", "right"])
+
+        self.assertEqual(args.side, "right")
+        self.assertFalse(args.no_slide)
+
+    def test_no_profile_retrouve_les_defauts(self):
+        self.run_cli(
+            "--save-profile", "chaos", "--burst-min", "4", "--burst-max", "4",
+            "--no-sound",
+        )
+        self.run_cli("--activate-profile", "chaos", "--no-sound")
+        self.run_cli("--no-profile", "--once", "--no-sound")
+        self.assertEqual(len(self.shown), 1)
+
+    def test_supprimer_le_profil_actif_le_desactive(self):
+        self.run_cli("--save-profile", "calme", "--no-sound")
+        self.run_cli("--activate-profile", "calme", "--no-sound")
+        self.assertEqual(self.run_cli("--delete-profile", "calme", "--no-sound"), 0)
+        document = cli.profiles.read(cli.profiles_path())
+        self.assertIsNone(document["active"])
+        self.assertNotIn("calme", document["profiles"])
+
+    def test_profil_inconnu_est_refuse(self):
+        with mock.patch("sys.stderr"), self.assertRaises(SystemExit) as sortie:
+            cli.parse_args(["--profile", "inconnu", "--once"])
+        self.assertEqual(sortie.exception.code, 2)
+
 
 class CommandesInformatives(CliTestCase):
     """Elles doivent repondre sans affichage et sans effet de bord."""
@@ -915,6 +1093,7 @@ class MelodieAuHasard(CliTestCase):
                 # test dependrait du DISPLAY de la machine qui le lance, et
                 # tomberait sur un runner sans ecran.
                 with mock.patch.object(cli, "sans_affichage", lambda: False), \
+                        mock.patch.object(cli, "event_roll", lambda args, rng=None: None), \
                         mock.patch.object(cli, "melody_roll", lambda args, rng=None: tiree), \
                         mock.patch.object(cli, "emit_doots",
                                           lambda a, journal=False: appels.append("doots")), \

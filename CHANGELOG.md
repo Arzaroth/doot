@@ -12,6 +12,26 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.16.0] - 2026-09-17
+
+### Ajouté
+
+- Trois nouvelles formations de salve : `wave` alterne les bords et fait
+  l'aller-retour sur les écrans, `rain` tombe du haut, et `vortex` impose les
+  tours sur place. Les choix explicites d'écran, de bord et de mouvement restent
+  prioritaires.
+- Des profils persistants enregistrent les réglages dans `profiles.json`.
+  `--save-profile`, `--profile`, `--activate-profile`, `--deactivate-profile`,
+  `--delete-profile`, `--profiles` et `--no-profile` couvrent leur cycle de vie ;
+  le profil actif est repris automatiquement par le daemon existant.
+- Trois événements rares — parade, pluie d'os et vortex — ont une chance de 2 %
+  par déclenchement et un compteur de pitié de 100, tous deux réglables. Ils se
+  listent avec `--events`, se testent avec `--event`, et se coupent avec
+  `--no-event`.
+- Quatre succès illustrés récompensent les quatre formations, la première
+  rencontre rare, la collection des trois événements et l'activation d'un
+  profil. Le catalogue compte désormais 18 succès et 475 points.
+
 ## [1.15.0] - 2026-09-17
 
 ### Ajouté
@@ -599,7 +619,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.15.0...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.16.0...HEAD
+[1.16.0]: https://github.com/boubou666/doot/compare/v1.15.0...v1.16.0
 [1.15.0]: https://github.com/boubou666/doot/compare/v1.14.0...v1.15.0
 [1.14.0]: https://github.com/boubou666/doot/compare/v1.13.1...v1.14.0
 [1.13.1]: https://github.com/boubou666/doot/compare/v1.13.0...v1.13.1

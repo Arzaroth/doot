@@ -204,7 +204,8 @@ def salve_reglee(fiche: dict) -> tuple[str, str, str] | None:
 def formation_reglee(fiche: dict) -> str | None:
     """Renvoie la formation a transmettre, si l'installation en demande une."""
     formation = fiche.get("formation", "random")
-    return formation if formation in ("random", "canon") and formation != "random" else None
+    formations = ("random", "canon", "wave", "rain", "vortex")
+    return formation if formation in formations and formation != "random" else None
 
 
 def run_installer(source: Path, fiche: dict, verbose=print) -> None:

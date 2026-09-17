@@ -39,6 +39,30 @@ class Enregistrement(unittest.TestCase):
         self.assertIn("canon_a_os", self.ids(nouveaux))
         self.assertEqual(self.etat["stats"]["plus_grande_salve"], 4)
 
+    def test_les_quatre_formations_debloquent_le_choregraphe(self):
+        for formation in ("canon", "wave", "rain", "vortex"):
+            nouveaux = succes.enregistrer(
+                self.etat, "doots", self.maintenant,
+                quantite=4, formation=formation,
+            )
+        self.assertIn("choregraphe", self.ids(nouveaux))
+
+    def test_les_evenements_rares_se_collectionnent(self):
+        for rencontre in ("parade", "pluie", "vortex"):
+            nouveaux = succes.enregistrer(
+                self.etat, "doots", self.maintenant,
+                quantite=5, rencontre=rencontre,
+            )
+        ids = self.ids(nouveaux)
+        self.assertIn("collection_evenements", ids)
+        self.assertIn("premier_evenement", succes.debloques(self.etat))
+
+    def test_activer_un_profil_a_son_succes(self):
+        nouveaux = succes.enregistrer(
+            self.etat, "profil", self.maintenant, nom="chaos"
+        )
+        self.assertIn("profil_actif", self.ids(nouveaux))
+
     def test_les_quatre_bords_s_accumulent(self):
         for bord in ("left", "right", "top", "bottom"):
             nouveaux = succes.enregistrer(

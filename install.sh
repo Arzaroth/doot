@@ -61,8 +61,8 @@ case "$BURST_DELAY" in
     ''|*[!0-9.]*|*.*.*) echo "--burst-delay attend un nombre : $BURST_DELAY" >&2; exit 2 ;;
 esac
 case "$FORMATION" in
-    random|canon) ;;
-    *) echo "--formation attend random ou canon : $FORMATION" >&2; exit 2 ;;
+    random|canon|wave|rain|vortex) ;;
+    *) echo "--formation attend random, canon, wave, rain ou vortex : $FORMATION" >&2; exit 2 ;;
 esac
 
 # Les drapeaux de salve ne sont ecrits que s'ils changent quelque chose : sans

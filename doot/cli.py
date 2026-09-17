@@ -12,7 +12,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import __version__, art, image, notification, season, sound, succes
+from . import __version__, art, image, notification, profiles, season, sound, succes
 
 DEFAULT_MIN_SECONDS = 600     # 10 min
 DEFAULT_MAX_SECONDS = 3600    # 1 h
@@ -21,8 +21,11 @@ DEFAULT_VOLUME = 0.55
 DEFAULT_SPIN_CHANCE = 0.25
 DEFAULT_SPIN_MS = 700
 DEFAULT_BURST_DELAY = 0.6
+DEFAULT_EVENT_CHANCE = 0.02
+DEFAULT_EVENT_PITY = 100
 OUT_OF_SEASON_POLL = 3600     # on reverifie la date toutes les heures
 FORMATION_SIDES = ("left", "top", "right", "bottom")
+FORMATIONS = ("random", "canon", "wave", "rain", "vortex")
 
 
 # --------------------------------------------------------------- chemins -----
@@ -48,6 +51,7 @@ def paths() -> dict[str, Path]:
         "log": root / "doot.log",
         "pid": root / "doot.pid",
         "state": root / "state.json",
+        "profiles": root / "profiles.json",
     }
 
 
@@ -62,6 +66,13 @@ def log(message: str, quiet: bool = False) -> None:
         pass
     if not quiet:
         print(line, flush=True)
+
+
+def profiles_path() -> Path:
+    """Chemin des profils, avec repli pour les integrations qui remplacent paths()."""
+
+    p = paths()
+    return p.get("profiles", p["data"] / "profiles.json")
 
 
 # ------------------------------------------------------- instance unique -----
@@ -214,19 +225,28 @@ def display_options(args, step: dict | None = None) -> dict:
             options["side"] = step["side"]
             if options["slide"]:
                 options["slide_chance"] = 1.0
+        if step.get("force_spin"):
+            options["slide"] = False
+            options["side"] = None
+            if options["spin"]:
+                options["spin_chance"] = 1.0
     return options
 
 
 def formation_plan(args, total: int) -> list[dict | None]:
     """Prepare les destinations d'une salve avant de l'afficher.
 
-    La formation `random` conserve exactement le tirage historique : chaque
-    doot laisse la fenetre choisir son ecran et son bord. En mode `canon`, les
-    bords suivent un tour gauche -> haut -> droite -> bas et les ecrans sont
-    parcourus dans l'ordre detecte. Un choix explicite de l'utilisateur reste
-    fixe ; cela permet par exemple un canon sur un seul ecran.
+    La formation `random` conserve exactement le tirage historique. `canon`
+    tourne autour des quatre bords, `wave` alterne gauche et droite, `rain`
+    tombe toujours du haut et `vortex` impose les tours sur place. Les ecrans
+    sont parcourus dans l'ordre, ou en aller-retour pour la vague.
+
+    Un choix explicite de l'utilisateur reste fixe ; cela permet par exemple
+    une pluie sur un seul ecran. Les refus explicites de glisser ou tourner
+    restent eux aussi souverains.
     """
-    if getattr(args, "formation", "random") != "canon":
+    formation = getattr(args, "formation", "random")
+    if formation == "random":
         return [None] * total
 
     from . import window
@@ -243,10 +263,28 @@ def formation_plan(args, total: int) -> list[dict | None]:
     can_slide = not args.no_slide and not args.spin
     plan = []
     for index in range(total):
+        if formation == "wave" and screen_count > 1:
+            period = screen_count * 2 - 2
+            offset = index % period
+            screen_index = offset if offset < screen_count else period - offset
+        else:
+            screen_index = index % screen_count
+
+        if side_locked or not can_slide:
+            side = args.side
+        elif formation == "wave":
+            side = ("left", "right")[index % 2]
+        elif formation == "rain":
+            side = "top"
+        elif formation == "vortex":
+            side = None
+        else:
+            side = FORMATION_SIDES[index % len(FORMATION_SIDES)]
+
         plan.append({
-            "screen": args.screen if screen_locked else str(index % screen_count),
-            "side": args.side if side_locked or not can_slide
-                     else FORMATION_SIDES[index % len(FORMATION_SIDES)],
+            "screen": args.screen if screen_locked else str(screen_index),
+            "side": side,
+            "force_spin": formation == "vortex" and not side_locked,
         })
     return plan
 
@@ -258,7 +296,7 @@ def burst_size(args, rng=random) -> int:
     return rng.randint(bas, haut)
 
 
-def emit_doots(args, journal: bool = False) -> int:
+def emit_doots(args, journal: bool = False, evenement: str | None = None) -> int:
     """Joue la salve de ce declenchement ; renvoie le nombre de doots affiches.
 
     Chaque doot de la salve repasse par `resolve_media` et `window.show` : il
@@ -300,6 +338,7 @@ def emit_doots(args, journal: bool = False) -> int:
                 formation=args.formation,
                 spin=args.spin,
                 bord=args.side,
+                rencontre=evenement,
             )
     return joues
 
@@ -490,6 +529,78 @@ def melody_roll(args, rng=random):
     return rng.choice(pool)
 
 
+def event_due(depuis: int, chance: float, pity: int, rng=random) -> bool:
+    """Ce declenchement est-il une rencontre rare ?"""
+
+    if pity > 0 and depuis >= pity - 1:
+        return True
+    return rng.random() < chance
+
+
+def event_roll(args, rng=random):
+    """Tire une rencontre rare, sans consommer son compteur avant affichage."""
+
+    if args.no_event:
+        return None
+    from . import evenements
+
+    depuis = state_compteur(read_state(), "depuis_evenement")
+    if not event_due(depuis, args.event_chance, args.event_pity, rng):
+        return None
+    return rng.choice(evenements.CATALOGUE)
+
+
+def note_evenement(joue: bool) -> None:
+    """Persiste la pitie des rencontres rares apres le resultat du tirage."""
+
+    etat = read_state()
+    depuis = state_compteur(etat, "depuis_evenement")
+    etat["depuis_evenement"] = 0 if joue else depuis + 1
+    write_state(etat)
+
+
+def emit_evenement(args, evenement, journal: bool = False) -> bool:
+    """Joue une rencontre precomposee et l'enregistre comme telle."""
+
+    from . import evenements
+
+    if journal:
+        log(f"EVENEMENT RARE : {evenement.titre} - {evenement.description}", quiet=args.quiet)
+    configured = evenements.configure(args, evenement)
+    return emit_doots(
+        configured,
+        journal=journal,
+        evenement=evenement.identifiant,
+    ) > 0
+
+
+def do_event(args, wanted: str) -> int:
+    """Force une rencontre par son nom, principalement pour la decouvrir."""
+
+    from . import evenements
+
+    if not args.ignore_season and not season.in_season():
+        print(f"doot : {season.describe()}")
+        print(f"Saison : {season.SEASON_LABEL}. (--ignore-season pour forcer un test.)")
+        return 3
+    evenement = evenements.find(wanted)
+    if evenement is None:
+        print(f"doot : evenement inconnu '{wanted}' (doot --events pour la liste)")
+        return 2
+    emit_evenement(args, evenement, journal=True)
+    return 0
+
+
+def do_events(args) -> int:
+    from . import evenements
+
+    print("Evenements rares :")
+    for evenement in evenements.CATALOGUE:
+        print(f"  {evenement.identifiant:<10} {evenement.titre} - {evenement.description}")
+    print("\nEssayer : doot --event NOM --ignore-season")
+    return 0
+
+
 def note_melodie(jouee: bool) -> None:
     """Enregistre ce que ce declenchement a donne.
 
@@ -607,6 +718,71 @@ def do_succes(args) -> int:
     return 0
 
 
+def do_profiles(args) -> int:
+    """Liste les profils, leur activation et leurs principaux reglages."""
+
+    path = profiles_path()
+    document = profiles.read(path)
+    print(f"Profils : {path}")
+    if not document["profiles"]:
+        print("  (aucun)")
+        print("\nCreer : doot --save-profile NOM [OPTIONS]")
+        return 0
+    for name in sorted(document["profiles"], key=str.casefold):
+        values = document["profiles"][name]
+        marker = "*" if document["active"] == name else " "
+        details = []
+        if "formation" in values:
+            details.append(f"formation={values['formation']}")
+        if "burst_min" in values and "burst_max" in values:
+            details.append(f"salve={values['burst_min']}-{values['burst_max']}")
+        if "min" in values and "max" in values:
+            details.append(f"intervalle={values['min']}-{values['max']}s")
+        if "event_chance" in values:
+            details.append(f"evenements={values['event_chance']:.1%}")
+        suffix = f"  ({', '.join(details)})" if details else ""
+        print(f" {marker} {name}{suffix}")
+    print("\n* profil actif, charge automatiquement par le daemon")
+    return 0
+
+
+def do_save_profile(args, name: str) -> int:
+    try:
+        profiles.save(profiles_path(), name, profiles.from_namespace(args))
+    except profiles.ProfileError as exc:
+        print(f"doot : {exc}")
+        return 2
+    print(f"doot : profil '{name}' enregistre -> {profiles_path()}")
+    return 0
+
+
+def do_activate_profile(args, name: str) -> int:
+    try:
+        profiles.activate(profiles_path(), name)
+    except profiles.ProfileError as exc:
+        print(f"doot : {exc}")
+        return 2
+    print(f"doot : profil '{name}' actif par defaut.")
+    note_succes(args, "profil", nom=name)
+    return 0
+
+
+def do_deactivate_profile(args) -> int:
+    profiles.activate(profiles_path(), None)
+    print("doot : aucun profil actif par defaut.")
+    return 0
+
+
+def do_delete_profile(args, name: str) -> int:
+    try:
+        profiles.delete(profiles_path(), name)
+    except profiles.ProfileError as exc:
+        print(f"doot : {exc}")
+        return 2
+    print(f"doot : profil '{name}' supprime.")
+    return 0
+
+
 def sans_affichage() -> bool:
     """Aucun serveur graphique joignable : ni X11, ni Wayland.
 
@@ -640,8 +816,12 @@ def do_daemon(args) -> int:
 
     salve = "" if args.burst_max <= 1 else f" - salve {args.burst_min}-{args.burst_max} doots"
     formation = "" if args.formation == "random" else f" - formation {args.formation}"
+    profil = f" - profil {args._profile_loaded}" if args._profile_loaded else ""
+    rencontres = " - evenements coupes" if args.no_event else \
+        f" - evenements {args.event_chance:.1%} (pitie {args.event_pity or 'non'})"
     log(
-        f"demarrage (pid {os.getpid()}) - intervalle {args.min}-{args.max}s{salve}{formation} - "
+        f"demarrage (pid {os.getpid()}) - intervalle {args.min}-{args.max}s"
+        f"{salve}{formation}{profil}{rencontres} - "
         f"saison {season.SEASON_LABEL}",
         quiet=args.quiet,
     )
@@ -663,13 +843,21 @@ def do_daemon(args) -> int:
                 continue  # la saison s'est fermee pendant l'attente
 
             try:
-                fichier = melody_roll(args)
-                if fichier is None:
-                    emit_doots(args, journal=True)
-                    jouee = False
+                evenement = event_roll(args)
+                if evenement is not None:
+                    evenement_joue = emit_evenement(args, evenement, journal=True)
+                    melodie_jouee = False
                 else:
-                    jouee = emit_melodie_tiree(args, fichier, journal=True)
-                note_melodie(jouee)
+                    evenement_joue = False
+                    fichier = melody_roll(args)
+                    if fichier is None:
+                        emit_doots(args, journal=True)
+                        melodie_jouee = False
+                    else:
+                        melodie_jouee = emit_melodie_tiree(args, fichier, journal=True)
+                if not args.no_event:
+                    note_evenement(evenement_joue)
+                note_melodie(melodie_jouee)
             except window.TkinterMissing as exc:
                 log(str(exc), quiet=args.quiet)
                 return 4
@@ -691,6 +879,8 @@ def do_status(args) -> int:
     print(f"  etat        : {season.describe()}")
     print(f"  daemon      : {'actif (pid ' + str(pid) + ')' if pid else 'arrete'}")
     print(f"  donnees     : {p['data']}")
+    print(f"  profil      : {args._profile_loaded or 'aucun'}"
+          f" (actif : {profiles.active(profiles_path()) or 'aucun'})")
     etat = read_state()
     print(f"  succes      : {len(succes.debloques(etat))}/{len(succes.CATALOGUE)}, "
           f"{succes.score(etat)} points")
@@ -730,6 +920,11 @@ def do_status(args) -> int:
               f"declenchement, {args.burst_delay}s entre chacun")
     if args.formation != "random":
         print(f"  formation   : {args.formation}")
+    if args.no_event:
+        print("  evenements  : coupes")
+    else:
+        garantie = str(args.event_pity) if args.event_pity else "aucune"
+        print(f"  evenements  : chance {args.event_chance:.1%}, garantie {garantie}")
 
     print(f"  journal     : {p['log']}")
     if sys.platform == "win32":
@@ -815,7 +1010,7 @@ def do_art(args) -> int:
 
 # ---------------------------------------------------------------- parse ------
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(profile_defaults: dict | None = None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="doot",
         description="Un squelette trompettiste surgit au hasard sur ton ecran, "
@@ -832,6 +1027,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--melodies", action="store_true", help="liste les melodies jouables")
     parser.add_argument("--achievements", "--succes", dest="succes", action="store_true",
                         help="liste les succes locaux, leur score et leur progression")
+    parser.add_argument("--events", action="store_true",
+                        help="liste les rencontres rares et leur commande d'essai")
+    parser.add_argument("--event", default=None, metavar="NOM",
+                        help="force une rencontre rare (voir --events), puis quitte")
     parser.add_argument("--transpose", type=int, default=0, metavar="DEMI-TONS",
                         help="decale la melodie de N demi-tons, en plus du recentrage "
                              "automatique sur la hauteur du doot (defaut 0)")
@@ -843,6 +1042,23 @@ def build_parser() -> argparse.ArgumentParser:
                         help="met a jour doot depuis GitHub et rejoue l'installeur")
     parser.add_argument("--check-update", action="store_true",
                         help="dit si une version plus recente existe, sans rien installer")
+
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--profile", default=None, metavar="NOM",
+                           help="charge un profil pour ce lancement")
+    selection.add_argument("--no-profile", action="store_true",
+                           help="ignore le profil actif pour ce lancement")
+    parser.add_argument("--profiles", action="store_true",
+                        help="liste les profils persistants ; * indique le profil actif")
+    gestion = parser.add_mutually_exclusive_group()
+    gestion.add_argument("--save-profile", default=None, metavar="NOM",
+                         help="enregistre les reglages courants dans un profil, puis quitte")
+    gestion.add_argument("--activate-profile", default=None, metavar="NOM",
+                         help="charge automatiquement ce profil aux prochains lancements")
+    gestion.add_argument("--deactivate-profile", action="store_true",
+                         help="ne charge plus de profil automatiquement")
+    gestion.add_argument("--delete-profile", default=None, metavar="NOM",
+                         help="supprime un profil persistant")
 
     parser.add_argument("--min", type=int, default=DEFAULT_MIN_SECONDS,
                         help=f"delai minimum entre deux doot, en secondes (defaut {DEFAULT_MIN_SECONDS})")
@@ -857,9 +1073,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--burst-delay", type=float, default=DEFAULT_BURST_DELAY,
                         metavar="SECONDES",
                         help=f"pause entre deux doots d'une meme salve (defaut {DEFAULT_BURST_DELAY})")
-    parser.add_argument("--formation", choices=("random", "canon"), default="random",
-                        help="formation d'une salve : random (defaut) ou canon "
-                             "(bords et ecrans en sequence)")
+    parser.add_argument("--formation", choices=FORMATIONS, default="random",
+                        help="formation d'une salve : random, canon, wave, rain ou vortex")
     parser.add_argument("--duration", type=float, default=None,
                         help=f"duree d'affichage en secondes (defaut : la duree du son, au moins {DEFAULT_DURATION})")
     parser.add_argument("--image", default=None, metavar="FICHIER",
@@ -884,6 +1099,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--melody-pity", type=int, default=40, metavar="N",
                         help="le N-ieme declenchement sans melodie en joue une a coup "
                              "sur (defaut 40, 0 pour ne rien garantir)")
+    parser.add_argument("--no-event", action="store_true",
+                        help="desactive toutes les rencontres rares automatiques")
+    parser.add_argument("--event-chance", type=float, default=DEFAULT_EVENT_CHANCE,
+                        metavar="PART",
+                        help="part des declenchements qui deviennent un evenement rare "
+                             f"(defaut {DEFAULT_EVENT_CHANCE})")
+    parser.add_argument("--event-pity", type=int, default=DEFAULT_EVENT_PITY, metavar="N",
+                        help="le N-ieme declenchement sans evenement en force un "
+                             f"(defaut {DEFAULT_EVENT_PITY}, 0 pour aucune garantie)")
     parser.add_argument("--slide-chance", type=float, default=0.5, metavar="PART",
                         help="proportion de doots qui entrent par un bord ; le reste "
                              "surgit sur place (defaut 0.5, soit un sur deux)")
@@ -918,11 +1142,52 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ignore-season", action="store_true",
                         help="ignore la fenetre 1er sept - 31 oct (tests uniquement)")
     parser.add_argument("--quiet", action="store_true", help="n'ecrit que dans le journal")
+    if profile_defaults:
+        parser.set_defaults(**profile_defaults)
     return parser
 
 
+def parse_args(argv: list[str] | None = None):
+    """Charge le profil avant le vrai parsing, pour laisser la CLI le remplacer."""
+
+    raw = list(sys.argv[1:] if argv is None else argv)
+    probe = argparse.ArgumentParser(add_help=False)
+    selection = probe.add_mutually_exclusive_group()
+    selection.add_argument("--profile")
+    selection.add_argument("--no-profile", action="store_true")
+    known, _unknown = probe.parse_known_args(raw)
+
+    selected = None if known.no_profile else (known.profile or profiles.active(profiles_path()))
+    defaults = None
+    if selected:
+        try:
+            defaults = profiles.load(profiles_path(), selected)
+        except profiles.ProfileError as exc:
+            build_parser().error(str(exc))
+
+    args = build_parser(defaults).parse_args(raw)
+    # Les valeurs par defaut d'un groupe mutuellement exclusif ne comptent pas
+    # comme une option argparse. Une demande explicite doit pourtant battre le
+    # profil charge dans les deux sens.
+    explicit_side = any(
+        option == "--side" or option.startswith("--side=") for option in raw
+    )
+    if explicit_side:
+        args.spin = False
+        if "--no-slide" not in raw:
+            args.no_slide = False
+    if "--spin" in raw:
+        args.side = None
+        if "--no-spin" not in raw:
+            args.no_spin = False
+    if "--no-spin" in raw:
+        args.spin = False
+    args._profile_loaded = selected
+    return args
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    args = parse_args(argv)
 
     if args.min < 1:
         args.min = 1
@@ -934,12 +1199,25 @@ def main(argv: list[str] | None = None) -> int:
         args.burst_max = args.burst_min
     if args.burst_delay < 0:
         args.burst_delay = 0.0
+    args.event_chance = max(0.0, min(1.0, args.event_chance))
+    args.event_pity = max(0, args.event_pity)
 
     p = paths()
     p["data"].mkdir(parents=True, exist_ok=True)
     p["sound"].mkdir(parents=True, exist_ok=True)
     p["image"].mkdir(parents=True, exist_ok=True)
     p["melodies"].mkdir(parents=True, exist_ok=True)
+
+    if args.profiles:
+        return do_profiles(args)
+    if args.save_profile:
+        return do_save_profile(args, args.save_profile)
+    if args.activate_profile:
+        return do_activate_profile(args, args.activate_profile)
+    if args.deactivate_profile:
+        return do_deactivate_profile(args)
+    if args.delete_profile:
+        return do_delete_profile(args, args.delete_profile)
 
     if args.regen_sound:
         sound.ensure_wav(p["wav"], args.volume, force=True)
@@ -963,8 +1241,12 @@ def main(argv: list[str] | None = None) -> int:
         return do_melodies(args)
     if args.succes:
         return do_succes(args)
+    if args.events:
+        return do_events(args)
 
     try:
+        if args.event:
+            return do_event(args, args.event)
         if args.play or args.rickroll:
             return do_play(args, args.play or "rickroll")
         if args.once:
