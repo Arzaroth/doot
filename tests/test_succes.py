@@ -134,5 +134,53 @@ class Badges(unittest.TestCase):
         self.assertEqual(succes.score(etat), 0)
 
 
+class EspecesDeStatistiques(unittest.TestCase):
+    """Chaque statistique ecrite doit dire comment elle se fusionne.
+
+    Le garde-fou vaut pour les statistiques a venir : une clef ajoutee a
+    `enregistrer` sans etre classee ferait une fusion muette et fausse.
+    """
+
+    def toutes_les_statistiques(self) -> set:
+        """Les clefs que `enregistrer` produit vraiment, tous evenements confondus."""
+        etat = {}
+        succes.enregistrer(etat, "doots", quantite=4, formation="canon",
+                           spin=True, bord="left", rencontre="lune")
+        succes.enregistrer(etat, "doots", quantite=4, formation="wave")
+        succes.enregistrer(etat, "melodie", nom="rickroll", voix=2, fournie=True)
+        succes.enregistrer(etat, "melodie", nom="maison", voix=1, fournie=False)
+        succes.enregistrer(etat, "profil", nom="nuit")
+        return set(etat["stats"])
+
+    def test_la_table_couvre_ce_qui_est_ecrit(self):
+        classees = set(succes.TOTAUX) | set(succes.MAXIMA) | set(succes.ENSEMBLES)
+        self.assertEqual(self.toutes_les_statistiques() - classees, set(),
+                         "statistique ecrite mais non classee")
+
+    def test_la_table_ne_declare_rien_qui_n_existe_pas(self):
+        classees = set(succes.TOTAUX) | set(succes.MAXIMA) | set(succes.ENSEMBLES)
+        self.assertEqual(classees - self.toutes_les_statistiques(), set(),
+                         "statistique classee mais jamais ecrite")
+
+    def test_aucune_statistique_n_est_de_deux_especes(self):
+        especes = (succes.TOTAUX, succes.MAXIMA, succes.ENSEMBLES)
+        for gauche in range(len(especes)):
+            for droite in range(gauche + 1, len(especes)):
+                self.assertEqual(set(especes[gauche]) & set(especes[droite]), set())
+
+    def test_les_ensembles_sont_des_listes_et_le_reste_des_entiers(self):
+        stats = {}
+        etat = {"stats": stats}
+        succes.enregistrer(etat, "doots", quantite=4, formation="canon",
+                           spin=True, bord="left", rencontre="lune")
+        succes.enregistrer(etat, "melodie", nom="rickroll", voix=2, fournie=True)
+        for cle in succes.ENSEMBLES:
+            if cle in stats:
+                self.assertIsInstance(stats[cle], list, cle)
+        for cle in succes.TOTAUX + succes.MAXIMA:
+            if cle in stats:
+                self.assertIsInstance(stats[cle], int, cle)
+
+
 if __name__ == "__main__":
     unittest.main()

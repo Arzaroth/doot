@@ -17,6 +17,20 @@ from typing import Callable
 Progression = Callable[[dict], int]
 BADGES_DIR = Path(__file__).resolve().parent / "assets" / "success"
 
+# Comment se fusionne chaque statistique quand deux machines se rejoignent. Un
+# total s'additionne, un maximum se compare, un ensemble s'unit. Le fichier ne
+# portait pas cette distinction, et rien ne dit d'un entier lequel il est :
+# sans cette table, une fusion fausse les chiffres sans rien signaler.
+TOTAUX = (
+    "doots", "declenchements", "canons", "tours_imposes", "evenements",
+    "melodies", "melodies_perso", "rickrolls",
+)
+MAXIMA = ("plus_grande_salve", "voix_max")
+ENSEMBLES = (
+    "formations", "bords_imposes", "evenements_vus", "melodies_fournies",
+    "jours_actifs", "profils_actifs",
+)
+
 
 @dataclass(frozen=True)
 class Succes:
