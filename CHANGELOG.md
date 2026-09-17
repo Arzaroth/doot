@@ -12,6 +12,8 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.17.0] - 2026-09-17
+
 ### Ajouté
 - `doot --sync-init CHEMIN` : le démon publie ses succès et relit ceux des
   autres machines à chaque doot, par un dossier partagé. Une panne du dossier
@@ -646,7 +648,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.16.0...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.17.0...HEAD
+[1.17.0]: https://github.com/boubou666/doot/compare/v1.16.0...v1.17.0
 [1.16.0]: https://github.com/boubou666/doot/compare/v1.15.0...v1.16.0
 [1.15.0]: https://github.com/boubou666/doot/compare/v1.14.0...v1.15.0
 [1.14.0]: https://github.com/boubou666/doot/compare/v1.13.1...v1.14.0
