@@ -773,6 +773,79 @@ def fusionner_fichiers(etat: dict, fichiers, bavard: bool = False) -> tuple:
     return lus, nouveaux
 
 
+def sync_dossier(etat: dict):
+    """Le dossier partage, s'il y en a un."""
+    valeur = etat.get("sync")
+    if isinstance(valeur, str) and valeur:
+        return Path(valeur).expanduser()
+    return None
+
+
+def sync_cycle(args, etat: dict) -> list:
+    """Prend ce que les autres ont publie, fusionne, republie.
+
+    Ne leve jamais : un dossier absent, un disque plein ou un fichier a moitie
+    ecrit laissent l'etat local intact et l'ennui dans `sync_note`. Un doot ne
+    doit pas dependre de la synchronisation.
+
+    Le fichier publie porte aussi ce que ce poste a appris des autres. Deux
+    machines jamais reveillees en meme temps se rejoignent donc par
+    l'intermediaire d'une troisieme, ce que les parts par machine rendent sans
+    danger : fusionner prend le maximum part par part, jamais une somme.
+    """
+    dossier = sync_dossier(etat)
+    if dossier is None:
+        return []
+
+    note = {"quand": datetime.now().isoformat(timespec="seconds")}
+    nouveaux = []
+    try:
+        dossier.mkdir(parents=True, exist_ok=True)
+        lus, nouveaux = fusionner_fichiers(etat, sorted(dossier.glob("doot-*.json")))
+        ecrire_part(etat, dossier)
+        note["pairs"] = lus
+    except Exception as exc:
+        note["erreur"] = str(exc)
+    etat["sync_note"] = note
+    return nouveaux
+
+
+def sync_tour(args) -> None:
+    """Un tour complet, annonces comprises, pour le daemon."""
+    etat = read_state()
+    if sync_dossier(etat) is None:
+        return
+    nouveaux = sync_cycle(args, etat)
+    write_state(etat)
+    annoncer_succes(args, nouveaux)
+
+
+def do_sync_init(args, cible: str) -> int:
+    """Retient le dossier partage et publie tout de suite."""
+    etat = read_state()
+    if cible in ("", "off", "-"):
+        etat.pop("sync", None)
+        etat.pop("sync_note", None)
+        write_state(etat)
+        print("doot : synchronisation coupee.")
+        return 0
+
+    dossier = Path(cible).expanduser()
+    etat["sync"] = str(dossier)
+    nouveaux = sync_cycle(args, etat)
+    write_state(etat)
+
+    note = etat.get("sync_note", {})
+    if note.get("erreur"):
+        print(f"doot : {dossier} inutilisable, {note['erreur']}")
+        return 2
+    print(f"doot : synchronisation par {dossier}")
+    print(f"  {note.get('pairs', 0)} autre(s) machine(s) deja presente(s)")
+    print("  le daemon publiera et relira a chaque doot")
+    annoncer_succes(args, nouveaux)
+    return 0
+
+
 def do_exporter(args, cible: str) -> int:
     """Ecrit de quoi rejoindre cette machine depuis une autre."""
     etat = read_state()
@@ -844,6 +917,15 @@ def do_succes(args) -> int:
         print(f"  {marque} {definition.titre} (+{definition.points})")
         print(f"      {definition.description}  {detail}")
     print(f"\nProgression locale : {paths()['state']}")
+    dossier = sync_dossier(etat)
+    if dossier is None:
+        print("Synchronisation     : aucune (doot --sync-init CHEMIN)")
+    else:
+        note = etat.get("sync_note") or {}
+        detail = (f"erreur, {note['erreur']}" if note.get("erreur")
+                  else f"{note.get('pairs', 0)} autre(s) machine(s)")
+        quand = note.get("quand", "jamais")
+        print(f"Synchronisation     : {dossier}  ({detail}, dernier tour {quand})")
     return 0
 
 
@@ -987,6 +1069,7 @@ def do_daemon(args) -> int:
                 if not args.no_event:
                     note_evenement(evenement_joue)
                 note_melodie(melodie_jouee)
+                sync_tour(args)
             except window.TkinterMissing as exc:
                 log(str(exc), quiet=args.quiet)
                 return 4
@@ -1154,6 +1237,9 @@ def build_parser(profile_defaults: dict | None = None) -> argparse.ArgumentParse
     parser.add_argument("--rickroll", action="store_true",
                         help="raccourci de --play rickroll")
     parser.add_argument("--melodies", action="store_true", help="liste les melodies jouables")
+    parser.add_argument("--sync-init", dest="sync_init", default=None, metavar="CHEMIN",
+                        help="synchronise les succes par ce dossier partage, et "
+                             "publie tout de suite (`off` pour arreter)")
     parser.add_argument("--export", "--exporter", dest="exporter", default=None,
                         metavar="CHEMIN",
                         help="ecrit les succes de cette machine dans un fichier "
@@ -1379,6 +1465,8 @@ def main(argv: list[str] | None = None) -> int:
         return do_melodies(args)
     if args.succes:
         return do_succes(args)
+    if args.sync_init is not None:
+        return do_sync_init(args, args.sync_init)
     if args.exporter is not None:
         return do_exporter(args, args.exporter)
     if args.fusionner:

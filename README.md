@@ -285,7 +285,20 @@ et peut être sauvegardé avec le reste du dossier de données.
 
 ### Faire converger ses machines
 
-Les succès restent locaux, mais ils n'ont plus à rester sur une seule machine :
+Les succès restent locaux, mais ils n'ont plus à rester sur une seule machine.
+Une fois pour toutes, sur chaque poste :
+
+```bash
+doot --sync-init ~/Sync/doot
+```
+
+Le démon publie alors sa part et relit celle des autres à chaque doot. Rien
+d'autre à lancer, et rien à surveiller : un dossier absent ou un disque plein
+laissent la progression locale intacte et l'ennui dans `doot --succes`, parce
+qu'un doot ne doit jamais dépendre de la synchronisation.
+
+Les deux commandes manuelles restent, pour un transfert ponctuel ou une clé
+USB :
 
 ```bash
 doot --export ~/Sync/doot     # dépose doot-<machine>.json dans le dossier
@@ -306,6 +319,11 @@ soixante là-bas débloquent *Cent-os*.
 
 Les compteurs de pitié ne voyagent pas : ils décrivent le rythme d'un poste,
 pas ce qui y a été accompli.
+
+Ce qu'un poste publie porte aussi ce qu'il a appris des autres. Deux machines
+jamais allumées en même temps se rejoignent donc par l'intermédiaire d'une
+troisième, ce que les parts rendent sans danger puisque fusionner prend le
+maximum part par part, jamais une somme.
 
 C'est de la convergence entre tes machines, pas un classement : le fichier
 reste éditable, et rien ici ne prétend le contraire.

@@ -13,12 +13,20 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 ## [Non publié]
 
 ### Ajouté
+- `doot --sync-init CHEMIN` : le démon publie ses succès et relit ceux des
+  autres machines à chaque doot, par un dossier partagé. Une panne du dossier
+  n'interrompt jamais un doot, elle se lit dans `doot --succes`.
 - `doot --export` et `doot --merge` font converger les succès de plusieurs
   machines sans serveur : chaque poste dépose son fichier dans un dossier
   partagé et lit ceux des autres. Refaire la fusion ne change rien, et réunir
   deux machines peut débloquer un succès qu'aucune n'avait atteint seule.
 
 ### Modifié
+- Plusieurs succès gagnés d'un coup tiennent désormais sur une seule carte, au
+  lieu d'une par succès. Cinq succès peuvent tomber sur le même doot, ce qui
+  faisait cinq cartes bloquantes à la suite et dix-sept secondes sans rien
+  d'autre. Un succès gagné en fusionnant deux machines a lui aussi sa médaille,
+  là où il se contentait d'une ligne de texte.
 - Chaque statistique déclare comment elle se fusionne, et les totaux sont
   rangés en parts par machine dans `state.json`. Sans cette distinction,
   copier le fichier d'une machine à l'autre faussait déjà les chiffres en
