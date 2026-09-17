@@ -41,6 +41,9 @@ dependencies = ["desktop-overlay @ https://github.com/boubou666/desktop-overlay/
 [project.scripts]
 doot = "doot.cli:main"
 
+[project.gui-scripts]
+doot-gui = "doot.gui:main"
+
 [project.urls]
 Homepage = "https://github.com/boubou666/doot"
 Repository = "https://github.com/boubou666/doot"

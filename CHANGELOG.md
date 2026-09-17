@@ -15,6 +15,11 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 ## [1.17.0] - 2026-09-17
 
 ### Ajouté
+- `doot --gui` et `doot-gui` ouvrent un grimoire graphique qui rassemble toutes
+  les commandes et tous leurs réglages, prévisualise la ligne de commande et
+  montre sa sortie sans dupliquer la logique de la CLI. Chaque action reprend
+  les illustrations des succès, autour d'une nouvelle scène de squelette-maestro
+  et de barres de défilement en forme d'os.
 - `doot --sync-init CHEMIN` : le démon publie ses succès et relit ceux des
   autres machines à chaque doot, par un dossier partagé. Une panne du dossier
   n'interrompt jamais un doot, elle se lit dans `doot --succes`.

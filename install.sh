@@ -181,8 +181,15 @@ cat > "$BIN_DIR/doot" <<EOF
 export PYTHONPATH="$APP_DIR\${PYTHONPATH:+:\$PYTHONPATH}"
 exec "$PYTHON" -m doot "\$@"
 EOF
-chmod +x "$BIN_DIR/doot"
+cat > "$BIN_DIR/doot-gui" <<EOF
+#!/usr/bin/env bash
+# Lanceur graphique genere par install.sh
+export PYTHONPATH="$APP_DIR\${PYTHONPATH:+:\$PYTHONPATH}"
+exec "$PYTHON" -m doot --gui "\$@"
+EOF
+chmod +x "$BIN_DIR/doot" "$BIN_DIR/doot-gui"
 say "commande    : $BIN_DIR/doot"
+say "interface   : $BIN_DIR/doot-gui"
 
 case ":$PATH:" in
     *":$BIN_DIR:"*) ;;
