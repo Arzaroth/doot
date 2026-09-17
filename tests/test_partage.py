@@ -154,12 +154,22 @@ class Coffre(unittest.TestCase):
                     coffre.depuis_texte(texte)
 
     def test_le_nom_d_objet_est_stable_et_opaque(self):
+        """L'identite ne doit pas se lire dans le nom, et la cle doit compter.
+
+        L'identite de l'essai n'est volontairement pas hexadecimale : chercher
+        une identite hexadecimale dans trente-deux caracteres hexadecimaux la
+        trouve tot ou tard par hasard, ce qui rendrait le test capricieux.
+        """
         from doot import coffre
         cle = coffre.creer()
-        self.assertEqual(coffre.nom_objet(cle, "abc"), coffre.nom_objet(cle, "abc"))
-        self.assertNotIn("abc", coffre.nom_objet(cle, "abc"))
-        self.assertNotEqual(coffre.nom_objet(cle, "abc"),
-                            coffre.nom_objet(coffre.creer(), "abc"))
+        identite = "portable-de-marc"
+
+        self.assertEqual(coffre.nom_objet(cle, identite), coffre.nom_objet(cle, identite))
+        self.assertNotIn(identite, coffre.nom_objet(cle, identite))
+        self.assertNotEqual(coffre.nom_objet(cle, identite),
+                            coffre.nom_objet(cle, "fixe-du-salon"))
+        self.assertNotEqual(coffre.nom_objet(cle, identite),
+                            coffre.nom_objet(coffre.creer(), identite))
 
     def test_les_copies_de_conflit_ne_sont_pas_des_objets(self):
         from doot import coffre
