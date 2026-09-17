@@ -349,10 +349,16 @@ supprimés. Mieux vaut le dire que laisser croire que « chiffré » veut dire
 
 Changer de clé se fait en deux temps : le poste retient celle qu'il quitte,
 publie sa part sous la neuve, et ne retire l'objet de l'ancienne qu'ensuite. Si
-le dépôt est injoignable pendant l'opération, la marque survit dans
+le dépôt est injoignable pendant l'opération, la clé quittée survit dans
 `replica.json` et le premier cycle qui aboutit fait le ménage. Sans elle l'objet
 resterait là pour toujours : son nom ne se calcule que depuis la clé qui l'a
 fermé.
+
+`replica.json` en garde une **liste**, parce que deux objets peuvent attendre à
+la fois : une rotation dont le retrait a échoué laisse le sien derrière elle, et
+la rotation suivante ajoute le sien. Rejouer la commande qui vient d'échouer
+passe par le même chemin, la clé qui n'a jamais rien publié s'ajoutant sans
+chasser celle qui la précède.
 
 La possession de la clé est la seule authentification. Une machine ne peut pas
 prouver laquelle elle est au-delà de détenir la clé, ce qui est le bon niveau

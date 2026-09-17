@@ -29,9 +29,9 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
   évite qu'un pair lise un fichier à moitié écrit.
 - Les réglages du partage, clé comprise, vivent dans `replica.json` et non dans
   `state.json`, que la documentation invite à sauvegarder et à copier.
-- Changer de clé ne peut plus abandonner l'objet de l'ancienne dans le dépôt :
-  le poste retient la clé quittée jusqu'à ce que sa part soit republiée sous
-  la neuve et l'ancien objet retiré.
+- Changer de clé ne peut plus abandonner d'objet dans le dépôt : le poste
+  retient la liste des clés quittées jusqu'à ce que leurs objets soient retirés,
+  une rotation ratée puis rejouée comprise.
 
 ## [1.17.1] - 2026-09-17
 

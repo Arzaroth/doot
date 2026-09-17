@@ -1368,7 +1368,7 @@ class PartageAutomatique(CliTestCase):
         """Sans la marque, plus personne ne sait quel objet retirer."""
         cle, avant = self.rotation_ratee("--sync-init", str(self.depot()), "--sync-force")
         fiche = partage.reglage(self.paths["data"])
-        self.assertEqual(fiche["cle_precedente"], cle)
+        self.assertIn(cle, fiche["cles_quittees"])
         self.assertNotEqual(fiche["cle"], cle)
         self.assertEqual(self.objets(), avant)
 
@@ -1377,16 +1377,16 @@ class PartageAutomatique(CliTestCase):
         cli.sync_tour(cli.build_parser().parse_args(["--quiet"]))
         self.assertEqual(len(self.objets()), 1)
         self.assertFalse(self.objets() & avant)
-        self.assertNotIn("cle_precedente", partage.reglage(self.paths["data"]))
+        self.assertNotIn("cles_quittees", partage.reglage(self.paths["data"]))
 
     def test_rejoindre_apres_une_publication_ratee_solde_aussi(self):
         from doot import coffre
         cle, avant = self.rotation_ratee("--sync-join", coffre.en_texte(coffre.creer()))
-        self.assertEqual(partage.reglage(self.paths["data"])["cle_precedente"], cle)
+        self.assertIn(cle, partage.reglage(self.paths["data"])["cles_quittees"])
         cli.sync_tour(cli.build_parser().parse_args(["--quiet"]))
         self.assertEqual(len(self.objets()), 1)
         self.assertFalse(self.objets() & avant)
-        self.assertNotIn("cle_precedente", partage.reglage(self.paths["data"]))
+        self.assertNotIn("cles_quittees", partage.reglage(self.paths["data"]))
 
     def test_relancer_sync_init_solde_une_rotation_ratee(self):
         """Refrapper la commande sur le meme depot ne doit pas perdre la marque."""
@@ -1402,7 +1402,57 @@ class PartageAutomatique(CliTestCase):
         with mock.patch.object(transport.Dossier, "effacer",
                                side_effect=transport.TransportError("lecture seule")):
             cli.sync_tour(cli.build_parser().parse_args(["--quiet"]))
-        self.assertEqual(partage.reglage(self.paths["data"])["cle_precedente"], cle)
+        self.assertIn(cle, partage.reglage(self.paths["data"])["cles_quittees"])
+        cli.sync_tour(cli.build_parser().parse_args(["--quiet"]))
+        self.assertEqual(len(self.objets()), 1)
+        self.assertFalse(self.objets() & avant)
+
+    def test_refrapper_la_rotation_ratee_n_oublie_pas_la_premiere_cle(self):
+        """Le geste naturel apres un echec : rejouer la meme commande.
+
+        La cle de la tentative ratee n'a jamais rien publie ; si elle chassait
+        celle d'avant, l'objet de celle-ci resterait la pour toujours.
+        """
+        _, avant = self.rotation_ratee("--sync-init", str(self.depot()), "--sync-force")
+        self.assertEqual(self.run_cli("--sync-init", str(self.depot()), "--sync-force"), 0)
+        self.assertEqual(len(self.objets()), 1)
+        self.assertFalse(self.objets() & avant)
+        self.assertNotIn("cles_quittees", partage.reglage(self.paths["data"]))
+
+    def test_deux_cles_peuvent_attendre_leur_retrait(self):
+        """Une rotation dont le retrait echoue, puis une autre : deux objets restent."""
+        from doot import transport
+        self.run_cli("--sync-init", str(self.depot()))
+        avant = self.objets()
+        with mock.patch.object(transport.Dossier, "effacer",
+                               side_effect=transport.TransportError("lecture seule")):
+            self.assertEqual(self.run_cli("--sync-init", str(self.depot()), "--sync-force"), 0)
+        self.assertEqual(len(self.objets()), 2)
+        avant |= self.objets()
+
+        self.assertEqual(self.run_cli("--sync-init", str(self.depot()), "--sync-force"), 0)
+        restants = self.objets()
+        self.assertEqual(len(restants), 1, f"reste {restants}")
+        self.assertFalse(restants & avant)
+
+    def test_revenir_a_une_cle_quittee_ne_retire_pas_son_objet(self):
+        """Elle est redevenue courante : la solder effacerait la part du jour."""
+        from doot import coffre
+        cle, _ = self.rotation_ratee("--sync-init", str(self.depot()), "--sync-force")
+        self.assertEqual(self.run_cli("--sync-join", cle), 0)
+        etat = cli.read_state()
+        attendu = coffre.nom_objet(coffre.depuis_texte(cle), etat["machine"])
+        self.assertEqual(self.objets(), {attendu})
+
+    def test_une_fiche_a_l_ancienne_marque_est_reprise(self):
+        """Quand la marque n'en tenait qu'une, elle designait deja un objet."""
+        from doot import coffre
+        self.run_cli("--sync-init", str(self.depot()))
+        avant = self.objets()
+        partage.poser_reglage(self.paths["data"],
+                              {"dossier": str(self.depot()),
+                               "cle": coffre.en_texte(coffre.creer()),
+                               "cle_precedente": partage.reglage(self.paths["data"])["cle"]})
         cli.sync_tour(cli.build_parser().parse_args(["--quiet"]))
         self.assertEqual(len(self.objets()), 1)
         self.assertFalse(self.objets() & avant)
