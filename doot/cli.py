@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import ctypes
 import json
 import os
@@ -12,7 +13,10 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import __version__, art, coffre, image, notification, partage, profiles, season, sound, succes
+from . import (
+    __version__, art, coffre, codex, contagion, image, notification, partage,
+    profiles, season, sound, succes,
+)
 
 DEFAULT_MIN_SECONDS = 600     # 10 min
 DEFAULT_MAX_SECONDS = 3600    # 1 h
@@ -23,9 +27,11 @@ DEFAULT_SPIN_MS = 700
 DEFAULT_BURST_DELAY = 0.6
 DEFAULT_EVENT_CHANCE = 0.02
 DEFAULT_EVENT_PITY = 100
+DEFAULT_CONTAGION_CHANCE = 0.12
+CONTAGION_POLL_SECONDS = 30
 OUT_OF_SEASON_POLL = 3600     # on reverifie la date toutes les heures
 FORMATION_SIDES = ("left", "top", "right", "bottom")
-FORMATIONS = ("random", "canon", "wave", "rain", "vortex")
+FORMATIONS = ("random", "canon", "wave", "rain", "vortex", "duel")
 
 
 # --------------------------------------------------------------- chemins -----
@@ -213,6 +219,7 @@ def display_options(args, step: dict | None = None) -> dict:
         "spin": not args.no_spin,
         "spin_chance": 1.0 if args.spin else args.spin_chance,
         "spin_ms": args.spin_ms,
+        "glitch": getattr(args, "mise_en_scene", "") == "faux-bug",
     }
 
     # Une formation ne remplace que les choix laisses au hasard par
@@ -276,6 +283,8 @@ def formation_plan(args, total: int) -> list[dict | None]:
             side = ("left", "right")[index % 2]
         elif formation == "rain":
             side = "top"
+        elif formation == "duel":
+            side = ("left", "right")[index % 2]
         elif formation == "vortex":
             side = None
         else:
@@ -589,6 +598,11 @@ def emit_evenement(args, evenement, journal: bool = False) -> bool:
     if journal:
         log(f"EVENEMENT RARE : {evenement.titre} - {evenement.description}", quiet=args.quiet)
     configured = evenements.configure(args, evenement)
+    if evenement.mise_en_scene == "mimic":
+        try:
+            notification.show_mimic()
+        except Exception as exc:
+            log(f"mimic indisponible : {exc}", quiet=args.quiet)
     return emit_doots(
         configured,
         journal=journal,
@@ -620,6 +634,25 @@ def do_events(args) -> int:
     for evenement in evenements.CATALOGUE:
         print(f"  {evenement.identifiant:<10} {evenement.titre} - {evenement.description}")
     print("\nEssayer : doot --event NOM --ignore-season")
+    return 0
+
+
+def do_codex(args) -> int:
+    """Montre les apparitions decouvertes et garde les autres dans l'ombre."""
+
+    etat = read_state()
+    decouverts = codex.vus(etat)
+    courant, total = codex.progression(etat)
+    print(f"Codex des apparitions : {courant}/{total} decouvertes")
+    for apparition in codex.CATALOGUE:
+        if apparition.identifiant in decouverts:
+            print(f"\n  [VU] {apparition.titre}")
+            print(f"       {apparition.description}")
+        else:
+            print("\n  [???] Apparition inconnue")
+            print(f"        Indice : {apparition.indice}")
+    print("\nLes rencontres locales se forcent avec doot --event NOM ; "
+          "la contagion doit venir d'une autre machine.")
     return 0
 
 
@@ -717,14 +750,77 @@ def do_melodies(args) -> int:
     return 0
 
 
-def sync_tour(args) -> None:
-    """Un tour complet, annonces comprises, pour le daemon."""
+def sync_tour(args) -> list[dict]:
+    """Un tour complet, annonces et signaux contagieux compris."""
     if not partage.reglage(paths()["data"]).get("cle"):
-        return
+        return []
     etat = read_state()
     nouveaux = partage.cycle(etat, paths()["data"])
+    signaux = contagion.vider(etat)
     write_state(etat)
     annoncer_succes(args, nouveaux)
+    return signaux
+
+
+def propager_contagion(args, rng=random) -> bool:
+    """Publie parfois le doot qui vient d'etre joue dans la crypte partagee."""
+
+    if args.no_contagion or not partage.reglage(paths()["data"]).get("cle"):
+        return False
+    if rng.random() >= args.contagion_chance:
+        return False
+    etat = read_state()
+    etat["contagion_sortante"] = contagion.creer(succes.machine(etat))
+    write_state(etat)
+    return True
+
+
+def emit_contagion(args, signal: dict, journal: bool = True) -> bool:
+    """Fait surgir sur ce poste le doot bref parti d'une autre machine."""
+
+    configured = copy.copy(args)
+    configured.burst_min = configured.burst_max = 1
+    configured.duration = 2.8
+    configured.formation = "random"
+    configured.mise_en_scene = "salve"
+    source_key = str(signal.get("source", ""))
+    configured.side = "left" if sum(map(ord, source_key)) % 2 else "right"
+    configured.no_slide = False
+    configured.spin = False
+    if journal:
+        source = signal.get("source", "une autre machine")
+        log(f"DOOT CONTAGIEUX : signal recu de {source}.", quiet=args.quiet)
+    return emit_doots(configured, journal=journal, evenement="contagion") > 0
+
+
+def jouer_contagions(args, signaux: list[dict]) -> int:
+    """Joue les signaux recus sans jamais en faire repartir un autre."""
+
+    joues = 0
+    for signal in signaux:
+        if not args.ignore_season and not season.in_season():
+            break
+        joues += int(emit_contagion(args, signal))
+    return joues
+
+
+def attendre_avec_contagion(args, delay: float) -> None:
+    """Attend le prochain tirage tout en ecoutant doucement la crypte partagee."""
+
+    if (args.no_contagion or
+            not partage.reglage(paths()["data"]).get("cle")):
+        time.sleep(delay)
+        return
+
+    fin = time.monotonic() + delay
+    while True:
+        restant = fin - time.monotonic()
+        if restant <= 0:
+            return
+        time.sleep(min(CONTAGION_POLL_SECONDS, restant))
+        if fin - time.monotonic() <= 0:
+            return
+        jouer_contagions(args, sync_tour(args))
 
 
 def lire_secret(valeur: str) -> str:
@@ -1029,7 +1125,7 @@ def do_daemon(args) -> int:
 
             delay = random.randint(args.min, args.max)
             log(f"prochain doot dans {delay}s", quiet=args.quiet)
-            time.sleep(delay)
+            attendre_avec_contagion(args, delay)
 
             if not args.ignore_season and not season.in_season():
                 continue  # la saison s'est fermee pendant l'attente
@@ -1050,7 +1146,8 @@ def do_daemon(args) -> int:
                 if not args.no_event:
                     note_evenement(evenement_joue)
                 note_melodie(melodie_jouee)
-                sync_tour(args)
+                propager_contagion(args)
+                jouer_contagions(args, sync_tour(args))
             except window.TkinterMissing as exc:
                 log(str(exc), quiet=args.quiet)
                 return 4
@@ -1077,6 +1174,8 @@ def do_status(args) -> int:
     etat = read_state()
     print(f"  succes      : {len(succes.debloques(etat))}/{len(succes.CATALOGUE)}, "
           f"{succes.score(etat)} points")
+    codex_vus, codex_total = codex.progression(etat)
+    print(f"  codex       : {codex_vus}/{codex_total} apparitions decouvertes")
 
     sounds = sound.custom_sounds(p["sound"])
     if sounds:
@@ -1118,6 +1217,9 @@ def do_status(args) -> int:
     else:
         garantie = str(args.event_pity) if args.event_pity else "aucune"
         print(f"  evenements  : chance {args.event_chance:.1%}, garantie {garantie}")
+    if partage.reglage(p["data"]).get("cle"):
+        contagieux = "coupe" if args.no_contagion else f"chance {args.contagion_chance:.1%}"
+        print(f"  contagion   : {contagieux}")
 
     print(f"  journal     : {p['log']}")
     if sys.platform == "win32":
@@ -1249,6 +1351,8 @@ def build_parser(profile_defaults: dict | None = None) -> argparse.ArgumentParse
                              "celle-ci ; un dossier apporte tous ses .json")
     parser.add_argument("--achievements", "--succes", dest="succes", action="store_true",
                         help="liste les succes locaux, leur score et leur progression")
+    parser.add_argument("--codex", action="store_true",
+                        help="ouvre le Codex des apparitions deja decouvertes")
     parser.add_argument("--events", action="store_true",
                         help="liste les rencontres rares et leur commande d'essai")
     parser.add_argument("--event", default=None, metavar="NOM",
@@ -1296,7 +1400,7 @@ def build_parser(profile_defaults: dict | None = None) -> argparse.ArgumentParse
                         metavar="SECONDES",
                         help=f"pause entre deux doots d'une meme salve (defaut {DEFAULT_BURST_DELAY})")
     parser.add_argument("--formation", choices=FORMATIONS, default="random",
-                        help="formation d'une salve : random, canon, wave, rain ou vortex")
+                        help="formation d'une salve : random, canon, wave, rain, vortex ou duel")
     parser.add_argument("--duration", type=float, default=None,
                         help=f"duree d'affichage en secondes (defaut : la duree du son, au moins {DEFAULT_DURATION})")
     parser.add_argument("--image", default=None, metavar="FICHIER",
@@ -1330,6 +1434,12 @@ def build_parser(profile_defaults: dict | None = None) -> argparse.ArgumentParse
     parser.add_argument("--event-pity", type=int, default=DEFAULT_EVENT_PITY, metavar="N",
                         help="le N-ieme declenchement sans evenement en force un "
                              f"(defaut {DEFAULT_EVENT_PITY}, 0 pour aucune garantie)")
+    parser.add_argument("--no-contagion", action="store_true",
+                        help="ne publie ni ne joue les doots venus des autres machines")
+    parser.add_argument("--contagion-chance", type=float,
+                        default=DEFAULT_CONTAGION_CHANCE, metavar="PART",
+                        help="chance qu'un doot local traverse le partage chiffre "
+                             f"(defaut {DEFAULT_CONTAGION_CHANCE})")
     parser.add_argument("--slide-chance", type=float, default=0.5, metavar="PART",
                         help="proportion de doots qui entrent par un bord ; le reste "
                              "surgit sur place (defaut 0.5, soit un sur deux)")
@@ -1428,6 +1538,7 @@ def main(argv: list[str] | None = None) -> int:
         args.burst_delay = 0.0
     args.event_chance = max(0.0, min(1.0, args.event_chance))
     args.event_pity = max(0, args.event_pity)
+    args.contagion_chance = max(0.0, min(1.0, args.contagion_chance))
 
     p = paths()
     p["data"].mkdir(parents=True, exist_ok=True)
@@ -1468,6 +1579,8 @@ def main(argv: list[str] | None = None) -> int:
         return do_melodies(args)
     if args.succes:
         return do_succes(args)
+    if args.codex:
+        return do_codex(args)
     if args.sync_init is not None:
         return do_sync_init(args, args.sync_init)
     if args.sync_join is not None:

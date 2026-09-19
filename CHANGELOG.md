@@ -12,6 +12,18 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.20.0] - 2026-09-20
+
+### Ajouté
+- Le **Doot contagieux** fait voyager une apparition éphémère entre les
+  machines d'une flotte chiffrée. Les signaux expirent après cinq minutes,
+  ne se jouent qu'une fois par poste et ne rebondissent jamais.
+- `doot --codex` ouvre le Codex des apparitions : les rencontres vues y sont
+  révélées, les autres ne montrent qu'un indice.
+- Trois rencontres rares : le duel de trompettes entre les bords, le Mimic
+  déguisé en notification et le faux bug qui se coince avant de tomber.
+- La formation `duel` alterne gauche et droite pour les salves ordinaires.
+
 ## [1.19.0] - 2026-09-17
 
 ### Ajouté
@@ -706,7 +718,8 @@ ce que le code annonce.
 - Installeurs sans droits administrateur pour Windows, macOS et Linux, avec
   démarrage automatique, et un PKGBUILD pour Arch.
 
-[Non publié]: https://github.com/boubou666/doot/compare/v1.19.0...HEAD
+[Non publié]: https://github.com/boubou666/doot/compare/v1.20.0...HEAD
+[1.20.0]: https://github.com/boubou666/doot/compare/v1.19.0...v1.20.0
 [1.19.0]: https://github.com/boubou666/doot/compare/v1.18.1...v1.19.0
 [1.18.1]: https://github.com/boubou666/doot/compare/v1.18.0...v1.18.1
 [1.18.0]: https://github.com/boubou666/doot/compare/v1.17.1...v1.18.0

@@ -56,9 +56,11 @@
 - **Orchestre polyphonique** : une ligne RTTTL donne une voix et un squelette ;
   chacun hoche sur ses propres notes, sans plafond artificiel de musiciens.
 - **Chorégraphies** : les salves peuvent défiler en canon, onduler entre les
-  écrans, tomber du haut ou tournoyer sur place.
-- **Rencontres rares** : parade, pluie d'os et vortex interrompent parfois la
-  routine ; un compteur de pitié garantit qu'une rencontre finit par sortir.
+  écrans, tomber du haut, tournoyer sur place ou se répondre en duel.
+- **Rencontres rares** : parade, pluie d'os, vortex, duel, Mimic et faux bug
+  interrompent parfois la routine ; le Codex garde la trace des découvertes.
+- **Doot contagieux** : les machines d'une même flotte chiffrée peuvent se
+  transmettre une apparition éphémère, sans serveur ni dépendance au réseau.
 - **Profils persistants** : sauvegarde plusieurs ambiances et active celle que
   le daemon doit reprendre automatiquement, y compris après une mise à jour.
 - **Prêt à l'emploi** : le squelette et son *doot* sont livrés avec ; dépose ton
@@ -233,6 +235,7 @@ doot --rickroll              # raccourci de --play rickroll
 doot --melodies              # les mélodies jouables, les tiennes et les fournies
 doot --events                # les rencontres rares disponibles
 doot --event pluie           # force une rencontre rare, pour la découvrir
+doot --codex                 # le livre des apparitions déjà découvertes
 doot --achievements          # les succès locaux, leur progression et le score
 doot --profiles              # les profils enregistrés et celui qui est actif
 doot --status                # saison, daemon, son et image utilisés
@@ -249,7 +252,7 @@ doot --art                   # imprime le squelette dans le terminal
 | `--min` / `--max` | `600` / `3600` | bornes du délai aléatoire entre deux doot, en secondes |
 | `--burst-min` / `--burst-max` | `1` / `1` | bornes du nombre de doots enchaînés à chaque déclenchement |
 | `--burst-delay` | `0.6` | pause entre deux doots d'une même salve, en secondes |
-| `--formation` | `random` | formation : `random`, `canon`, `wave`, `rain` ou `vortex` |
+| `--formation` | `random` | formation : `random`, `canon`, `wave`, `rain`, `vortex` ou `duel` |
 | `--duration` | durée du son | durée d'affichage, en secondes (au moins 2.8) |
 | `--image` | — | un PNG/GIF précis à afficher |
 | `--no-image` | — | force l'ASCII art même si une image est disponible |
@@ -271,6 +274,8 @@ doot --art                   # imprime le squelette dans le terminal
 | `--event-chance` | `0.02` | proportion de déclenchements transformés en rencontre rare |
 | `--event-pity` | `100` | le N-ième déclenchement sans événement en force un (`0` : aucune garantie) |
 | `--no-event` | — | coupe les événements rares automatiques |
+| `--contagion-chance` | `0.12` | chance qu'un doot local traverse le partage chiffré |
+| `--no-contagion` | — | coupe l'émission et la réception des doots contagieux |
 | `--no-spin` | — | jamais de tour complet, le squelette reste droit |
 | `--screen` | `random` | écran d'apparition : `random`, `primary`, ou un index (`0`, `1`…) |
 | `--no-sound` | — | mode muet |
@@ -314,10 +319,16 @@ doot --sync-init ~/Sync/doot
 doot --sync-join dootsync1ykriszfb4t5hqt3a5tu7zhs5pgaym7xwvwsb6w6dt75pchdiyrra
 ```
 
-Le démon publie sa part et relit celle des autres à chaque doot. Rien d'autre à
-lancer : un dépôt injoignable ou un disque plein laissent la progression locale
-intacte et l'ennui dans `doot --succes`, parce qu'un doot ne doit jamais
-dépendre du partage.
+Le démon publie sa part et relit celle des autres à chaque doot. Il écoute aussi
+doucement le dépôt entre deux déclenchements : avec 12 % de chance, un doot
+local y laisse pendant cinq minutes un signal qu'une autre machine fera surgir
+chez elle. Chaque signal n'est joué qu'une fois par poste et ne rebondit pas,
+donc deux machines ne peuvent pas s'enfermer dans une épidémie infinie.
+
+Rien d'autre à lancer : un dépôt injoignable ou un disque plein laissent la
+progression locale intacte et l'ennui dans `doot --succes`, parce qu'un doot ne
+doit jamais dépendre du partage. `--no-contagion` coupe ces apparitions sans
+couper la convergence des succès ; `--contagion-chance` règle leur fréquence.
 
 Un seau compatible S3 marche aussi, R2, MinIO ou B2 compris :
 
@@ -504,11 +515,13 @@ séquentiels et `--burst-delay` donne le tempo :
 | `wave` | gauche ↔ droite, avec un aller-retour sur la rangée d'écrans |
 | `rain` | tous les squelettes tombent du haut, écran après écran |
 | `vortex` | apparitions sur place, chacune avec un tour complet |
+| `duel` | gauche ↔ droite, comme deux pupitres qui se répondent |
 
 ```bash
 doot --once --ignore-season --burst-min 6 --burst-max 6 --formation wave
 doot --once --ignore-season --burst-min 7 --burst-max 7 --formation rain
 doot --once --ignore-season --burst-min 5 --burst-max 5 --formation vortex
+doot --once --ignore-season --burst-min 6 --burst-max 6 --formation duel
 ```
 
 Avec un seul écran, la chorégraphie des bords reste visible. `--screen` ou
@@ -556,16 +569,30 @@ doot, comme avant.
 ## 🎲 Les événements rares
 
 Avant le tirage d'une mélodie, le daemon a 2 % de chances de lancer une
-rencontre précomposée : `parade` en vague, `pluie` depuis le haut ou `vortex`
-sur place. Elles durent quelques secondes et réutilisent tes images, tes sons,
-ton volume et tes choix d'écran.
+rencontre précomposée : les classiques `parade`, `pluie` et `vortex`, le
+`duel` qui se répond entre les deux bords, le `mimic` déguisé en notification,
+ou le `faux-bug` qui se coince, tremble et tombe hors de l'écran. Elles durent
+quelques secondes et réutilisent tes images, tes sons et ton volume.
 
 ```bash
 doot --events                         # noms et descriptions
 doot --event parade --ignore-season   # essai immédiat
 doot --event pluie --ignore-season
 doot --event vortex --ignore-season
+doot --event duel --ignore-season
+doot --event mimic --ignore-season
+doot --event faux-bug --ignore-season
 ```
+
+Le **Codex des apparitions** révèle le nom et la description de chaque rencontre
+déjà vue. Les autres gardent leur silhouette mais donnent un indice :
+
+```bash
+doot --codex
+```
+
+La contagion y possède sa propre entrée et ne se révèle qu'après avoir reçu un
+signal d'une autre machine.
 
 Une chance seule pourrait ne rien donner pendant très longtemps. Le compteur
 de pitié force donc le centième déclenchement sans événement. Comme celui des

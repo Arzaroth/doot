@@ -15,6 +15,7 @@ class Evenement:
     quantite: int
     delai: float
     duree: float
+    mise_en_scene: str = "salve"
 
 
 CATALOGUE = (
@@ -45,6 +46,35 @@ CATALOGUE = (
         0.10,
         1.2,
     ),
+    Evenement(
+        "duel",
+        "Le duel des cuivres",
+        "Deux camps se repondent d'un bord a l'autre de l'ecran.",
+        "duel",
+        6,
+        0.16,
+        0.85,
+    ),
+    Evenement(
+        "mimic",
+        "Le Mimic",
+        "Une notification presque credible cache un squelette.",
+        "random",
+        1,
+        0.0,
+        2.8,
+        "mimic",
+    ),
+    Evenement(
+        "faux-bug",
+        "Le faux bug",
+        "Le squelette se coince au bord, tremble, puis tombe.",
+        "random",
+        1,
+        0.0,
+        3.8,
+        "faux-bug",
+    ),
 )
 
 
@@ -62,4 +92,10 @@ def configure(args, event: Evenement):
     configured.burst_delay = event.delai
     configured.duration = event.duree
     configured.formation = event.formation
+    configured.mise_en_scene = event.mise_en_scene
+    if event.mise_en_scene == "faux-bug":
+        configured.side = "bottom"
+        configured.no_slide = False
+        configured.spin = False
+        configured.slide_ms = 650
     return configured
