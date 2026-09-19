@@ -22,7 +22,8 @@ OPTIONS = (
     "font_size", "center", "no_slide", "no_melody", "melody_chance",
     "melody_pity", "slide_chance", "side", "slide_ms", "spin", "no_spin",
     "spin_chance", "spin_ms", "screen", "no_sound", "no_pan",
-    "event_chance", "event_pity", "no_event", "quiet",
+    "event_chance", "event_pity", "no_event", "contagion_chance",
+    "no_contagion", "quiet",
 )
 
 _ENTIERS = {
@@ -32,13 +33,14 @@ _ENTIERS = {
 _NOMBRES = {
     "burst_delay", "duration", "scale", "volume", "opacity",
     "melody_chance", "slide_chance", "spin_chance", "event_chance",
+    "contagion_chance",
 }
 _BOOLEENS = {
     "no_image", "center", "no_slide", "no_melody", "spin", "no_spin",
-    "no_sound", "no_pan", "no_event", "quiet",
+    "no_sound", "no_pan", "no_event", "no_contagion", "quiet",
 }
 _TEXTES = {"image", "side", "screen"}
-_FORMATIONS = {"random", "canon", "wave", "rain", "vortex"}
+_FORMATIONS = {"random", "canon", "wave", "rain", "vortex", "duel"}
 
 
 class ProfileError(ValueError):

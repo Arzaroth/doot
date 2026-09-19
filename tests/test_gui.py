@@ -15,7 +15,7 @@ class CatalogueGraphique(unittest.TestCase):
             "--once", "--play", "--rickroll", "--melodies", "--sync-init",
             "--sync-join", "--sync-endpoint", "--sync-region",
             "--sync-key-id", "--sync-secret",
-            "--export", "--merge", "--achievements", "--events", "--event",
+            "--export", "--merge", "--achievements", "--codex", "--events", "--event",
             "--status", "--stop", "--paths", "--art", "--update",
             "--check-update", "--profiles", "--save-profile",
             "--activate-profile", "--deactivate-profile", "--delete-profile",

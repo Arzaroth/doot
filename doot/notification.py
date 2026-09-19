@@ -21,6 +21,11 @@ BADGE_SIZE = 88
 TICK_MS = 30
 DEFAULT_DURATION = 3.4
 VICTORY_RTTTL = Path(__file__).resolve().parent / "assets" / "victory-parade.rtttl"
+MIMIC_MESSAGES = (
+    ("Maintenance terminee", "Redemarrage du femur requis."),
+    ("Peripherique detecte", "Trompette USB prete a dooter."),
+    ("doot.exe ne repond plus", "Le probleme cherche actuellement une solution."),
+)
 
 
 def render_victory(dest: Path) -> Path:
@@ -108,6 +113,16 @@ def show_lot(titres: list, points: int, badge_path: Path | None = None,
         badge_path=badge_path, wav_path=wav_path,
         duration=duration + 0.6 * (len(titres) - 1),
     )
+
+
+def show_mimic(rng=None, duration: float = 1.8) -> None:
+    """Une fausse notification maison, assez breve pour reveler vite la blague."""
+
+    if rng is None:
+        import random
+        rng = random
+    titre, corps = rng.choice(MIMIC_MESSAGES)
+    _afficher("NOTIFICATION DU SYSTEME", titre, corps, duration=duration)
 
 
 def _afficher(entete: str, titre: str, corps: str, badge_path: Path | None = None,

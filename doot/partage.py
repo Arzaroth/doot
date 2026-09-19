@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from . import coffre, succes, transport
+from . import coffre, contagion, succes, transport
 
 FICHIER = "replica.json"
 
@@ -159,17 +159,21 @@ def poser_cle(dossier: Path, fiche: dict, cle_texte: str) -> dict:
     return fiche
 
 
-def part_exportable(etat: dict) -> dict:
+def part_exportable(etat: dict, avec_contagion: bool = False) -> dict:
     """Ce qui voyage d'une machine a l'autre.
 
     Les compteurs de pitie restent : ils decrivent le rythme de ce poste, pas
     ce qui y a ete accompli.
     """
-    return {
+    part = {
         "machine": succes.machine(etat),
         "stats": etat.get("stats", {}),
         "succes": etat.get("succes", {}),
     }
+    signal = etat.get("contagion_sortante")
+    if avec_contagion and contagion.valide(signal):
+        part["contagion"] = signal
+    return part
 
 
 @dataclass(frozen=True)
@@ -216,6 +220,7 @@ def lire_objets(etat: dict, depot, cle: bytes, objets) -> list[Lecture]:
         except ValueError as exc:
             lectures.append(Lecture(objet.nom, refus=str(exc)))
             continue
+        contagion.recevoir(etat, distant.get("contagion"))
         lectures.append(Lecture(objet.nom, machine=str(distant.get("machine")),
                                 debloques=tuple(nouveaux)))
     return lectures
@@ -277,7 +282,8 @@ def ecrire_part(etat: dict, cible: Path) -> Path:
 def publier(etat: dict, depot, cle: bytes) -> str:
     """Depose la part de ce poste, chiffree, sous un nom opaque."""
     nom = coffre.nom_objet(cle, succes.machine(etat))
-    clair = json.dumps(part_exportable(etat), ensure_ascii=False).encode("utf-8")
+    part = part_exportable(etat, avec_contagion=True)
+    clair = json.dumps(part, ensure_ascii=False).encode("utf-8")
     depot.deposer(nom, coffre.fermer(cle, clair))
     return nom
 

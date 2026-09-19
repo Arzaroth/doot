@@ -92,9 +92,16 @@ COMMANDS: tuple[CommandSpec, ...] = (
         ("--events",), image="success/collection_evenements.png",
     ),
     CommandSpec(
+        "codex", "Ouvrir le Codex",
+        "Revele les apparitions deja rencontrees et donne un indice pour les autres.",
+        ("--codex",), image="success/collection_evenements.png",
+    ),
+    CommandSpec(
         "event", "Forcer une rencontre",
         "Declenche une rencontre rare precise, puis quitte.",
-        parameters=(ParameterSpec("--event", "Rencontre", "parade, pluie ou vortex"),),
+        parameters=(ParameterSpec(
+            "--event", "Rencontre", "parade, pluie, vortex, duel, mimic ou faux-bug",
+        ),),
         image="success/choregraphe.png",
     ),
     CommandSpec(

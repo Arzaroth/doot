@@ -133,6 +133,22 @@ def decide_spin(spin: bool, chance: float, glisse: bool, rng=random) -> bool:
     return rng.random() < max(0.0, min(1.0, chance))
 
 
+def glitch_position(elapsed: int, total: int, x: int, y: int,
+                    screen_bottom: int, height: int) -> tuple[int, int]:
+    """Trajectoire du faux bug : petits soubresauts, puis chute hors ecran."""
+
+    fall_ms = min(750, max(300, total // 4))
+    fall_start = total - fall_ms
+    if elapsed < fall_start:
+        tremble = ((elapsed // 90) % 5) - 2
+        vertical = (0, -2, 1, -1, 2)[(elapsed // 110) % 5]
+        return x + tremble * 2, y + vertical
+    avance = min(1.0, max(0.0, (elapsed - fall_start) / fall_ms))
+    chute = int((screen_bottom - y + height) * avance * avance)
+    zigzag = int((1.0 - avance) * (((elapsed // 55) % 3) - 1) * 7)
+    return x + zigzag, y + chute
+
+
 def pick_side(side: str | None, rng=random) -> str:
     """Bord d'entree : 'left', 'right', 'top', 'bottom', ou tire au sort."""
     voulu = _ALIAS.get(side, side)
@@ -342,6 +358,7 @@ def show(
     spin_ms: int = 700,
     beats: list | None = None,
     voices: list[list] | None = None,
+    glitch: bool = False,
 ) -> None:
     """Affiche un doot et rend la main quand il a disparu.
 
@@ -376,9 +393,11 @@ def show(
     # Un tour de duree nulle n'est pas un tour : il ne ferait que payer les
     # quatre orientations pour ne rien montrer.
     spin = decide_spin(spin, spin_chance, slide) and spin_ms > 0
-    if _show_argb(wav_path, duration, center, opacity, image_path, scale, screen,
-                  spatialise, slide, side, slide_ms, spin, spin_ms, beats,
-                  voices):
+    # Le faux bug deplace sa fenetre de facon volontairement irreguliere ; les
+    # backends ARGB savent jouer une entree normale, mais pas cette chute.
+    if not glitch and _show_argb(
+            wav_path, duration, center, opacity, image_path, scale, screen,
+            spatialise, slide, side, slide_ms, spin, spin_ms, beats, voices):
         return
 
     tk, tkfont = _import_tk()
@@ -550,10 +569,17 @@ def show(
             set_alpha(1.0)
         elif not slide and elapsed < fade_in_ms:
             set_alpha(elapsed / fade_in_ms)
-        elif elapsed > total_ms - fade_out_ms:
+        elif not glitch and elapsed > total_ms - fade_out_ms:
             set_alpha(max(0, total_ms - elapsed) / fade_out_ms)
         else:
             set_alpha(1.0)
+
+        if glitch and elapsed > slide_ms:
+            bug_x, bug_y = glitch_position(
+                elapsed, total_ms, repos_x, repos_y,
+                monitor.y + monitor.height, height,
+            )
+            overlay_window.move_window(root, width, height, bug_x, bug_y)
 
         # Le tour se joue sur place : les quatre quarts defilent, puis l'image
         # reste droite (quart 0) jusqu'a la fin du doot.
