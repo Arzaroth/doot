@@ -63,6 +63,9 @@
   transmettre une apparition éphémère, sans serveur ni dépendance au réseau.
 - **Profils persistants** : sauvegarde plusieurs ambiances et active celle que
   le daemon doit reprendre automatiquement, y compris après une mise à jour.
+- **Registre de la crypte** : les soirs de la saison en grille, les totaux, les
+  records et la part de chaque machine de la flotte — tout ce que `state.json`
+  gardait déjà sans que rien ne le montre.
 - **Prêt à l'emploi** : le squelette et son *doot* sont livrés avec ; dépose ton
   propre PNG/GIF ou mp3 pour les remplacer, sans toucher au code.
 - **Saisonnier** : la fenêtre du 1er septembre au 31 octobre est appliquée par le
@@ -237,6 +240,7 @@ doot --events                # les rencontres rares disponibles
 doot --event pluie           # force une rencontre rare, pour la découvrir
 doot --codex                 # le livre des apparitions déjà découvertes
 doot --achievements          # les succès locaux, leur progression et le score
+doot --stats                 # le registre : totaux, machines, saison en grille
 doot --profiles              # les profils enregistrés et celui qui est actif
 doot --status                # saison, daemon, son et image utilisés
 doot --stop                  # arrête le daemon
@@ -302,6 +306,44 @@ fanfare originale à deux voix jouée par le moteur RTTTL. `--no-sound` garde la
 médaille mais coupe la fanfare. La commande affiche ensuite les succès acquis, les
 objectifs encore verrouillés et leur progression. Le fichier reste du JSON lisible
 et peut être sauvegardé avec le reste du dossier de données.
+
+### Le registre de la crypte
+
+```bash
+doot --stats
+```
+
+Le score dit combien de points ont été gagnés, jamais ce qui s'est passé.
+`state.json` en garde pourtant beaucoup plus depuis toujours : les doots machine
+par machine, les soirs où la crypte a servi, la plus grande salve, les formations
+menées, les bords imposés, les mélodies fournies déjà jouées. Le registre les
+montre, sans rien collecter de neuf.
+
+La saison s'affiche en grille, une colonne par semaine et une case par soir :
+
+```text
+       sep     oct
+  lun    . . . . # . . .
+  mar  # # . . . . . . .
+  mer  # # . . # . . . .
+  jeu  # . . . # . . . .
+  ven  . . . . . . . . #
+  sam  # # # # . . # . #
+  dim  . # # . # # # #
+```
+
+Une case est pleine dès qu'un soir a eu son doot. Elle ne dit pas combien :
+l'état range les jours actifs en ensemble de dates, pas en compteurs, et une
+case plus sombre pour « trois doots » prétendrait à une intensité que le fichier
+ne garde pas. Compter par jour demanderait une troisième façon de fusionner deux
+machines, et ferait grossir le fichier sans fin.
+
+Le registre lit et n'écrit pas. C'est ce qui lui permet de rouvrir une saison
+fermée depuis des mois — les saisons précédentes tiennent en une ligne chacune —
+et de détailler une flotte déjà fusionnée sans la resynchroniser d'abord.
+
+Le grimoire graphique en a son onglet, avec la même grille dessinée en cases
+dorées ; il se rafraîchit à la fin de chaque commande lancée depuis la fenêtre.
 
 ### Faire converger ses machines
 
@@ -952,6 +994,8 @@ des quatre installeurs.
 | `doot/melodie.py` | les mélodies en doots : lecture RTTTL, accordage et rendu |
 | `doot/evenements.py` | les trois rencontres rares précomposées |
 | `doot/profiles.py` | le stockage et l'activation des profils persistants |
+| `doot/succes.py` | les succès, les parts par machine et leur fusion |
+| `doot/registre.py` | le registre : totaux, records, machines et grille de saison |
 | `doot/audio.py` | la sortie audio native (PulseAudio/PipeWire, ALSA) |
 | `doot/window.py` | l'overlay tkinter, la transparence, le fondu |
 | `doot/cli.py` | la CLI, la boucle aléatoire, l'instance unique |

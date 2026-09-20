@@ -12,6 +12,13 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ajouté
+- `doot --stats` ouvre le **registre de la crypte** : les totaux, les records,
+  la part de chaque machine de la flotte, les collections, et la saison en
+  grille — une colonne par semaine, une case par soir. Le grimoire graphique en
+  a son onglet. Rien n'est collecté de neuf : tout cela dormait déjà dans
+  `state.json`, sans autre visage que le score.
+
 ## [1.21.0] - 2026-09-20
 
 ### Ajouté
