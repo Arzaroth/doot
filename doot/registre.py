@@ -206,5 +206,16 @@ def saison(etat: dict, annee: int) -> Saison:
 
 
 def saisons(etat: dict) -> list:
-    """Les annees dont un soir au moins a eu son doot, la plus recente devant."""
-    return sorted({jour.year for jour in jours_actifs(etat)}, reverse=True)
+    """Les annees dont un soir au moins a eu son doot, la plus recente devant.
+
+    Le jour doit tomber dans la saison de son annee. `--ignore-season` fait
+    dooter un 3 janvier, et retenir son annee telle quelle annoncait une saison
+    que la crypte n'a jamais ouverte - zero soir sur soixante et un, puisque la
+    grille, elle, ne retient que septembre et octobre.
+    """
+    annees = set()
+    for jour in jours_actifs(etat):
+        debut, fin = bornes(jour.year)
+        if debut <= jour <= fin:
+            annees.add(jour.year)
+    return sorted(annees, reverse=True)
