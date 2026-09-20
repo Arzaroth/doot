@@ -617,6 +617,27 @@ def clore_la_saison(args, annee: int):
     return chemin
 
 
+def jouer_le_rite(args, evenement) -> bool:
+    """Joue la finale, et referme la saison meme si l'affichage casse en route.
+
+    `emit_doots` compte dans son `finally` les squelettes deja montres. Si une
+    fenetre casse au milieu des douze, la ceremonie a bien eu lieu pour qui
+    regardait : ne pas la clore ferait rejouer la finale entiere au
+    declenchement suivant, puis a chacun de ceux d'apres jusqu'a minuit.
+
+    Aucun doot affiche n'est pas une ceremonie, en revanche. La saison reste
+    alors ouverte et le declenchement suivant retentera, ce qui est le bon sens
+    d'un ecran indisponible une minute.
+    """
+    annee = season.last_season_year()
+    avant = succes.total(read_state(), "doots")
+    try:
+        return emit_evenement(args, evenement, journal=True)
+    finally:
+        if succes.total(read_state(), "doots") > avant:
+            clore_la_saison(args, annee)
+
+
 def do_carte(args, destination: str) -> int:
     """Ecrit la carte d'une saison, sans attendre qu'elle se ferme."""
 
@@ -1280,10 +1301,11 @@ def do_daemon(args) -> int:
                 rite = rite_du_soir(args)
                 evenement = rite or event_roll(args)
                 if evenement is not None:
-                    evenement_joue = emit_evenement(args, evenement, journal=True)
+                    evenement_joue = (
+                        jouer_le_rite(args, evenement) if rite is not None
+                        else emit_evenement(args, evenement, journal=True)
+                    )
                     melodie_jouee = False
-                    if rite is not None and evenement_joue:
-                        clore_la_saison(args, season.last_season_year())
                 else:
                     evenement_joue = False
                     fichier = melody_roll(args)

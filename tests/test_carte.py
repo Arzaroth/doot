@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
-from doot import carte, cli, codex, evenements, png, police, season, succes
+from doot import carte, cli, codex, evenements, png, police, season, succes, window
 
 
 def etat_type() -> dict:
@@ -170,6 +170,81 @@ class RiteDuSoir(unittest.TestCase):
         with mock.patch.object(carte, "ecrire", side_effect=OSError("disque plein")):
             self.assertIsNone(cli.clore_la_saison(self.args, 2026))
         self.assertEqual(cli.read_state()["rite_saison"], 2026)
+
+
+class RiteInterrompu(unittest.TestCase):
+    """La ceremonie peut casser en route sans avoir a etre rejouee."""
+
+    def setUp(self):
+        self.dossier = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dossier.cleanup)
+        racine = Path(self.dossier.name)
+        patch = mock.patch.object(cli, "paths", return_value={
+            "data": racine, "state": racine / "state.json", "log": racine / "doot.log",
+        })
+        patch.start()
+        self.addCleanup(patch.stop)
+        # Les douze doots de la finale debloquent des succes, et chaque medaille
+        # rend sa fanfare avant de s'afficher : trois secondes par test sur un
+        # dossier neuf. L'annonce ne fait pas partie de ce qu'on verifie ici,
+        # l'enregistrement dans l'etat si - et il a lieu avant elle.
+        muet = mock.patch.object(cli, "annoncer_succes", lambda *a, **k: None)
+        muet.start()
+        self.addCleanup(muet.stop)
+        # Ces tests portent sur le marqueur, pas sur l'image. La dessiner pour
+        # de vrai decode chaque badge en Python pur et coute onze secondes pour
+        # trois cas ; `CarteDeSaison` la verifie deja une fois, ce qui suffit.
+        sans_image = mock.patch.object(carte, "ecrire", return_value=Path("carte.png"))
+        sans_image.start()
+        self.addCleanup(sans_image.stop)
+        self.args = cli.parse_args(["--quiet"])
+
+    def finale(self, casse_a=None):
+        """Joue la finale, en cassant l'affichage a la n-ieme fenetre."""
+
+        vues = {"n": 0}
+
+        def show(**_):
+            vues["n"] += 1
+            if casse_a is not None and vues["n"] == casse_a:
+                raise RuntimeError("ecran perdu")
+
+        with mock.patch.object(window, "show", side_effect=show), \
+             mock.patch.object(cli, "resolve_media", return_value=(None, None, 0.0)):
+            try:
+                cli.jouer_le_rite(self.args, evenements.find("finale"))
+            except RuntimeError:
+                pass
+        return vues["n"]
+
+    def rejouerait(self):
+        with mock.patch.object(season, "datetime") as horloge:
+            horloge.now.return_value = datetime(2026, 10, 31, 22, 0)
+            return cli.rite_du_soir(self.args) is not None
+
+    def test_une_panne_en_cours_de_ceremonie_la_cloture_quand_meme(self):
+        """Sinon la finale repart a chaque declenchement jusqu'a minuit.
+
+        `emit_doots` compte les squelettes deja montres dans son `finally` ; la
+        cloture doit suivre le meme chemin, sans quoi l'etat retient les doots
+        et oublie que la crypte a ferme.
+        """
+        self.finale(casse_a=2)
+        self.assertEqual(cli.read_state().get("rite_saison"), 2026)
+        self.assertFalse(self.rejouerait())
+
+    def test_une_panne_avant_le_premier_doot_laisse_la_saison_ouverte(self):
+        """Aucun squelette montre n'est pas une ceremonie : on retentera."""
+
+        self.finale(casse_a=1)
+        self.assertNotIn("rite_saison", cli.read_state())
+        self.assertTrue(self.rejouerait())
+
+    def test_une_ceremonie_complete_ferme_la_saison(self):
+        montres = self.finale()
+        self.assertEqual(montres, evenements.find("finale").quantite)
+        self.assertEqual(cli.read_state().get("rite_saison"), 2026)
+        self.assertFalse(self.rejouerait())
 
 
 class CarteDeSaison(unittest.TestCase):
