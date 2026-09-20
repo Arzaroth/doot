@@ -48,6 +48,15 @@ COLLECTIONS = (
     ("profils_actifs", "Profils actives"),
 )
 
+# Les etiquettes du calendrier. Elles sont ecrites et non tirees de strftime,
+# qui suit la locale du poste : une grille doit se lire pareil sur une machine
+# en anglais et dans une capture d'ecran partagee.
+MOIS = (
+    "", "janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet",
+    "aout", "septembre", "octobre", "novembre", "decembre",
+)
+JOURS = ("lun", "mar", "mer", "jeu", "ven", "sam", "dim")
+
 # Les colonnes de la table par machine. Les autres totaux ne sont pas repris
 # poste par poste : une table de huit colonnes ne tient pas dans un terminal.
 COLONNES = ("doots", "declenchements", "melodies", "evenements")

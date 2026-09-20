@@ -16,7 +16,7 @@ class CatalogueGraphique(unittest.TestCase):
             "--sync-join", "--sync-endpoint", "--sync-region",
             "--sync-key-id", "--sync-secret",
             "--export", "--merge", "--achievements", "--codex", "--events", "--event",
-            "--status", "--stop", "--paths", "--art", "--update",
+            "--stats", "--status", "--stop", "--paths", "--art", "--update",
             "--check-update", "--profiles", "--save-profile",
             "--activate-profile", "--deactivate-profile", "--delete-profile",
             "--screens", "--regen-sound", "--version", "--help", "--gui",

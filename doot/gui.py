@@ -155,6 +155,11 @@ COMMANDS: tuple[CommandSpec, ...] = (
         ("--achievements",), image="success/cent_doots.png",
     ),
     CommandSpec(
+        "stats", "Ouvrir le registre",
+        "Detaille les totaux, les machines de la flotte et les soirs de la saison.",
+        ("--stats",), image="success/sept_jours.png",
+    ),
+    CommandSpec(
         "status", "Etat de doot",
         "Montre la saison, le daemon actif, l'audio et l'image utilises.",
         ("--status",), image="success/ca_tourne.png",
