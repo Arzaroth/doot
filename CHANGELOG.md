@@ -12,6 +12,14 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.21.0] - 2026-09-20
+
+### Ajouté
+- La GUI possède désormais un cabinet des trophées illustré : les succès
+  débloqués remontent en tête avec leur badge, leurs points et leur date, tandis
+  que les autres montrent leur progression. La galerie s'adapte sur une ou deux
+  colonnes et s'actualise après chaque commande.
+
 ## [1.20.0] - 2026-09-20
 
 ### Ajouté
