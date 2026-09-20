@@ -85,6 +85,26 @@ class CompositionCommande(unittest.TestCase):
         self.assertIn("C:/Mes images/doot.png", texte)
 
 
+class GalerieSucces(unittest.TestCase):
+    def test_les_cartes_reunissent_badge_progression_et_deblocage(self):
+        etat = {
+            "stats": {"doots": 7},
+            "succes": {"premier_doot": "2026-09-20T12:34:56"},
+        }
+
+        cards = gui.achievement_cards(etat)
+        premier = next(card for card in cards if card.identifiant == "premier_doot")
+        dix = next(card for card in cards if card.identifiant == "dix_doots")
+
+        self.assertEqual(premier.debloque_le, "2026-09-20T12:34:56")
+        self.assertEqual((dix.courant, dix.objectif), (7, 10))
+        self.assertTrue((gui.ASSETS_DIR / "success" / f"{premier.identifiant}.png").is_file())
+
+    def test_la_date_iso_est_rendue_pour_un_humain(self):
+        self.assertEqual(gui._achievement_date("2026-09-20T12:34:56"), "20/09/2026")
+        self.assertEqual(gui._achievement_date("date ancienne"), "date ancienne")
+
+
 class EntreeCli(unittest.TestCase):
     def test_gui_delegue_au_lanceur_sans_preparer_le_daemon(self):
         with mock.patch.object(gui, "main", return_value=27) as lancer:

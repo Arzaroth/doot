@@ -15,8 +15,11 @@ import subprocess
 import sys
 import threading
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Mapping, Sequence
+
+from . import succes
 
 
 ASSETS_DIR = Path(__file__).with_name("assets")
@@ -57,6 +60,48 @@ class OptionSpec:
     choices: tuple[str, ...] = ()
     metavar: str = "VALEUR"
     default: object = None
+
+
+@dataclass(frozen=True)
+class AchievementCard:
+    """Donnees pretes a afficher pour une carte de succes."""
+
+    identifiant: str
+    titre: str
+    description: str
+    points: int
+    courant: int
+    objectif: int
+    debloque_le: str | None
+
+
+def achievement_cards(etat: dict) -> tuple[AchievementCard, ...]:
+    """Construit la galerie sans faire dependre les tests de Tkinter."""
+
+    acquis = succes.debloques(etat)
+    cards = []
+    for definition in succes.CATALOGUE:
+        courant, objectif = succes.progression(etat, definition)
+        date = acquis.get(definition.identifiant)
+        cards.append(AchievementCard(
+            identifiant=definition.identifiant,
+            titre=definition.titre,
+            description=definition.description,
+            points=definition.points,
+            courant=courant,
+            objectif=objectif,
+            debloque_le=date if isinstance(date, str) else None,
+        ))
+    return tuple(cards)
+
+
+def _achievement_date(value: str) -> str:
+    """Rend une date ISO agreable, tout en tolerant les vieux etats manuels."""
+
+    try:
+        return datetime.fromisoformat(value).strftime("%d/%m/%Y")
+    except (TypeError, ValueError):
+        return value
 
 
 COMMANDS: tuple[CommandSpec, ...] = (
@@ -548,6 +593,11 @@ class DootApp:
                         borderwidth=0, padding=(16, 8))
         style.map("TNotebook.Tab", background=[("selected", self.CARD_ACTIVE)],
                   foreground=[("selected", self.GOLD_LIGHT)])
+        style.configure(
+            "Achievement.Horizontal.TProgressbar",
+            troughcolor="#120e19", background=self.EMBER,
+            bordercolor="#120e19", lightcolor=self.EMBER, darkcolor=self.EMBER,
+        )
 
     def _load_image(self, relative: str, target: int = 58):
         key = f"{relative}:{target}"
@@ -654,12 +704,16 @@ class DootApp:
         notebook = self.ttk.Notebook(parent)
         notebook.grid(row=2, column=0, sticky="nsew", padx=22, pady=(0, 10))
         options_tab = self.tk.Frame(notebook, bg=self.PANEL_2)
+        achievements_tab = self.tk.Frame(notebook, bg=self.PANEL_2)
         output_tab = self.tk.Frame(notebook, bg="#0b0910")
         notebook.add(options_tab, text="  Reglages  ")
+        notebook.add(achievements_tab, text="  Succes  ")
         notebook.add(output_tab, text="  Sortie  ")
         self.notebook = notebook
+        self.achievements_tab = achievements_tab
         self.output_tab = output_tab
         self._build_settings(options_tab)
+        self._build_achievements(achievements_tab)
         self._build_output(output_tab)
 
         launch = self.tk.Frame(parent, bg=self.PANEL)
@@ -730,6 +784,143 @@ class DootApp:
             self.tk.Frame(holder, bg="#30233c", height=1).pack(
                 fill="x", padx=16, pady=(2 if index < len(self.settings) - 1 else 12, 0),
             )
+
+    def _build_achievements(self, parent) -> None:
+        toolbar = self.tk.Frame(parent, bg=self.PANEL_2)
+        toolbar.pack(fill="x", padx=16, pady=(12, 8))
+        heading = self.tk.Frame(toolbar, bg=self.PANEL_2)
+        heading.pack(side="left", fill="x", expand=True)
+        self.tk.Label(
+            heading, text="CABINET DES TROPHEES", bg=self.PANEL_2,
+            fg=self.GOLD_LIGHT, font=("Georgia", 13, "bold"), anchor="w",
+        ).pack(anchor="w")
+        self.achievement_summary = self.tk.StringVar(value="Chargement des succes...")
+        self.tk.Label(
+            heading, textvariable=self.achievement_summary, bg=self.PANEL_2,
+            fg=self.MUTED, font=("Segoe UI", 9), anchor="w",
+        ).pack(anchor="w", pady=(2, 0))
+        self.ttk.Button(
+            toolbar, text="Actualiser", style="Clear.TButton",
+            command=self._refresh_achievements,
+        ).pack(side="right", padx=(10, 0))
+
+        canvas = self.tk.Canvas(parent, bg=self.PANEL_2, highlightthickness=0, bd=0)
+        scrollbar = self._bone_scrollbar(parent, canvas.yview, self.PANEL_2)
+        holder = self.tk.Frame(canvas, bg=self.PANEL_2)
+        window = canvas.create_window((0, 0), window=holder, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y", padx=(0, 3), pady=(0, 4))
+        canvas.pack(side="left", fill="both", expand=True)
+        holder.bind(
+            "<Configure>",
+            lambda _event: canvas.configure(scrollregion=canvas.bbox("all")),
+        )
+        canvas.bind(
+            "<Configure>",
+            lambda event: self._resize_achievement_gallery(canvas, window, event.width),
+        )
+        self._wheel_scroll(canvas, holder)
+        self.achievement_holder = holder
+        self.achievement_widgets: list[object] = []
+        self.achievement_columns = 0
+        self._refresh_achievements()
+
+    def _refresh_achievements(self) -> None:
+        """Relit l'etat et redessine les cartes, succes acquis en premier."""
+
+        from . import cli
+
+        etat = cli.read_state()
+        cards = achievement_cards(etat)
+        unlocked = sum(card.debloque_le is not None for card in cards)
+        total_points = sum(card.points for card in cards)
+        self.achievement_summary.set(
+            f"{unlocked}/{len(cards)} debloques  ·  "
+            f"{succes.score(etat)}/{total_points} points"
+        )
+
+        holder = self.achievement_holder
+        for child in holder.winfo_children():
+            child.destroy()
+        ordered = sorted(cards, key=lambda card: card.debloque_le is None)
+        self.achievement_widgets = [
+            self._build_achievement_card(holder, card) for card in ordered
+        ]
+        self.achievement_columns = 0
+        self._layout_achievement_cards(max(1, holder.winfo_width()))
+
+    def _resize_achievement_gallery(self, canvas, window, width: int) -> None:
+        canvas.itemconfigure(window, width=width)
+        self._layout_achievement_cards(width)
+
+    def _layout_achievement_cards(self, width: int) -> None:
+        """Passe de une a deux colonnes selon la place reellement disponible."""
+
+        columns = 2 if width >= 620 else 1
+        if columns == self.achievement_columns:
+            return
+        self.achievement_columns = columns
+        for column in range(2):
+            self.achievement_holder.grid_columnconfigure(
+                column, weight=1 if column < columns else 0,
+                uniform="achievement" if column < columns else "",
+            )
+        for index, widget in enumerate(self.achievement_widgets):
+            widget.grid_forget()
+            column = index % columns
+            widget.grid(
+                row=index // columns, column=column, sticky="nsew",
+                padx=(12 if column == 0 else 6, 12 if column == columns - 1 else 6),
+                pady=6,
+            )
+
+    def _build_achievement_card(self, parent, card: AchievementCard):
+        unlocked = card.debloque_le is not None
+        background = self.CARD_ACTIVE if unlocked else self.CARD
+        border = self.GOLD if unlocked else "#493653"
+        frame = self.tk.Frame(
+            parent, bg=background, highlightthickness=1,
+            highlightbackground=border, padx=10, pady=10,
+        )
+
+        image = self._load_image(f"success/{card.identifiant}.png", 72)
+        self.tk.Label(frame, image=image, bg=background, bd=0).pack(
+            side="left", anchor="n", padx=(0, 10),
+        )
+        copy = self.tk.Frame(frame, bg=background)
+        copy.pack(side="left", fill="both", expand=True)
+        title_row = self.tk.Frame(copy, bg=background)
+        title_row.pack(fill="x")
+        self.tk.Label(
+            title_row, text=card.titre, bg=background,
+            fg=self.GOLD_LIGHT if unlocked else self.BONE,
+            font=("Georgia", 11, "bold"), anchor="w", justify="left",
+            wraplength=180,
+        ).pack(side="left", fill="x", expand=True)
+        self.tk.Label(
+            title_row, text=f"+{card.points}", bg=background,
+            fg=self.GOLD, font=("Segoe UI", 9, "bold"),
+        ).pack(side="right", anchor="n", padx=(5, 0))
+        self.tk.Label(
+            copy, text=card.description, bg=background, fg=self.MUTED,
+            font=("Segoe UI", 8), anchor="w", justify="left", wraplength=205,
+        ).pack(fill="x", anchor="w", pady=(4, 7))
+
+        if unlocked:
+            status = f"DEBLOQUE LE {_achievement_date(card.debloque_le or '')}"
+            status_color = self.GOLD_LIGHT
+        else:
+            status = f"PROGRESSION  {card.courant}/{card.objectif}"
+            status_color = self.MUTED
+        self.tk.Label(
+            copy, text=status, bg=background, fg=status_color,
+            font=("Consolas", 8, "bold"), anchor="w",
+        ).pack(fill="x", anchor="w")
+        self.ttk.Progressbar(
+            copy, style="Achievement.Horizontal.TProgressbar", mode="determinate",
+            maximum=max(1, card.objectif), value=card.courant,
+        ).pack(fill="x", pady=(5, 0))
+        return frame
 
     def _build_output(self, parent) -> None:
         toolbar = self.tk.Frame(parent, bg="#0b0910")
@@ -837,6 +1028,9 @@ class DootApp:
             ).pack(side="left", padx=(10, 0))
             self.parameter_vars[parameter.option] = variable
         self._update_preview()
+        if key == "achievements":
+            self._refresh_achievements()
+            self.notebook.select(self.achievements_tab)
 
     def _values(self, variables: Mapping[str, object]) -> dict[str, object]:
         return {name: variable.get() for name, variable in variables.items()}
@@ -928,6 +1122,7 @@ class DootApp:
                 else:
                     tag = "success" if value == 0 else "error"
                     self._append_output(f"[termine avec le code {value}]\n", tag)
+                    self._refresh_achievements()
         except queue.Empty:
             pass
         self.processes[:] = [process for process in self.processes if process.poll() is None]
