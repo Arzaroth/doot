@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Mapping, Sequence
 
-from . import succes
+from . import registre, season, succes
 
 
 ASSETS_DIR = Path(__file__).with_name("assets")
@@ -93,6 +93,43 @@ def achievement_cards(etat: dict) -> tuple[AchievementCard, ...]:
             debloque_le=date if isinstance(date, str) else None,
         ))
     return tuple(cards)
+
+
+@dataclass(frozen=True)
+class RegistreVue:
+    """Tout ce que l'onglet du registre montre, compose sans Tkinter."""
+
+    resume: object
+    totaux: list
+    records: list
+    postes: list
+    collections: list
+    saison: object
+    precedentes: list
+    ici: str
+
+
+def registre_vue(etat: dict, annee: int | None = None) -> RegistreVue:
+    """Assemble le registre d'une saison, la derniere ouverte par defaut."""
+
+    if annee is None:
+        annee = season.last_season_year()
+    precedentes = [
+        (autre, registre.saison(etat, autre))
+        for autre in registre.saisons(etat)
+        if autre != annee
+    ]
+    return RegistreVue(
+        resume=registre.resume(etat),
+        totaux=registre.totaux(etat),
+        records=registre.records(etat),
+        postes=registre.postes(etat),
+        collections=registre.collections(etat),
+        saison=registre.saison(etat, annee),
+        precedentes=[(autre, len(passee.actifs), passee.duree)
+                     for autre, passee in precedentes],
+        ici=succes.machine(etat),
+    )
 
 
 def _achievement_date(value: str) -> str:
@@ -710,15 +747,19 @@ class DootApp:
         notebook.grid(row=2, column=0, sticky="nsew", padx=22, pady=(0, 10))
         options_tab = self.tk.Frame(notebook, bg=self.PANEL_2)
         achievements_tab = self.tk.Frame(notebook, bg=self.PANEL_2)
+        registre_tab = self.tk.Frame(notebook, bg=self.PANEL_2)
         output_tab = self.tk.Frame(notebook, bg="#0b0910")
         notebook.add(options_tab, text="  Reglages  ")
         notebook.add(achievements_tab, text="  Succes  ")
+        notebook.add(registre_tab, text="  Registre  ")
         notebook.add(output_tab, text="  Sortie  ")
         self.notebook = notebook
         self.achievements_tab = achievements_tab
+        self.registre_tab = registre_tab
         self.output_tab = output_tab
         self._build_settings(options_tab)
         self._build_achievements(achievements_tab)
+        self._build_registre(registre_tab)
         self._build_output(output_tab)
 
         launch = self.tk.Frame(parent, bg=self.PANEL)
@@ -927,6 +968,164 @@ class DootApp:
         ).pack(fill="x", pady=(5, 0))
         return frame
 
+    CASE = 14
+    ECART = 3
+    MARGE_GAUCHE = 36
+    MARGE_HAUT = 20
+
+    def _build_registre(self, parent) -> None:
+        toolbar = self.tk.Frame(parent, bg=self.PANEL_2)
+        toolbar.pack(fill="x", padx=16, pady=(12, 8))
+        heading = self.tk.Frame(toolbar, bg=self.PANEL_2)
+        heading.pack(side="left", fill="x", expand=True)
+        self.tk.Label(
+            heading, text="REGISTRE DE LA CRYPTE", bg=self.PANEL_2,
+            fg=self.GOLD_LIGHT, font=("Georgia", 13, "bold"), anchor="w",
+        ).pack(anchor="w")
+        self.registre_summary = self.tk.StringVar(value="Lecture de l'etat...")
+        self.tk.Label(
+            heading, textvariable=self.registre_summary, bg=self.PANEL_2,
+            fg=self.MUTED, font=("Segoe UI", 9), anchor="w",
+        ).pack(anchor="w", pady=(2, 0))
+        self.ttk.Button(
+            toolbar, text="Actualiser", style="Clear.TButton",
+            command=self._refresh_registre,
+        ).pack(side="right", padx=(10, 0))
+
+        canvas = self.tk.Canvas(parent, bg=self.PANEL_2, highlightthickness=0, bd=0)
+        scrollbar = self._bone_scrollbar(parent, canvas.yview, self.PANEL_2)
+        holder = self.tk.Frame(canvas, bg=self.PANEL_2)
+        window = canvas.create_window((0, 0), window=holder, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y", padx=(0, 3), pady=(0, 4))
+        canvas.pack(side="left", fill="both", expand=True)
+        holder.bind(
+            "<Configure>",
+            lambda _event: canvas.configure(scrollregion=canvas.bbox("all")),
+        )
+        canvas.bind(
+            "<Configure>",
+            lambda event: canvas.itemconfigure(window, width=event.width),
+        )
+        self._wheel_scroll(canvas, holder)
+        self.registre_holder = holder
+        self._refresh_registre()
+
+    def _refresh_registre(self) -> None:
+        """Relit l'etat et redessine le registre entier."""
+
+        from . import cli
+
+        vue = registre_vue(cli.read_state())
+        bilan = vue.resume
+        self.registre_summary.set(
+            f"{bilan.doots} doots  ·  {bilan.jours} soirs  ·  "
+            f"{bilan.codex}/{bilan.codex_total} apparitions  ·  {bilan.points} points"
+        )
+
+        holder = self.registre_holder
+        for child in holder.winfo_children():
+            child.destroy()
+
+        saison = vue.saison
+        titre = (f"Saison {saison.annee}  -  {len(saison.actifs)} soir(s) "
+                 f"sur {saison.duree}")
+        section = self._registre_section(holder, titre)
+        grille = self.tk.Canvas(
+            section, bg=self.PANEL_2, highlightthickness=0, bd=0,
+        )
+        grille.pack(anchor="w", pady=(4, 2))
+        self._dessiner_saison(grille, saison)
+        self.tk.Label(
+            section, text="une case par soir ; pleine des qu'un doot a eu lieu, "
+                          "l'etat ne compte pas les doots par jour",
+            bg=self.PANEL_2, fg=self.MUTED, font=("Segoe UI", 8),
+            anchor="w", justify="left", wraplength=520,
+        ).pack(anchor="w")
+        for annee, actifs, duree in vue.precedentes:
+            self._registre_ligne(section, f"Saison {annee}", f"{actifs} soir(s) sur {duree}")
+
+        if vue.totaux:
+            section = self._registre_section(holder, "Totaux")
+            for libelle, valeur in vue.totaux:
+                self._registre_ligne(section, libelle, str(valeur))
+
+        section = self._registre_section(holder, "Records")
+        for libelle, valeur in vue.records:
+            self._registre_ligne(section, libelle, str(valeur))
+
+        if vue.postes:
+            section = self._registre_section(holder, "Machines")
+            for poste in vue.postes:
+                nom = poste.machine + (" (ici)" if poste.machine == vue.ici else "")
+                self._registre_ligne(
+                    section, nom,
+                    f"{poste.doots} doots, {poste.melodies} melodies, "
+                    f"{poste.evenements} rencontres",
+                )
+
+        section = self._registre_section(holder, "Collections")
+        for libelle, valeurs in vue.collections:
+            self._registre_ligne(section, libelle, ", ".join(valeurs) or "(aucune)")
+
+    def _registre_section(self, parent, titre: str):
+        frame = self.tk.Frame(parent, bg=self.PANEL_2)
+        frame.pack(fill="x", padx=16, pady=(6, 10))
+        self.tk.Label(
+            frame, text=titre, bg=self.PANEL_2, fg=self.GOLD,
+            font=("Georgia", 11, "bold"), anchor="w",
+        ).pack(anchor="w", pady=(0, 4))
+        return frame
+
+    def _registre_ligne(self, parent, libelle: str, valeur: str) -> None:
+        row = self.tk.Frame(parent, bg=self.PANEL_2)
+        row.pack(fill="x", pady=1)
+        self.tk.Label(
+            row, text=libelle, bg=self.PANEL_2, fg=self.MUTED,
+            font=("Segoe UI", 9), anchor="w", width=26,
+        ).pack(side="left")
+        self.tk.Label(
+            row, text=valeur, bg=self.PANEL_2, fg=self.BONE,
+            font=("Segoe UI", 9, "bold"), anchor="w", justify="left",
+        ).pack(side="left", fill="x", expand=True)
+
+    def _dessiner_saison(self, canvas, saison) -> None:
+        """La saison en cases : une colonne par semaine, du lundi au dimanche."""
+
+        canvas.delete("all")
+        pas = self.CASE + self.ECART
+        for rang, nom in enumerate(registre.JOURS):
+            if rang % 2:
+                continue  # une etiquette sur deux : sept lignes de 14 px n'en tiennent pas plus
+            canvas.create_text(
+                self.MARGE_GAUCHE - 8, self.MARGE_HAUT + rang * pas + self.CASE / 2,
+                text=nom, anchor="e", fill=self.MUTED, font=("Segoe UI", 8),
+            )
+
+        etiquetes = set()
+        for index, colonne in enumerate(saison.semaines):
+            for rang, jour in enumerate(colonne):
+                if jour is None:
+                    continue
+                x = self.MARGE_GAUCHE + index * pas
+                y = self.MARGE_HAUT + rang * pas
+                canvas.create_rectangle(
+                    x, y, x + self.CASE, y + self.CASE, width=0,
+                    fill=self.GOLD if jour in saison.actifs else self.CARD,
+                )
+                if jour.month in etiquetes:
+                    continue
+                if jour.day == 1 or index == 0:
+                    etiquetes.add(jour.month)
+                    canvas.create_text(
+                        x, self.MARGE_HAUT - 9, text=registre.MOIS[jour.month],
+                        anchor="w", fill=self.MUTED, font=("Segoe UI", 8),
+                    )
+
+        largeur = self.MARGE_GAUCHE + max(1, len(saison.semaines)) * pas
+        hauteur = self.MARGE_HAUT + registre.SEMAINE * pas
+        canvas.configure(width=largeur, height=hauteur)
+
     def _build_output(self, parent) -> None:
         toolbar = self.tk.Frame(parent, bg="#0b0910")
         toolbar.pack(fill="x", padx=10, pady=(8, 0))
@@ -1128,6 +1327,7 @@ class DootApp:
                     tag = "success" if value == 0 else "error"
                     self._append_output(f"[termine avec le code {value}]\n", tag)
                     self._refresh_achievements()
+                    self._refresh_registre()
         except queue.Empty:
             pass
         self.processes[:] = [process for process in self.processes if process.poll() is None]
