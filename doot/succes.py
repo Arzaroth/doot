@@ -153,11 +153,24 @@ CATALOGUE = (
 
 
 def _stats(etat: dict) -> dict:
+    """Les statistiques, creees si elles manquent. Pour ecrire, donc."""
     stats = etat.get("stats")
     if not isinstance(stats, dict):
         stats = {}
         etat["stats"] = stats
     return stats
+
+
+def _lu(etat: dict) -> dict:
+    """Les statistiques telles qu'elles sont, sans poser ce qui manque.
+
+    `_stats` ecrit un dictionnaire vide quand la clef est absente, ce qu'il
+    faut pour enregistrer et jamais pour lire. Un lecteur qui passait par lui
+    transformait `{}` en `{"stats": {}}` : lire la progression la modifiait,
+    sur le fichier meme que le README invite a sauvegarder et a recopier.
+    """
+    stats = etat.get("stats")
+    return stats if isinstance(stats, dict) else {}
 
 
 def _ajoute(stats: dict, cle: str, origine: str, quantite: int = 1) -> None:
@@ -342,7 +355,28 @@ def total(etat: dict, cle: str) -> int:
     Passer par ici plutot que par le dictionnaire : un total est stocke en
     parts, un maximum en entier, et la forme n'a pas a sortir du module.
     """
-    return _compteur(_stats(etat), cle)
+    return _compteur(_lu(etat), cle)
+
+
+def parts(etat: dict, cle: str) -> dict:
+    """Le detail d'un total, machine par machine, les parts vides retirees.
+
+    Un etat d'avant les parts porte un entier : il revient a la machine qui
+    l'a accumule, comme le fait le rangement interne, mais sans rien ecrire.
+    Un lecteur n'a pas a normaliser le fichier pour le regarder.
+    """
+    stats = _lu(etat)
+    valeur = stats.get(cle)
+    if isinstance(valeur, dict):
+        detail = {str(nom): entier(part) for nom, part in valeur.items()}
+        return {nom: part for nom, part in detail.items() if part}
+    valeur = entier(valeur)
+    return {machine(etat) or "inconnue": valeur} if valeur else {}
+
+
+def collection(etat: dict, cle: str) -> list:
+    """Les valeurs d'un ensemble, triees, sans les entrees illisibles."""
+    return _liste(_lu(etat), cle)
 
 
 def score(etat: dict) -> int:
@@ -358,5 +392,5 @@ def badge(definition: Succes) -> Path | None:
 
 
 def progression(etat: dict, definition: Succes) -> tuple[int, int]:
-    courant = min(definition.objectif, definition.progression(_stats(etat)))
+    courant = min(definition.objectif, definition.progression(_lu(etat)))
     return courant, definition.objectif

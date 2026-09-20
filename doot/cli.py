@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import (
     __version__, art, coffre, codex, contagion, image, notification, partage,
-    profiles, season, sound, succes,
+    profiles, registre, season, sound, succes,
 )
 
 DEFAULT_MIN_SECONDS = 600     # 10 min
@@ -1006,6 +1006,102 @@ def do_succes(args) -> int:
     return 0
 
 
+CASE_ACTIVE = "#"
+CASE_VIDE = "."
+CASE_HORS = " "
+
+
+def grille_texte(saison) -> list:
+    """La saison en grille : une colonne par semaine, un caractere par soir.
+
+    Les mois s'inscrivent au-dessus de la semaine qui les ouvre, jamais deux
+    fois, et la premiere colonne peut deja porter des cases hors saison : la
+    saison ne commence pas un lundi toutes les annees.
+    """
+    marge = max(len(nom) for nom in registre.JOURS) + 4
+    entete = " " * marge
+    etiquetes = set()
+    for index, colonne in enumerate(saison.semaines):
+        for jour in colonne:
+            if jour is None or jour.month in etiquetes:
+                continue
+            etiquetes.add(jour.month)
+            position = marge + index * 2
+            if position >= len(entete):
+                entete += " " * (position - len(entete)) + registre.MOIS[jour.month][:3]
+            break
+
+    lignes = [entete.rstrip()]
+    for rang, nom in enumerate(registre.JOURS):
+        cases = []
+        for colonne in saison.semaines:
+            jour = colonne[rang]
+            if jour is None:
+                cases.append(CASE_HORS)
+            else:
+                cases.append(CASE_ACTIVE if jour in saison.actifs else CASE_VIDE)
+        lignes.append(f"  {nom}".ljust(marge) + " ".join(cases).rstrip())
+    return lignes
+
+
+def do_stats(args) -> int:
+    """Le registre de la crypte : le detail que l'etat garde depuis toujours."""
+
+    etat = read_state()
+    bilan = registre.resume(etat)
+    ici = succes.machine(etat)
+
+    print("Registre de la crypte")
+    print(f"  succes      : {bilan.succes}/{bilan.succes_total}, {bilan.points} points")
+    print(f"  codex       : {bilan.codex}/{bilan.codex_total} apparitions")
+    print(f"  soirs       : {bilan.jours} depuis la premiere apparition")
+
+    print("\nTotaux")
+    lignes = registre.totaux(etat)
+    if not lignes:
+        print("  (rien encore : doot --once pour ouvrir le registre)")
+    for libelle, valeur in lignes:
+        print(f"  {libelle:<26}{valeur:>7}")
+
+    print("\nRecords")
+    for libelle, valeur in registre.records(etat):
+        print(f"  {libelle:<26}{valeur:>7}")
+
+    postes = registre.postes(etat)
+    if postes:
+        print("\nMachines")
+        for poste in postes:
+            marque = " (ici)" if poste.machine == ici else ""
+            print(f"  {poste.machine + marque:<20}"
+                  f"{poste.doots:>7} doots  {poste.declenchements:>6} declenchements  "
+                  f"{poste.melodies:>4} melodies  {poste.evenements:>4} rencontres")
+        if len(postes) > 1:
+            print("  (parts fusionnees ; une machine re-clee compte pour deux)")
+
+    print("\nCollections")
+    for libelle, valeurs in registre.collections(etat):
+        print(f"  {libelle:<26}{', '.join(valeurs) if valeurs else '(aucune)'}")
+
+    annee = season.last_season_year()
+    courante = registre.saison(etat, annee)
+    print(f"\nSoirs de doot - saison {annee} : "
+          f"{len(courante.actifs)} sur {courante.duree}")
+    for ligne in grille_texte(courante):
+        print(ligne)
+    print(f"  {CASE_ACTIVE} un doot au moins  "
+          f"{CASE_VIDE} rien ce soir-la  (la grille ne compte pas, elle constate)")
+
+    autres = [an for an in registre.saisons(etat) if an != annee]
+    if autres:
+        print("\nSaisons precedentes")
+        for an in autres:
+            passee = registre.saison(etat, an)
+            print(f"  {an} : {len(passee.actifs)} soir(s) sur {passee.duree}")
+
+    print(f"\nProgression locale : {paths()['state']}")
+    return 0
+
+
 def do_profiles(args) -> int:
     """Liste les profils, leur activation et leurs principaux reglages."""
 
@@ -1351,6 +1447,8 @@ def build_parser(profile_defaults: dict | None = None) -> argparse.ArgumentParse
                              "celle-ci ; un dossier apporte tous ses .json")
     parser.add_argument("--achievements", "--succes", dest="succes", action="store_true",
                         help="liste les succes locaux, leur score et leur progression")
+    parser.add_argument("--stats", action="store_true",
+                        help="ouvre le registre de la crypte (totaux, machines, saison)")
     parser.add_argument("--codex", action="store_true",
                         help="ouvre le Codex des apparitions deja decouvertes")
     parser.add_argument("--events", action="store_true",
@@ -1581,6 +1679,8 @@ def main(argv: list[str] | None = None) -> int:
         return do_succes(args)
     if args.codex:
         return do_codex(args)
+    if args.stats:
+        return do_stats(args)
     if args.sync_init is not None:
         return do_sync_init(args, args.sync_init)
     if args.sync_join is not None:
