@@ -70,6 +70,9 @@
   propre PNG/GIF ou mp3 pour les remplacer, sans toucher au code.
 - **Saisonnier** : la fenêtre du 1er septembre au 31 octobre est appliquée par le
   programme lui-même, pas seulement par le planificateur.
+- **Le rite du dernier soir** : le 31 octobre au soir, douze trompettistes
+  saluent la fermeture et doot laisse derrière lui la carte de la saison — un
+  PNG qu'il compose seul, sans fonte installée ni bibliothèque d'images.
 
 ---
 
@@ -241,6 +244,7 @@ doot --event pluie           # force une rencontre rare, pour la découvrir
 doot --codex                 # le livre des apparitions déjà découvertes
 doot --achievements          # les succès locaux, leur progression et le score
 doot --stats                 # le registre : totaux, machines, saison en grille
+doot --carte                 # la carte de la saison, en PNG, quand on veut
 doot --profiles              # les profils enregistrés et celui qui est actif
 doot --status                # saison, daemon, son et image utilisés
 doot --stop                  # arrête le daemon
@@ -607,6 +611,31 @@ le daemon revérifie après chaque attente.
 
 Par défaut `--burst-min` et `--burst-max` valent `1` : un déclenchement, un
 doot, comme avant.
+
+## 🕯️ Le rite du dernier soir
+
+Une saison qui ferme sans rien dire ferme pour rien. Le **31 octobre à partir de
+20 h**, le prochain déclenchement n'est plus tiré au sort : douze trompettistes
+tournoient pour saluer la fermeture, et doot dépose la **carte de la saison**
+dans le dossier de données.
+
+```bash
+doot --carte                    # sans attendre octobre
+doot --carte ~/Images/          # ailleurs qu'au dossier de données
+doot --event finale             # voir la finale tout de suite
+```
+
+La carte réunit les chiffres du registre, la grille des soirs et les médailles
+gagnées. C'est un PNG que doot **compose lui-même** : `doot/png.py` sait déjà
+décoder et écrire, `doot/police.py` apporte une fonte matricielle de 5×7 points
+dessinée à la main, et les badges sont ceux livrés avec les succès. Aucune fonte
+installée, aucune bibliothèque d'images : celles du système ne sont lisibles que
+par Tkinter, qui ne sait pas rendre dans un fichier.
+
+La finale ne peut pas sortir du tirage ordinaire — elle salue une fermeture, un
+12 septembre lui ôterait tout son sens — et le rite n'a lieu **qu'une fois par
+saison** : un démon relancé dans la soirée ne le rejoue pas. Si la carte échoue
+à s'écrire, la crypte a quand même fermé ; seule l'image manque.
 
 ## 🎲 Les événements rares
 
@@ -996,6 +1025,8 @@ des quatre installeurs.
 | `doot/profiles.py` | le stockage et l'activation des profils persistants |
 | `doot/succes.py` | les succès, les parts par machine et leur fusion |
 | `doot/registre.py` | le registre : totaux, records, machines et grille de saison |
+| `doot/police.py` | la fonte matricielle 5x7, dessinée à la main |
+| `doot/carte.py` | la carte de fin de saison, composée en PNG |
 | `doot/audio.py` | la sortie audio native (PulseAudio/PipeWire, ALSA) |
 | `doot/window.py` | l'overlay tkinter, la transparence, le fondu |
 | `doot/cli.py` | la CLI, la boucle aléatoire, l'instance unique |

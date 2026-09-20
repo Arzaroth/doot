@@ -13,6 +13,15 @@ projet applique le [versionnage sémantique](https://semver.org/lang/fr/).
 ## [Non publié]
 
 ### Ajouté
+- **Le rite du dernier soir.** Le 31 octobre à partir de 20 h, douze
+  trompettistes saluent la fermeture de la crypte, et doot laisse derrière lui
+  la **carte de la saison** : un PNG composé par ses soins, avec les chiffres du
+  registre, la grille des soirs et les médailles gagnées. `doot --carte` l'écrit
+  quand on veut. La finale ne sort jamais du tirage ordinaire, et le rite n'a
+  lieu qu'une fois par saison.
+- `doot/police.py`, une fonte matricielle de 5×7 points dessinée à la main :
+  celles du système ne sont lisibles que par Tkinter, qui ne sait pas rendre
+  dans un fichier, et en installer une ajouterait un binaire et une licence.
 - `doot --stats` ouvre le **registre de la crypte** : les totaux, les records,
   la part de chaque machine de la flotte, les collections, et la saison en
   grille — une colonne par semaine, une case par soir. Le grimoire graphique en
