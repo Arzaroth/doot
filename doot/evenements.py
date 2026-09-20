@@ -16,6 +16,9 @@ class Evenement:
     delai: float
     duree: float
     mise_en_scene: str = "salve"
+    # Une rencontre qui appartient a une date ne se tire pas au sort le reste
+    # du temps. Le champ vit ici, avec la rencontre, et non dans le tirage.
+    tirable: bool = True
 
 
 CATALOGUE = (
@@ -56,6 +59,16 @@ CATALOGUE = (
         0.85,
     ),
     Evenement(
+        "finale",
+        "La derniere nuit",
+        "La crypte se vide d'un coup : douze trompettistes saluent la fermeture.",
+        "vortex",
+        12,
+        0.07,
+        1.5,
+        tirable=False,
+    ),
+    Evenement(
         "mimic",
         "Le Mimic",
         "Une notification presque credible cache un squelette.",
@@ -76,6 +89,15 @@ CATALOGUE = (
         "faux-bug",
     ),
 )
+
+
+def tirables() -> tuple:
+    """Les rencontres que le hasard peut amener de lui-meme.
+
+    La finale n'en est pas : elle appartient au soir du 31 octobre, et un
+    tirage qui la sortirait un 12 septembre lui oterait tout son sens.
+    """
+    return tuple(item for item in CATALOGUE if item.tirable)
 
 
 def find(name: str) -> Evenement | None:

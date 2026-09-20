@@ -578,7 +578,7 @@ def event_roll(args, rng=random):
     depuis = state_compteur(read_state(), "depuis_evenement")
     if not event_due(depuis, args.event_chance, args.event_pity, rng):
         return None
-    return rng.choice(evenements.CATALOGUE)
+    return rng.choice(evenements.tirables())
 
 
 def note_evenement(joue: bool) -> None:
