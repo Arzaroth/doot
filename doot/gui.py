@@ -314,6 +314,15 @@ COMMANDS: tuple[CommandSpec, ...] = (
 )
 
 
+# Les actions qui ouvrent un onglet de l'etat : ce qu'il faut relire, et ou
+# aller. La table dit le couple une fois et se lit sans Tkinter, donc un runner
+# sans affichage peut verifier qu'aucune action ne promet un onglet sans l'ouvrir.
+ONGLETS_ETAT = {
+    "achievements": ("_refresh_achievements", "achievements_tab"),
+    "stats": ("_refresh_registre", "registre_tab"),
+}
+
+
 COMMAND_OPTIONS = {
     option
     for command in COMMANDS
@@ -1232,15 +1241,12 @@ class DootApp:
             ).pack(side="left", padx=(10, 0))
             self.parameter_vars[parameter.option] = variable
         self._update_preview()
-        # Une action qui dit ouvrir quelque chose l'ouvre. Les deux onglets qui
-        # montrent l'etat se relisent au passage, puisqu'une commande lancee
-        # entre-temps a pu le changer.
-        if key == "achievements":
-            self._refresh_achievements()
-            self.notebook.select(self.achievements_tab)
-        elif key == "stats":
-            self._refresh_registre()
-            self.notebook.select(self.registre_tab)
+        # Une action qui dit ouvrir quelque chose l'ouvre. L'onglet se relit au
+        # passage, puisqu'une commande lancee entre-temps a pu changer l'etat.
+        rafraichir, onglet = ONGLETS_ETAT.get(key, (None, None))
+        if onglet is not None:
+            getattr(self, rafraichir)()
+            self.notebook.select(getattr(self, onglet))
 
     def _values(self, variables: Mapping[str, object]) -> dict[str, object]:
         return {name: variable.get() for name, variable in variables.items()}

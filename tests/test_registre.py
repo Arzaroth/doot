@@ -60,6 +60,37 @@ class LecteursDeLEtat(unittest.TestCase):
         succes.collection(etat, "formations")
         self.assertEqual(etat["stats"]["doots"], avant["stats"]["doots"])
 
+    def test_lire_un_etat_sans_statistiques_ne_lui_en_pose_pas(self):
+        """Le cas que la premiere version du test ne pouvait pas voir.
+
+        Il partait d'un etat portant deja ses statistiques, la seule forme ou
+        `_stats` n'ecrit rien. Sur `{}` les quatre lecteurs y posaient
+        `{"stats": {}}`, donc regarder le registre modifiait le fichier.
+        """
+        lectures = (
+            ("total", lambda etat: succes.total(etat, "doots")),
+            ("parts", lambda etat: succes.parts(etat, "doots")),
+            ("collection", lambda etat: succes.collection(etat, "formations")),
+            ("progression",
+             lambda etat: succes.progression(etat, succes.CATALOGUE[0])),
+            ("resume", registre.resume),
+            ("postes", registre.postes),
+            ("totaux", registre.totaux),
+            ("saison", lambda etat: registre.saison(etat, 2026)),
+        )
+        for nom, lire in lectures:
+            with self.subTest(lecture=nom):
+                etat = {}
+                lire(etat)
+                self.assertEqual(etat, {})
+
+    def test_un_etat_neuf_se_lit_sans_rien_inventer(self):
+        bilan = registre.resume({})
+        self.assertEqual(bilan.doots, 0)
+        self.assertEqual(bilan.jours, 0)
+        self.assertEqual(registre.postes({}), [])
+        self.assertEqual(registre.saisons({}), [])
+
     def test_les_parts_vides_ne_font_pas_de_ligne(self):
         etat = {"stats": {"doots": {"aaaa": 0, "bbbb": 4}}}
         self.assertEqual(succes.parts(etat, "doots"), {"bbbb": 4})
@@ -142,6 +173,22 @@ class Saison(unittest.TestCase):
     def test_les_saisons_vues_vont_de_la_plus_recente_a_la_plus_ancienne(self):
         self.assertEqual(registre.saisons(etat_type()), [2026, 2025])
 
+    def test_un_soir_hors_saison_n_inscrit_pas_sa_saison(self):
+        """`--ignore-season` fait dooter un 3 janvier, que nulle crypte n'a ouvert.
+
+        Retenir son annee annoncait une saison a zero soir sur soixante et un :
+        la liste des saisons disait le contraire de la grille.
+        """
+        etat = {"stats": {"jours_actifs": [
+            "2025-01-03", "2025-08-31", "2025-11-01", "2026-09-15",
+        ]}}
+        self.assertEqual(registre.saisons(etat), [2026])
+        self.assertEqual(registre.saison(etat, 2025).actifs, frozenset())
+
+    def test_les_bornes_de_la_saison_comptent_pour_la_liste(self):
+        etat = {"stats": {"jours_actifs": ["2025-09-01", "2024-10-31"]}}
+        self.assertEqual(registre.saisons(etat), [2025, 2024])
+
 
 class Postes(unittest.TestCase):
     def test_la_machine_la_plus_bruyante_passe_devant(self):
@@ -197,6 +244,22 @@ class GrilleTexte(unittest.TestCase):
         corps = "".join(self.lignes()[1:])
         self.assertEqual(corps.count(cli.CASE_ACTIVE), 3)
         self.assertEqual(corps.count(cli.CASE_VIDE), 61 - 3)
+
+
+class OngletsDeLEtat(unittest.TestCase):
+    """Une action qui promet d'ouvrir un onglet doit l'ouvrir."""
+
+    def test_le_registre_a_son_onglet_comme_les_succes(self):
+        self.assertEqual(set(gui.ONGLETS_ETAT), {"achievements", "stats"})
+
+    def test_chaque_action_nomme_une_methode_et_un_onglet_qui_existent(self):
+        """La table se lit sans Tkinter ; c'est ce qui la rend verifiable ici."""
+
+        for cle, (rafraichir, onglet) in gui.ONGLETS_ETAT.items():
+            with self.subTest(action=cle):
+                self.assertTrue(callable(getattr(gui.DootApp, rafraichir, None)))
+                self.assertIn(cle, {command.key for command in gui.COMMANDS})
+                self.assertTrue(onglet.endswith("_tab"))
 
 
 class VueGraphique(unittest.TestCase):
