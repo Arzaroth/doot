@@ -45,6 +45,11 @@ CATALOGUE = (
         "Un doot peut cesser de repondre sans vraiment planter.",
     ),
     Apparition(
+        "finale", "La derniere nuit",
+        "Douze trompettistes ont salue la fermeture de la crypte.",
+        "Une crypte ne se referme pas sans un dernier mot.",
+    ),
+    Apparition(
         "contagion", "Le Doot contagieux",
         "Le doot d'une autre machine a traverse la crypte partagee.",
         "Certaines fanfares savent franchir les machines.",

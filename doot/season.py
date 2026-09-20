@@ -30,6 +30,18 @@ def season_end(year: int) -> datetime:
     return datetime(year, SEASON_END_MONTH, SEASON_END_DAY) + timedelta(days=1)
 
 
+# L'heure a partir de laquelle le dernier soir devient le rite. Un 31 octobre
+# au matin est encore une journee de saison ordinaire ; c'est le soir qui ferme.
+RITE_HOUR = 20
+
+
+def is_last_night(now: datetime | None = None) -> bool:
+    """Le soir du 31 octobre, quand la crypte n'a plus qu'une nuit."""
+    now = now or datetime.now()
+    return ((now.month, now.day) == (SEASON_END_MONTH, SEASON_END_DAY)
+            and now.hour >= RITE_HOUR)
+
+
 def last_season_year(now: datetime | None = None) -> int:
     """L'annee de la saison ouverte, ou de la derniere fermee.
 

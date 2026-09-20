@@ -164,6 +164,112 @@ class Frame:
         return self.data.translate(table)
 
 
+class Toile:
+    """Une surface BGRA qu'on peint avant d'en tirer un Frame.
+
+    `Frame` est fige : ses pixels sont des `bytes`, ce qui convient a une image
+    decodee une fois et reaffichee cent fois, et pas du tout a une image qu'on
+    compose morceau par morceau. La toile tient le tampon modifiable, et ne rend
+    un Frame qu'une fois le dessin fini.
+
+    Les couleurs se donnent en (r, v, b, a) non premultiplie, comme on les lit
+    dans une feuille de style ; le premultiplie reste une affaire interne, comme
+    partout ailleurs dans ce module.
+    """
+
+    __slots__ = ("width", "height", "data")
+
+    def __init__(self, width: int, height: int, fond=(0, 0, 0, 0)):
+        if width <= 0 or height <= 0:
+            raise ValueError("une toile a besoin de deux dimensions positives")
+        self.width = int(width)
+        self.height = int(height)
+        self.data = bytearray(self.width * self.height * 4)
+        if fond[3]:
+            self.rectangle(0, 0, self.width, self.height, fond)
+
+    def rectangle(self, x: int, y: int, largeur: int, hauteur: int, couleur) -> None:
+        """Un aplat, decoupe au bord de la toile.
+
+        Un aplat translucide se compose sur ce qui est dessous, comme une image
+        collee. L'ecrire tel quel percerait le fond au lieu de le voiler, et
+        deux facons d'empiler dans la meme classe seraient un piege.
+        """
+        r, v, b, a = _premultiplier(couleur)
+        gauche = max(0, int(x))
+        haut = max(0, int(y))
+        droite = min(self.width, int(x) + max(0, int(largeur)))
+        bas = min(self.height, int(y) + max(0, int(hauteur)))
+        if gauche >= droite or haut >= bas:
+            return
+        if not a:
+            return
+        if a == 255:
+            motif = bytes((b, v, r, a)) * (droite - gauche)
+            for ligne in range(haut, bas):
+                debut = (ligne * self.width + gauche) * 4
+                self.data[debut:debut + len(motif)] = motif
+            return
+
+        reste = 255 - a
+        dessus = (b, v, r, a)
+        for ligne in range(haut, bas):
+            for colonne in range(gauche, droite):
+                ecrit = (ligne * self.width + colonne) * 4
+                for canal in range(4):
+                    dessous = self.data[ecrit + canal]
+                    self.data[ecrit + canal] = (
+                        dessus[canal] + (dessous * reste + 127) // 255
+                    )
+
+    def coller(self, frame: Frame, x: int, y: int) -> None:
+        """Pose une image par-dessus, en la composant sur ce qui est deja la.
+
+        Le decoupage se fait au bord : une image qui deborde est rognee plutot
+        que refusee, pour qu'une carte trop pleine reste une carte.
+        """
+        source = frame.data
+        for ligne in range(max(0, -int(y)), frame.height):
+            cible_y = int(y) + ligne
+            if cible_y >= self.height:
+                break
+            for colonne in range(max(0, -int(x)), frame.width):
+                cible_x = int(x) + colonne
+                if cible_x >= self.width:
+                    break
+                lu = (ligne * frame.width + colonne) * 4
+                alpha = source[lu + 3]
+                if not alpha:
+                    continue
+                ecrit = (cible_y * self.width + cible_x) * 4
+                if alpha == 255:
+                    self.data[ecrit:ecrit + 4] = source[lu:lu + 4]
+                    continue
+                reste = 255 - alpha
+                for canal in range(4):
+                    dessous = self.data[ecrit + canal]
+                    self.data[ecrit + canal] = (
+                        source[lu + canal] + (dessous * reste + 127) // 255
+                    )
+
+    def frame(self) -> Frame:
+        return Frame(self.width, self.height, bytes(self.data))
+
+
+def _premultiplier(couleur) -> tuple:
+    """(r, v, b, a) droit vers (r, v, b, a) premultiplie."""
+    r, v, b, a = (int(canal) for canal in couleur)
+    a = max(0, min(255, a))
+    if a == 255:
+        return (max(0, min(255, r)), max(0, min(255, v)), max(0, min(255, b)), a)
+    return (
+        max(0, min(255, r)) * a // 255,
+        max(0, min(255, v)) * a // 255,
+        max(0, min(255, b)) * a // 255,
+        a,
+    )
+
+
 def montage(frames: list[Frame], columns: int, gap: int = 0) -> Frame:
     """Range des images de meme taille dans une grille transparente.
 
