@@ -30,6 +30,19 @@ def season_end(year: int) -> datetime:
     return datetime(year, SEASON_END_MONTH, SEASON_END_DAY) + timedelta(days=1)
 
 
+def last_season_year(now: datetime | None = None) -> int:
+    """L'annee de la saison ouverte, ou de la derniere fermee.
+
+    Une saison ne chevauche pas le nouvel an : avant le 1er septembre, la
+    derniere crypte ouverte est celle de l'annee precedente. Un janvier qui
+    repondrait l'annee courante montrerait une saison qui n'a pas commence.
+    """
+    now = now or datetime.now()
+    if (now.month, now.day) >= (SEASON_START_MONTH, SEASON_START_DAY):
+        return now.year
+    return now.year - 1
+
+
 def next_season_start(now: datetime | None = None) -> datetime:
     """Prochaine ouverture de la saison (si on est dedans, celle de l'an prochain)."""
     now = now or datetime.now()

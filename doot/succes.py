@@ -345,6 +345,27 @@ def total(etat: dict, cle: str) -> int:
     return _compteur(_stats(etat), cle)
 
 
+def parts(etat: dict, cle: str) -> dict:
+    """Le detail d'un total, machine par machine, les parts vides retirees.
+
+    Un etat d'avant les parts porte un entier : il revient a la machine qui
+    l'a accumule, comme le fait le rangement interne, mais sans rien ecrire.
+    Un lecteur n'a pas a normaliser le fichier pour le regarder.
+    """
+    stats = _stats(etat)
+    valeur = stats.get(cle)
+    if isinstance(valeur, dict):
+        detail = {str(nom): entier(part) for nom, part in valeur.items()}
+        return {nom: part for nom, part in detail.items() if part}
+    valeur = entier(valeur)
+    return {machine(etat) or "inconnue": valeur} if valeur else {}
+
+
+def collection(etat: dict, cle: str) -> list:
+    """Les valeurs d'un ensemble, triees, sans les entrees illisibles."""
+    return _liste(_stats(etat), cle)
+
+
 def score(etat: dict) -> int:
     acquis = debloques(etat)
     return sum(item.points for item in CATALOGUE if item.identifiant in acquis)
