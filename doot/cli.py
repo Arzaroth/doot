@@ -740,11 +740,16 @@ def note_melodie(jouee: bool) -> None:
     write_state(etat)
 
 
-def emit_melodie_tiree(args, fichier, journal: bool = False) -> bool:
+def emit_melodie_tiree(args, fichier, journal: bool = False, repli=None) -> bool:
     """Joue la melodie tiree au sort ; faux si elle etait illisible.
 
     Le repli sur des doots ne vaut pas melodie jouee : rendre faux laisse la
     garantie due au declenchement suivant, au lieu de la repousser d'autant.
+
+    `repli` donne les reglages de ce repli quand ils ne sont pas ceux du
+    declenchement. La contagion s'en sert : sa melodie est breve et vient
+    d'ailleurs, donc son echec doit rendre un doot bref et non la salve que le
+    daemon jouerait de lui-meme.
     """
     from . import melodie
 
@@ -752,7 +757,7 @@ def emit_melodie_tiree(args, fichier, journal: bool = False) -> bool:
         morceau = melodie.load(fichier)
     except melodie.MelodieError as exc:
         log(f"melodie illisible ({fichier.name}) : {exc}", quiet=args.quiet)
-        emit_doots(args, journal=journal)
+        emit_doots(repli if repli is not None else args, journal=journal)
         return False
 
     emit_melodie(args, morceau)
@@ -917,7 +922,10 @@ def emit_contagion(args, signal: dict, journal: bool = True) -> bool:
             if journal:
                 log(f"DOOT CONTAGIEUX : {source} joue {fichier.stem}.",
                     quiet=args.quiet)
-            joue = emit_melodie_tiree(args, fichier, journal=journal)
+            joue = emit_melodie_tiree(
+                args, fichier, journal=journal,
+                repli=contagion_configuree(args, signal),
+            )
             note_succes(args, "apparition", nom="contagion")
             return joue
 

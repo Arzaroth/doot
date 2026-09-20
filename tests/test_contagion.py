@@ -112,6 +112,7 @@ class ContagionRecue(unittest.TestCase):
             "log": racine / "doot.log",
         }
         chemins["melodies"].mkdir(parents=True)
+        self.chemins = chemins
         patch = mock.patch.object(cli, "paths", return_value=chemins)
         patch.start()
         self.addCleanup(patch.stop)
@@ -174,6 +175,37 @@ class ContagionRecue(unittest.TestCase):
         self.assertEqual(stats["evenements_vus"], ["contagion"])
         self.assertEqual(sum(stats["melodies"].values()), 1)
         self.assertNotIn("doots", stats)
+
+    def test_une_melodie_illisible_retombe_sur_le_doot_bref(self):
+        """Le repli d'erreur employait les reglages du daemon.
+
+        Un poste configure en salve de quatre repondait a une melodie
+        contagieuse illisible par quatre doots, la ou la contagion n'en promet
+        qu'un seul et bref.
+        """
+        (self.chemins["melodies"] / "cassee.rtttl").write_text(
+            "ceci n'est pas du RTTTL", encoding="utf-8")
+        self.args = cli.parse_args([
+            "--ignore-season", "--quiet", "--burst-min", "4", "--burst-max", "4",
+        ])
+        signal = contagion.creer("pair", token="9", genre="melodie", nom="cassee")
+        squelettes, melodie = self.joue(signal)
+        self.assertEqual(squelettes, 1)
+        self.assertIsNone(melodie)
+
+    def test_le_tirage_ordinaire_garde_la_salve_du_daemon(self):
+        """L'autre moitie du correctif : seul le repli de la contagion change."""
+
+        fichier = self.chemins["melodies"] / "cassee.rtttl"
+        fichier.write_text("ceci n'est pas du RTTTL", encoding="utf-8")
+        args = cli.parse_args([
+            "--ignore-season", "--quiet", "--burst-min", "4", "--burst-max", "4",
+        ])
+        vus = []
+        with mock.patch.object(window, "show", side_effect=lambda **_: vus.append(1)), \
+             mock.patch.object(cli, "resolve_media", return_value=(None, None, 0.0)):
+            self.assertFalse(cli.emit_melodie_tiree(args, fichier))
+        self.assertEqual(len(vus), 4)
 
     def test_un_poste_muet_sur_les_melodies_recoit_le_doot(self):
         self.args = cli.parse_args(["--ignore-season", "--quiet", "--no-melody"])
