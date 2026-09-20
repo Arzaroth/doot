@@ -14,8 +14,8 @@ from datetime import datetime
 from pathlib import Path
 
 from . import (
-    __version__, art, coffre, codex, contagion, image, notification, partage,
-    profiles, registre, season, sound, succes,
+    __version__, art, carte, coffre, codex, contagion, image, notification,
+    partage, profiles, registre, season, sound, succes,
 )
 
 DEFAULT_MIN_SECONDS = 600     # 10 min
@@ -579,6 +579,56 @@ def event_roll(args, rng=random):
     if not event_due(depuis, args.event_chance, args.event_pity, rng):
         return None
     return rng.choice(evenements.tirables())
+
+
+def rite_du_soir(args):
+    """La rencontre finale, si ce soir ferme la saison et qu'elle n'a pas eu lieu.
+
+    Le rite ne depend pas du tirage : c'est la date qui l'appelle. Il ne consulte
+    que l'etat, donc un daemon relance dans la soiree ne le rejoue pas.
+    """
+    from . import evenements
+
+    if args.no_event or not season.is_last_night():
+        return None
+    if state_compteur(read_state(), "rite_saison") == season.last_season_year():
+        return None
+    return evenements.find("finale")
+
+
+def clore_la_saison(args, annee: int):
+    """Note le rite comme accompli, puis laisse la carte de la saison.
+
+    Dans cet ordre : la carte doit compter les doots de la finale elle-meme.
+    Une carte qui echoue ne rejoue pas le rite pour autant - la crypte a bien
+    ferme, seule l'image manque, et une douzaine de squelettes par minute
+    jusqu'a minuit serait une facon rude de le signaler.
+    """
+    etat = read_state()
+    etat["rite_saison"] = annee
+    write_state(etat)
+    try:
+        chemin = carte.ecrire(paths()["data"], read_state(), annee)
+    except Exception as exc:
+        log(f"carte de la saison indisponible : {exc}", quiet=args.quiet)
+        return None
+    log(f"LA CRYPTE SE REFERME - carte de la saison {annee} : {chemin}",
+        quiet=args.quiet)
+    return chemin
+
+
+def do_carte(args, destination: str) -> int:
+    """Ecrit la carte d'une saison, sans attendre qu'elle se ferme."""
+
+    annee = season.last_season_year()
+    cible = Path(destination).expanduser() if destination else paths()["data"]
+    try:
+        chemin = carte.ecrire(cible, read_state(), annee)
+    except (OSError, ValueError) as exc:
+        print(f"doot : carte impossible a ecrire : {exc}")
+        return 2
+    print(f"doot : carte de la saison {annee} -> {chemin}")
+    return 0
 
 
 def note_evenement(joue: bool) -> None:
@@ -1227,10 +1277,13 @@ def do_daemon(args) -> int:
                 continue  # la saison s'est fermee pendant l'attente
 
             try:
-                evenement = event_roll(args)
+                rite = rite_du_soir(args)
+                evenement = rite or event_roll(args)
                 if evenement is not None:
                     evenement_joue = emit_evenement(args, evenement, journal=True)
                     melodie_jouee = False
+                    if rite is not None and evenement_joue:
+                        clore_la_saison(args, season.last_season_year())
                 else:
                     evenement_joue = False
                     fichier = melody_roll(args)
@@ -1447,6 +1500,9 @@ def build_parser(profile_defaults: dict | None = None) -> argparse.ArgumentParse
                              "celle-ci ; un dossier apporte tous ses .json")
     parser.add_argument("--achievements", "--succes", dest="succes", action="store_true",
                         help="liste les succes locaux, leur score et leur progression")
+    parser.add_argument("--carte", nargs="?", const="", default=None,
+                        metavar="FICHIER",
+                        help="ecrit la carte de la saison (dossier de donnees par defaut)")
     parser.add_argument("--stats", action="store_true",
                         help="ouvre le registre de la crypte (totaux, machines, saison)")
     parser.add_argument("--codex", action="store_true",
@@ -1681,6 +1737,8 @@ def main(argv: list[str] | None = None) -> int:
         return do_codex(args)
     if args.stats:
         return do_stats(args)
+    if args.carte is not None:
+        return do_carte(args, args.carte)
     if args.sync_init is not None:
         return do_sync_init(args, args.sync_init)
     if args.sync_join is not None:

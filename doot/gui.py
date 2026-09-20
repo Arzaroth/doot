@@ -192,6 +192,11 @@ COMMANDS: tuple[CommandSpec, ...] = (
         ("--achievements",), image="success/cent_doots.png",
     ),
     CommandSpec(
+        "carte", "Carte de la saison",
+        "Ecrit dans le dossier de donnees l'image qui resume la saison.",
+        ("--carte",), image="success/sept_jours.png",
+    ),
+    CommandSpec(
         "stats", "Ouvrir le registre",
         "Detaille les totaux, les machines de la flotte et les soirs de la saison.",
         ("--stats",), image="success/sept_jours.png",
