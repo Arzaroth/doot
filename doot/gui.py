@@ -1232,9 +1232,15 @@ class DootApp:
             ).pack(side="left", padx=(10, 0))
             self.parameter_vars[parameter.option] = variable
         self._update_preview()
+        # Une action qui dit ouvrir quelque chose l'ouvre. Les deux onglets qui
+        # montrent l'etat se relisent au passage, puisqu'une commande lancee
+        # entre-temps a pu le changer.
         if key == "achievements":
             self._refresh_achievements()
             self.notebook.select(self.achievements_tab)
+        elif key == "stats":
+            self._refresh_registre()
+            self.notebook.select(self.registre_tab)
 
     def _values(self, variables: Mapping[str, object]) -> dict[str, object]:
         return {name: variable.get() for name, variable in variables.items()}
