@@ -254,6 +254,17 @@ class ContagionEmise(unittest.TestCase):
         signal = self.sortant(("evenement", "vortex"))
         self.assertEqual(contagion.charge(signal), ("evenement", "vortex"))
 
+    def test_la_finale_part_comme_les_autres_rencontres(self):
+        """Le rite du 31 octobre voyage, et chaque poste garde le sien.
+
+        La finale n'est pas tirable au sort, mais une fois jouee c'est une
+        rencontre comme une autre : rien ne justifie qu'elle seule reste a la
+        maison. Le pair qui la recoit la joue sans refermer sa propre saison,
+        `emit_contagion` ne passant jamais par `jouer_le_rite`.
+        """
+        signal = self.sortant(("evenement", "finale"))
+        self.assertEqual(contagion.charge(signal), ("evenement", "finale"))
+
     def test_rien_ne_part_quand_le_tirage_ne_tombe_pas(self):
         jamais = mock.Mock(random=mock.Mock(return_value=1.0))
         self.assertFalse(cli.propager_contagion(self.args, ("melodie", "x"), rng=jamais))
